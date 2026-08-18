@@ -38,7 +38,7 @@ pub(super) fn overview_page(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeAp
         root = root.child(overview_history_loading(cx));
     }
 
-    root = root.child(account_limits_section(app, "Plan remaining", cx));
+    root = root.child(account_limits_section(app, "Usage remaining", cx));
     if let Some(history) = &app.history {
         root = root.child(breakdown_card(history, app, cx));
     } else if app.history_error.is_none() {

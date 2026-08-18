@@ -12,7 +12,7 @@ Tokscope brings Codex and Claude Code usage into one quiet desktop app. See
 token history, estimated API cost, model activity, and plan limits without
 sending your local session history to another service.
 
-![Tokscope overview showing usage trends and remaining plan limits](docs/images/overview.png)
+![Tokscope overview showing usage trends and remaining usage limits](docs/images/overview.png)
 
 ## See everything at a glance
 
