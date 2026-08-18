@@ -12,7 +12,7 @@ mod storage;
 mod types;
 
 pub use collection::{collect_limits, hydrate_limits};
-pub use login::begin_add_account;
+pub use login::{begin_add_account, begin_reauthentication};
 pub use order::{apply_saved_order, move_account_to, AccountOrderKey};
 pub use types::{AddAccountStarted, ProviderAccount};
 

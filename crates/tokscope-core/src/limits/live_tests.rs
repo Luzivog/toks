@@ -43,3 +43,47 @@ fn retry_after_is_preserved_for_rate_limits() {
     let retry_in = error.issue.retry_at.unwrap() - chrono::Utc::now();
     assert!(retry_in.num_seconds() >= 118);
 }
+
+#[test]
+fn generic_forbidden_pages_are_retryable_not_false_sign_in() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0; 1024];
+        let _ = stream.read(&mut request);
+        stream
+            .write_all(
+                b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\nContent-Length: 20\r\n\r\n<html>blocked</html>",
+            )
+            .unwrap();
+    });
+
+    let error = get_json(|client| client.get(format!("http://{address}"))).unwrap_err();
+    assert_eq!(error.issue.kind, LimitIssueKind::Network);
+}
+
+#[test]
+fn successful_html_pages_are_invalid_responses_not_false_sign_in() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0; 1024];
+        let _ = stream.read(&mut request);
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 18\r\n\r\n<html>login</html>",
+            )
+            .unwrap();
+    });
+
+    let error = get_json(|client| client.get(format!("http://{address}"))).unwrap_err();
+    assert_eq!(error.issue.kind, LimitIssueKind::InvalidResponse);
+}

@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
-use gpui::{div, prelude::*, px, relative, App};
+use gpui::{div, prelude::*, px, relative, App, Context};
 use gpui_component::{box_shadow, h_flex, v_flex, ActiveTheme, StyledExt};
 use tokscope_core::{limits::SnapshotFreshness, LimitSnapshot};
+
+use crate::TokscopeApp;
 
 use super::{
     accent_for_provider, account_drag::reorder_handle, limit_header_status, limit_issue_row,
@@ -14,7 +16,7 @@ pub(super) fn account_limits_group(
     separated: bool,
     emails_hidden: bool,
     reorder_enabled: bool,
-    cx: &App,
+    cx: &mut Context<TokscopeApp>,
 ) -> gpui::Div {
     let accent = accent_for_provider(s.provider);
     let selector = format!("account-group-{}-{}", s.provider.slug(), s.account.id);
@@ -43,34 +45,44 @@ pub(super) fn account_limits_group(
                         .child(div().size_2().rounded_full().bg(accent).flex_shrink_0())
                         .child(
                             div()
-                                .text_sm()
-                                .font_semibold()
-                                .whitespace_nowrap()
-                                .child(s.provider.display_name()),
-                        )
-                        .when_some(s.account.email.as_deref(), |row, email| {
-                            row.child(account_email(
-                                email,
-                                emails_hidden,
-                                s.provider.slug(),
-                                &s.account.id,
-                                cx,
-                            ))
-                        })
-                        .when_some(s.plan.as_deref(), |row, plan| {
-                            let selector =
-                                format!("account-plan-{}-{}", s.provider.slug(), s.account.id);
-                            row.child(
-                                div()
-                                    .debug_selector(move || selector.clone())
-                                    .px_1p5()
-                                    .rounded_sm()
-                                    .text_xs()
-                                    .bg(accent.opacity(0.1))
-                                    .text_color(accent.opacity(0.82))
-                                    .child(plan_badge_label(plan, s.plan_multiplier)),
-                            )
-                        }),
+                                .flex()
+                                .items_baseline()
+                                .gap_2()
+                                .min_w_0()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_semibold()
+                                        .whitespace_nowrap()
+                                        .child(s.provider.display_name()),
+                                )
+                                .when_some(s.account.email.as_deref(), |row, email| {
+                                    row.child(account_email(
+                                        email,
+                                        emails_hidden,
+                                        s.provider.slug(),
+                                        &s.account.id,
+                                        cx,
+                                    ))
+                                })
+                                .when_some(s.plan.as_deref(), |row, plan| {
+                                    let selector = format!(
+                                        "account-plan-{}-{}",
+                                        s.provider.slug(),
+                                        s.account.id
+                                    );
+                                    row.child(
+                                        div()
+                                            .debug_selector(move || selector.clone())
+                                            .px_1p5()
+                                            .rounded_sm()
+                                            .text_xs()
+                                            .bg(accent.opacity(0.1))
+                                            .text_color(accent.opacity(0.82))
+                                            .child(plan_badge_label(plan, s.plan_multiplier)),
+                                    )
+                                }),
+                        ),
                 )
                 .child(limit_header_status(s, now, cx)),
         );
@@ -112,9 +124,6 @@ fn account_email(
         .debug_selector(move || selector.clone())
         .relative()
         .min_w_0()
-        .h(px(16.))
-        .flex()
-        .items_center()
         .child(
             div()
                 .min_w_0()

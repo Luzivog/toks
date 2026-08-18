@@ -7,8 +7,8 @@ use std::time::Duration;
 use crate::limits::Provider;
 
 use super::{
-    now_millis, now_nanos, profiles_root, restrict_directory, write_metadata, AddAccountStarted,
-    ProfileMetadata, PROFILE_VERSION,
+    discover_profiles, now_millis, now_nanos, profiles_root, restrict_directory, write_metadata,
+    AddAccountStarted, ProfileMetadata, PROFILE_VERSION,
 };
 
 /// Start the provider's official login command in an isolated terminal. Only
@@ -64,6 +64,42 @@ pub fn begin_add_account(provider: Provider) -> Result<AddAccountStarted> {
         provider,
         account_id: id,
     })
+}
+
+/// Reopen the provider-owned sign-in flow for one existing local profile.
+/// The profile is neither replaced nor removed, so its last-good usage and
+/// stable account identity remain intact throughout reauthentication.
+pub fn begin_reauthentication(provider: Provider, account_id: &str) -> Result<()> {
+    let profile = exact_profile(discover_profiles(), provider, account_id)
+        .context("account profile is no longer available")?;
+    let cli_name = match provider {
+        Provider::Claude => "claude",
+        Provider::Codex => "codex",
+    };
+    let cli = find_executable(cli_name)
+        .with_context(|| format!("{cli_name} is not installed or is not on PATH"))?;
+    let terminal = find_terminal().context("no supported terminal application was found")?;
+    let mut child = spawn_login(
+        &terminal,
+        &cli,
+        provider,
+        &profile.home_dir,
+        &profile.config_dir,
+    )?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
+pub(super) fn exact_profile(
+    profiles: Vec<super::AccountProfile>,
+    provider: Provider,
+    account_id: &str,
+) -> Option<super::AccountProfile> {
+    profiles
+        .into_iter()
+        .find(|profile| profile.provider == provider && profile.account.id == account_id)
 }
 
 fn find_executable(name: &str) -> Option<PathBuf> {

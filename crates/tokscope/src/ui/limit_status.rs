@@ -1,12 +1,14 @@
 use chrono::{DateTime, Utc};
-use gpui::{div, prelude::*, px, App, Hsla, SharedString};
+use gpui::{div, prelude::*, px, App, Context, Hsla, SharedString};
 use gpui_component::{h_flex, skeleton::Skeleton, tooltip::Tooltip, ActiveTheme, StyledExt};
 use tokscope_core::{
     limits::{LimitIssueKind, SnapshotFreshness},
     LimitSnapshot,
 };
 
-use super::{fmt_age, fmt_as_of, loading_status};
+use crate::TokscopeApp;
+
+use super::{fmt_age, fmt_as_of, loading_status, text_action};
 
 pub(super) fn limit_header_status(s: &LimitSnapshot, now: DateTime<Utc>, cx: &App) -> gpui::Div {
     if s.status.freshness == SnapshotFreshness::Loading && s.windows.is_empty() {
@@ -93,7 +95,10 @@ fn status_badge(
     div().flex_shrink_0().child(badge)
 }
 
-pub(super) fn limit_issue_row(s: &LimitSnapshot, cx: &App) -> Option<gpui::Div> {
+pub(super) fn limit_issue_row(
+    s: &LimitSnapshot,
+    cx: &mut Context<TokscopeApp>,
+) -> Option<gpui::Div> {
     let issue = s.status.issue.as_ref()?;
     let saved = !s.windows.is_empty();
     if saved
@@ -126,15 +131,42 @@ pub(super) fn limit_issue_row(s: &LimitSnapshot, cx: &App) -> Option<gpui::Div> 
         LimitIssueKind::Unavailable => "Usage is unavailable for this account.",
     };
 
+    let reauthenticate = (issue.kind == LimitIssueKind::Authentication).then(|| {
+        let provider = s.provider;
+        let account_id = s.account.id.clone();
+        let selector = format!("reauthenticate-{}-{account_id}", provider.slug());
+        text_action(selector, "Sign in again", cx)
+            .compact()
+            .flex_shrink_0()
+            .on_click(cx.listener(move |app, _, _, cx| {
+                app.account_notice = Some(
+                    match tokscope_core::accounts::begin_reauthentication(provider, &account_id) {
+                        Ok(()) => format!(
+                            "Opened {} sign-in. Saved usage will remain visible while it completes.",
+                            provider.display_name()
+                        ),
+                        Err(error) => {
+                            format!("Couldn't sign in to {}: {error}", provider.display_name())
+                        }
+                    },
+                );
+                cx.notify();
+            }))
+    });
+
     Some(
-        div()
+        h_flex()
             .px_3()
-            .py_2()
+            .py_1p5()
             .border_t_1()
             .border_color(cx.theme().border)
+            .justify_between()
+            .items_center()
+            .gap_3()
             .text_xs()
             .text_color(cx.theme().muted_foreground)
-            .child(message),
+            .child(div().min_w_0().child(message))
+            .when_some(reauthenticate, |row, action| row.child(action)),
     )
 }
 

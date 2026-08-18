@@ -6,6 +6,16 @@ use crate::{ModelSortColumn, Page, SortState, TokscopeApp};
 
 use super::{claude_accent, codex_accent, fmt_cost_full, fmt_tokens, sort_action};
 
+const INPUT_WIDTH: f32 = 72.;
+const CACHE_READ_WIDTH: f32 = 88.;
+const CACHE_WRITE_WIDTH: f32 = 90.;
+const OUTPUT_WIDTH: f32 = 72.;
+const REASONING_WIDTH: f32 = 82.;
+const MESSAGES_WIDTH: f32 = 78.;
+const TURNS_WIDTH: f32 = 56.;
+const TOTAL_WIDTH: f32 = 78.;
+const COST_WIDTH: f32 = 102.;
+
 pub(super) fn model_columns_header(
     page: Page,
     sort: SortState<ModelSortColumn>,
@@ -25,15 +35,19 @@ pub(super) fn model_columns_header(
                 .child("Model"),
         );
     for (label, width, column) in [
-        ("Input", 60., ModelSortColumn::Input),
-        ("Cache R", 62., ModelSortColumn::CacheRead),
-        ("Cache W", 62., ModelSortColumn::CacheWrite),
-        ("Output", 60., ModelSortColumn::Output),
-        ("Reason.", 64., ModelSortColumn::Reasoning),
-        ("Msgs", 54., ModelSortColumn::Messages),
-        ("Turns", 44., ModelSortColumn::Turns),
-        ("Total", 68., ModelSortColumn::Total),
-        ("Est. cost", 82., ModelSortColumn::Cost),
+        ("Input", INPUT_WIDTH, ModelSortColumn::Input),
+        ("Cache read", CACHE_READ_WIDTH, ModelSortColumn::CacheRead),
+        (
+            "Cache write",
+            CACHE_WRITE_WIDTH,
+            ModelSortColumn::CacheWrite,
+        ),
+        ("Output", OUTPUT_WIDTH, ModelSortColumn::Output),
+        ("Reasoning", REASONING_WIDTH, ModelSortColumn::Reasoning),
+        ("Messages", MESSAGES_WIDTH, ModelSortColumn::Messages),
+        ("Turns", TURNS_WIDTH, ModelSortColumn::Turns),
+        ("Total", TOTAL_WIDTH, ModelSortColumn::Total),
+        ("Est. API cost", COST_WIDTH, ModelSortColumn::Cost),
     ] {
         header = header.child(model_sort_header(label, width, column, page, sort, cx));
     }
@@ -71,15 +85,31 @@ pub(super) fn model_usage_row(model: &ModelUsage, page: Page, cx: &App) -> gpui:
                         .child(model.model.clone()),
                 ),
         )
-        .child(number_cell(fmt_tokens(model.input), 60., false))
-        .child(number_cell(fmt_tokens(model.cache_read), 62., false))
-        .child(number_cell(fmt_tokens(model.cache_write), 62., false))
-        .child(number_cell(fmt_tokens(model.output), 60., false))
-        .child(number_cell(fmt_tokens(model.reasoning), 64., false))
-        .child(number_cell(fmt_tokens(model.messages), 54., false))
-        .child(number_cell(fmt_tokens(model.turns), 44., false))
-        .child(number_cell(fmt_tokens(model.tokens), 68., true))
-        .child(number_cell(fmt_cost_full(model.cost), 82., true))
+        .child(number_cell(fmt_tokens(model.input), INPUT_WIDTH, false))
+        .child(number_cell(
+            fmt_tokens(model.cache_read),
+            CACHE_READ_WIDTH,
+            false,
+        ))
+        .child(number_cell(
+            fmt_tokens(model.cache_write),
+            CACHE_WRITE_WIDTH,
+            false,
+        ))
+        .child(number_cell(fmt_tokens(model.output), OUTPUT_WIDTH, false))
+        .child(number_cell(
+            fmt_tokens(model.reasoning),
+            REASONING_WIDTH,
+            false,
+        ))
+        .child(number_cell(
+            fmt_tokens(model.messages),
+            MESSAGES_WIDTH,
+            false,
+        ))
+        .child(number_cell(fmt_tokens(model.turns), TURNS_WIDTH, false))
+        .child(number_cell(fmt_tokens(model.tokens), TOTAL_WIDTH, true))
+        .child(number_cell(fmt_cost_full(model.cost), COST_WIDTH, true))
 }
 
 fn model_sort_header(

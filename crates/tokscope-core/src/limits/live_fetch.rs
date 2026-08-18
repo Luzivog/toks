@@ -17,24 +17,29 @@ pub(crate) fn fetch(profile: &AccountProfile) -> Result<LimitSnapshot, LiveError
 }
 
 fn fetch_claude(profile: &AccountProfile) -> Result<LimitSnapshot, LiveError> {
-    let token = claude_access_token(profile).ok_or_else(|| {
-        LiveError::new(
-            LimitIssueKind::Authentication,
-            "Claude sign-in is no longer valid",
-        )
-    })?;
-    let value = get_json(|client| {
-        client
-            .get(CLAUDE_USAGE_URL)
-            .bearer_auth(&token)
-            .header("Accept", "application/json")
-            .header("anthropic-beta", CLAUDE_BETA_HEADER)
-    })?;
+    let mut token = super::claude_auth::access_token(profile)?;
+    let value = match fetch_claude_usage(&token) {
+        Err(error) if error.issue.kind == LimitIssueKind::Authentication => {
+            token = super::claude_auth::refresh_after_rejection(profile, &token)?;
+            fetch_claude_usage(&token)?
+        }
+        outcome => outcome?,
+    };
     let mut snapshot = claude::parse_utilization(&value, Some(chrono::Utc::now()), "live".into());
     let details = super::read_claude_plan(&profile.config_dir);
     snapshot.plan = details.name;
     snapshot.plan_multiplier = details.multiplier.or(snapshot.plan_multiplier);
     ensure_windows(snapshot)
+}
+
+fn fetch_claude_usage(token: &str) -> Result<Value, LiveError> {
+    get_json(|client| {
+        client
+            .get(CLAUDE_USAGE_URL)
+            .bearer_auth(token)
+            .header("Accept", "application/json")
+            .header("anthropic-beta", CLAUDE_BETA_HEADER)
+    })
 }
 
 fn fetch_codex(profile: &AccountProfile) -> Result<LimitSnapshot, LiveError> {
@@ -81,15 +86,6 @@ fn with_profile_identity(mut snapshot: LimitSnapshot, profile: &AccountProfile) 
     snapshot.account = profile.account.clone();
     snapshot.account.email = snapshot.account.email.or(response_email);
     snapshot
-}
-
-fn claude_access_token(profile: &AccountProfile) -> Option<String> {
-    let raw = std::fs::read_to_string(profile.config_dir.join(".credentials.json")).ok()?;
-    serde_json::from_str::<Value>(&raw)
-        .ok()?
-        .pointer("/claudeAiOauth/accessToken")
-        .and_then(Value::as_str)
-        .map(str::to_string)
 }
 
 fn codex_tokens(profile: &AccountProfile) -> Option<(String, Option<String>)> {

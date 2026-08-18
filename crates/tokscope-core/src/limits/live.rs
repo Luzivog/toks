@@ -6,20 +6,18 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 
-use super::{
-    LimitIssue, LimitIssueKind, LimitSnapshot, Provider, SnapshotFreshness, SnapshotStatus,
-};
+use super::{LimitIssue, LimitIssueKind, LimitSnapshot, SnapshotFreshness, SnapshotStatus};
 use crate::accounts::AccountProfile;
 
 const LIVE_TTL: Duration = Duration::from_secs(60);
 const FAILURE_BACKOFF_MAX: Duration = Duration::from_secs(15 * 60);
-
 #[derive(Clone)]
 struct MemoEntry {
     attempted_at: Instant,
     outcome: RefreshOutcome,
     failures: u32,
     retry_for: Duration,
+    credential_revision: Option<super::credentials::CredentialRevision>,
 }
 
 #[derive(Clone, Default)]
@@ -29,26 +27,19 @@ pub(crate) struct RefreshOutcome {
 }
 
 type AccountLocks = HashMap<String, Arc<Mutex<()>>>;
-
 static MEMO: OnceLock<Mutex<HashMap<String, MemoEntry>>> = OnceLock::new();
 static LOCKS: OnceLock<Mutex<AccountLocks>> = OnceLock::new();
-
 pub(super) fn failure_backoff(failures: u32) -> Duration {
     let exponent = failures.saturating_sub(1).min(4);
     Duration::from_secs(60 * 2_u64.pow(exponent)).min(FAILURE_BACKOFF_MAX)
 }
 
 pub(crate) fn credentials_present(profile: &AccountProfile) -> bool {
-    match profile.provider {
-        Provider::Claude => profile.config_dir.join(".credentials.json").is_file(),
-        Provider::Codex => profile.config_dir.join("auth.json").is_file(),
-    }
+    super::credentials::present(profile)
 }
-
 pub(crate) fn hydrate(profile: &AccountProfile) -> Option<LimitSnapshot> {
     super::snapshot_cache::load_or_seed(profile).map(|snapshot| normalize(snapshot, profile))
 }
-
 pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
     let baseline = hydrate(profile);
     if !credentials_present(profile) {
@@ -59,11 +50,12 @@ pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
     }
 
     let key = profile.cache_key();
+    let credential_revision = super::credentials::revision(profile);
     let account_lock = account_lock(&key);
     let _guard = account_lock
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
-    if let Some(outcome) = memoized(&key, baseline.clone()) {
+    if let Some(outcome) = memoized(&key, baseline.clone(), credential_revision) {
         return outcome;
     }
 
@@ -113,6 +105,7 @@ pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
                 outcome: outcome.clone(),
                 failures,
                 retry_for,
+                credential_revision: super::credentials::revision(profile),
             },
         );
     outcome
@@ -147,22 +140,28 @@ fn failed_refresh(
     )
 }
 
-fn memoized(key: &str, baseline: Option<LimitSnapshot>) -> Option<RefreshOutcome> {
+fn memoized(
+    key: &str,
+    baseline: Option<LimitSnapshot>,
+    credential_revision: Option<super::credentials::CredentialRevision>,
+) -> Option<RefreshOutcome> {
     let entries = memo().lock().unwrap_or_else(|poison| poison.into_inner());
     let entry = entries.get(key)?;
-    (entry.attempted_at.elapsed() < entry.retry_for).then(|| {
-        let mut outcome = entry.outcome.clone();
-        if is_newer(&baseline, &outcome.snapshot) {
-            outcome.snapshot = baseline.map(|mut snapshot| {
-                if let Some(issue) = &outcome.issue {
-                    snapshot.status =
-                        SnapshotStatus::failed(snapshot.status.freshness, issue.clone());
-                }
-                snapshot
-            });
-        }
-        outcome
-    })
+    if entry.credential_revision != credential_revision
+        || entry.attempted_at.elapsed() >= entry.retry_for
+    {
+        return None;
+    }
+    let mut outcome = entry.outcome.clone();
+    if is_newer(&baseline, &outcome.snapshot) {
+        outcome.snapshot = baseline.map(|mut snapshot| {
+            if let Some(issue) = &outcome.issue {
+                snapshot.status = SnapshotStatus::failed(snapshot.status.freshness, issue.clone());
+            }
+            snapshot
+        });
+    }
+    Some(outcome)
 }
 
 fn is_newer(candidate: &Option<LimitSnapshot>, current: &Option<LimitSnapshot>) -> bool {

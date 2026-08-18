@@ -4,6 +4,7 @@ use crate::limits::{self, Provider};
 use base64::Engine as _;
 
 use super::discovery::{discover_managed_profiles, retain_unique_profiles};
+use super::login::exact_profile;
 use super::{write_metadata, AccountProfile, ProfileMetadata, ProviderAccount, PROFILE_VERSION};
 
 #[test]
@@ -157,4 +158,28 @@ fn same_email_profiles_keep_distinct_stable_local_identities() {
         .map(|profile| profile.account.id.as_str())
         .collect();
     assert_eq!(ids, ["first", "second"]);
+}
+
+#[test]
+fn reauthentication_resolves_only_the_exact_provider_and_account() {
+    let profile = |provider: Provider, id: &str| AccountProfile {
+        provider,
+        account: ProviderAccount {
+            id: id.into(),
+            email: Some("same@example.com".into()),
+        },
+        home_dir: format!("/{id}/home").into(),
+        config_dir: format!("/{id}/config").into(),
+        managed: true,
+        created_at_ms: Some(1),
+    };
+    let profiles = vec![
+        profile(Provider::Claude, "first"),
+        profile(Provider::Codex, "first"),
+        profile(Provider::Claude, "second"),
+    ];
+    let found = exact_profile(profiles.clone(), Provider::Claude, "second").unwrap();
+    assert_eq!(found.account.id, "second");
+    assert_eq!(found.provider, Provider::Claude);
+    assert!(exact_profile(profiles, Provider::Codex, "missing").is_none());
 }

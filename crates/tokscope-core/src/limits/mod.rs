@@ -6,7 +6,11 @@
 //! show up in the UI without code changes.
 
 pub mod claude;
+mod claude_auth;
+mod claude_credentials;
+mod claude_lock;
 pub mod codex;
+mod credentials;
 mod http;
 pub mod live;
 mod live_fetch;
@@ -15,6 +19,8 @@ pub(crate) mod settling;
 mod snapshot_cache;
 mod status;
 
+#[cfg(test)]
+mod claude_auth_tests;
 #[cfg(test)]
 mod live_tests;
 #[cfg(test)]
