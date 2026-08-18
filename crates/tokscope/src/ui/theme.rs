@@ -18,6 +18,7 @@ pub(crate) fn page_accent(page: Page, cx: &App) -> Hsla {
         Page::Hourly => gpui::rgb(0x5f_a8_d3).into(),
         Page::Daily => gpui::rgb(0xe4_a8_53).into(),
         Page::Monthly => gpui::rgb(0xa7_8b_fa).into(),
+        Page::AllTime => gpui::rgb(0x72_c7_a5).into(),
     }
 }
 

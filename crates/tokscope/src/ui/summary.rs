@@ -3,25 +3,53 @@ use gpui_component::{h_flex, progress::Progress, v_flex, ActiveTheme, StyledExt}
 
 use super::{chart_tooltip::ProviderPoint, claude_accent, codex_accent, fmt_cost_full, fmt_tokens};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct UsageSummary {
+    pub(super) claude_cost: f64,
+    pub(super) claude_tokens: i64,
+    pub(super) codex_cost: f64,
+    pub(super) codex_tokens: i64,
+}
+
+impl UsageSummary {
+    pub(super) fn from_points(data: &[ProviderPoint]) -> Self {
+        data.iter().fold(Self::default(), |mut summary, point| {
+            summary.claude_cost += point.claude;
+            summary.claude_tokens = summary.claude_tokens.saturating_add(point.claude_tokens);
+            summary.codex_cost += point.codex;
+            summary.codex_tokens = summary.codex_tokens.saturating_add(point.codex_tokens);
+            summary
+        })
+    }
+
+    pub(super) fn exact(
+        claude_cost: f64,
+        claude_tokens: i64,
+        codex_cost: f64,
+        codex_tokens: i64,
+    ) -> Self {
+        Self {
+            claude_cost: claude_cost.max(0.0),
+            claude_tokens: claude_tokens.max(0),
+            codex_cost: codex_cost.max(0.0),
+            codex_tokens: codex_tokens.max(0),
+        }
+    }
+}
+
 pub(super) fn usage_summary_sidebar(
-    data: &[ProviderPoint],
+    summary: UsageSummary,
     eyebrow: &'static str,
     cx: &App,
 ) -> gpui::Div {
-    let claude_cost: f64 = data.iter().map(|point| point.claude).sum();
-    let codex_cost: f64 = data.iter().map(|point| point.codex).sum();
-    let claude_tokens = data.iter().fold(0_i64, |total, point| {
-        total.saturating_add(point.claude_tokens)
-    });
-    let codex_tokens = data.iter().fold(0_i64, |total, point| {
-        total.saturating_add(point.codex_tokens)
-    });
+    let UsageSummary {
+        claude_cost,
+        claude_tokens,
+        codex_cost,
+        codex_tokens,
+    } = summary;
     let total_cost = claude_cost + codex_cost;
-    let total_tokens = data.iter().fold(0_i64, |total, point| {
-        total
-            .saturating_add(point.claude_tokens)
-            .saturating_add(point.codex_tokens)
-    });
+    let total_tokens = claude_tokens.saturating_add(codex_tokens);
     let cost = fmt_cost_full(total_cost);
     let mut providers = vec![
         ("Codex", codex_accent(), codex_cost, codex_tokens),

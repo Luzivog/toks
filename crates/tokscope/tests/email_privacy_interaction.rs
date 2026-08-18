@@ -51,7 +51,7 @@ fn email_privacy_overlay_preserves_account_header_layout(cx: &mut TestAppContext
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                     point(px(0.), px(0.)),
-                    size(px(1200.), px(700.)),
+                    size(px(1200.), px(1800.)),
                 ))),
                 window_background: WindowBackgroundAppearance::Opaque,
                 window_decorations: Some(WindowDecorations::Client),

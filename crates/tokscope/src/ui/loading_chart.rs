@@ -1,7 +1,9 @@
 use gpui::{div, prelude::*, px, relative, App};
 use gpui_component::{h_flex, skeleton::Skeleton, v_flex, ActiveTheme};
 
-use super::section_title;
+use crate::Page;
+
+use super::{page_accent, section_title};
 
 pub(super) fn loading_status(text: &'static str, cx: &App) -> gpui::Div {
     h_flex()
@@ -49,10 +51,12 @@ pub(super) fn loading_plot(height: f32, cx: &App) -> gpui::Div {
     plot.child(bars)
 }
 
-pub(super) fn overview_usage_loading_card(cx: &App) -> gpui::Div {
+fn overview_range_loading_card(title: &'static str, page: Page, cx: &App) -> gpui::Div {
     let summary = loading_summary_sidebar(cx);
 
     v_flex()
+        .flex_1()
+        .min_w(px(700.))
         .gap_3()
         .p_4()
         .rounded_xl()
@@ -63,7 +67,13 @@ pub(super) fn overview_usage_loading_card(cx: &App) -> gpui::Div {
             h_flex()
                 .justify_between()
                 .items_center()
-                .child(section_title("Cost — last 30 days"))
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(div().size_2().rounded_full().bg(page_accent(page, cx)))
+                        .child(section_title(title)),
+                )
                 .child(loading_status("Scanning local usage", cx)),
         )
         .child(
@@ -112,5 +122,10 @@ pub(super) fn loading_summary_sidebar(_cx: &App) -> gpui::Div {
 }
 
 pub(super) fn overview_history_loading(cx: &App) -> gpui::Div {
-    overview_usage_loading_card(cx)
+    h_flex()
+        .w_full()
+        .flex_wrap()
+        .gap_4()
+        .child(overview_range_loading_card("Today", Page::Daily, cx))
+        .child(overview_range_loading_card("This month", Page::Monthly, cx))
 }

@@ -14,7 +14,8 @@ pub(crate) fn detail(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeApp>) -> 
     let page = app.page;
     let body = match page {
         Page::Overview => overview_page(app, cx),
-        _ => usage_page(app, page.usage_period().unwrap_or_default(), cx),
+        Page::AllTime => super::all_time::all_time_page(app, cx),
+        _ => usage_page(app, page.usage_period().expect("usage page period"), cx),
     };
     div()
         .id("detail")

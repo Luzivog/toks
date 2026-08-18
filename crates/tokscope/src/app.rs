@@ -25,6 +25,7 @@ pub enum Page {
     Hourly,
     Daily,
     Monthly,
+    AllTime,
 }
 
 impl Page {
@@ -34,6 +35,7 @@ impl Page {
             Page::Hourly => Some(UsagePeriod::Hourly),
             Page::Daily => Some(UsagePeriod::Daily),
             Page::Monthly => Some(UsagePeriod::Monthly),
+            Page::AllTime => None,
         }
     }
 }

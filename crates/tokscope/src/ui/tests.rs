@@ -1,8 +1,9 @@
 use super::{
-    aggregate_model_usage, fmt_age, hourly_bucket_day, overview_usage_points, provider_rows,
-    sort_model_usage, sort_usage_buckets, split_limit_label, usage_bucket_is_current,
-    usage_bucket_label, usage_chart_points, usage_hover_geometry, usage_marker_top,
-    visible_usage_buckets, visible_usage_row_count, ProviderPoint,
+    aggregate_model_usage, all_time_points, all_time_summary, fmt_age, hourly_bucket_day,
+    overview_usage_points, provider_rows, sort_model_usage, sort_usage_buckets, split_limit_label,
+    usage_bucket_is_current, usage_bucket_label, usage_chart_maximum, usage_chart_points,
+    usage_hover_geometry, usage_marker_top, visible_usage_buckets, visible_usage_row_count,
+    ProviderPoint,
 };
 use crate::{ModelSortColumn, ModelTablesState, Page, SortDirection, SortState, UsageSortColumn};
 use chrono::{Local, NaiveDate, TimeZone, Utc};
@@ -75,6 +76,29 @@ fn tooltip_hides_zero_providers_and_sorts_by_cost() {
 }
 
 #[test]
+fn usage_chart_scale_is_driven_by_tokens_instead_of_cost() {
+    let points = [
+        ProviderPoint {
+            heading: "Expensive".into(),
+            label: "1".into(),
+            claude: 10_000.0,
+            claude_tokens: 10,
+            codex: 0.0,
+            codex_tokens: 0,
+        },
+        ProviderPoint {
+            heading: "Token heavy".into(),
+            label: "2".into(),
+            claude: 1.0,
+            claude_tokens: 1_000,
+            codex: 0.0,
+            codex_tokens: 0,
+        },
+    ];
+    assert_eq!(usage_chart_maximum(&points), 1_000.0);
+}
+
+#[test]
 fn page_charts_stop_at_the_current_hour_and_day() {
     let history = HistorySnapshot {
         sources: vec![SourceHistory {
@@ -96,6 +120,7 @@ fn page_charts_stop_at_the_current_hour_and_day() {
     assert_eq!(usage_chart_points(&history, UsagePeriod::Hourly).len(), 60);
     assert_eq!(usage_chart_points(&history, UsagePeriod::Daily).len(), 13);
     assert_eq!(usage_chart_points(&history, UsagePeriod::Monthly).len(), 18);
+    assert_eq!(overview_usage_points(&history).len(), 18);
 }
 
 #[test]
@@ -130,6 +155,51 @@ fn overview_joins_provider_days_by_key_instead_of_position() {
     let current = points.iter().find(|point| point.label == "08-18").unwrap();
     assert_eq!((previous.claude, previous.codex), (0.0, 3.0));
     assert_eq!((current.claude, current.codex), (8.0, 0.0));
+}
+
+#[test]
+fn all_time_chart_fills_month_gaps_and_summary_uses_exact_totals() {
+    let source = |client: &str, total_cost: f64, total_tokens: i64| SourceHistory {
+        client: client.into(),
+        total_cost,
+        total_tokens,
+        ..Default::default()
+    };
+    let history = HistorySnapshot {
+        sources: vec![source("claude", 90.0, 900), source("codex", 40.0, 400)],
+        usage: UsageSeries {
+            monthly: vec![
+                UsageBucket {
+                    key: "2026-01".into(),
+                    tokens: 10,
+                    ..Default::default()
+                },
+                UsageBucket {
+                    key: "2026-03".into(),
+                    tokens: 30,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let points = all_time_points(&history);
+    assert_eq!(
+        points
+            .iter()
+            .map(|point| point.label.as_str())
+            .collect::<Vec<_>>(),
+        ["Jan 2026", "Feb 2026", "Mar 2026"]
+    );
+    assert_eq!(points[1].claude_tokens + points[1].codex_tokens, 0);
+
+    let summary = all_time_summary(&history);
+    assert_eq!(summary.claude_cost, 90.0);
+    assert_eq!(summary.claude_tokens, 900);
+    assert_eq!(summary.codex_cost, 40.0);
+    assert_eq!(summary.codex_tokens, 400);
 }
 
 #[test]

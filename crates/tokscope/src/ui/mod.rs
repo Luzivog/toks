@@ -7,6 +7,7 @@ use crate::{Page, TokscopeApp};
 
 mod account_drag;
 mod action;
+mod all_time;
 mod chart_plot;
 mod chart_tooltip;
 mod format;
@@ -34,9 +35,11 @@ mod usage_table;
 
 use account_drag::account_drop_target;
 use action::{action_button, sort_action, text_action};
+#[cfg(test)]
+use all_time::{all_time_points, all_time_summary};
 use chart_plot::provider_usage_chart;
 #[cfg(test)]
-use chart_plot::{usage_hover_geometry, usage_marker_top};
+use chart_plot::{usage_chart_maximum, usage_hover_geometry, usage_marker_top};
 #[cfg(test)]
 use chart_tooltip::provider_rows;
 use chart_tooltip::{usage_point_tooltip, ProviderPoint};
@@ -60,7 +63,7 @@ use quota_row::quota_row;
 #[cfg(test)]
 use quota_row::split_limit_label;
 use section::{section_meta, section_title};
-use summary::usage_summary_sidebar;
+use summary::{usage_summary_sidebar, UsageSummary};
 use theme::{accent_for_provider, claude_accent, codex_accent, gauge_color};
 use usage_chart::{usage_chart_card, usage_chart_identity};
 use usage_points::{provider_point, source_bucket_values, usage_chart_points};

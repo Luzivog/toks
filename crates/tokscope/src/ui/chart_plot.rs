@@ -37,16 +37,19 @@ pub(super) fn usage_hover_geometry(index: usize, count: usize) -> (f32, f32, f32
     (left, right - left, point_in_region)
 }
 
+pub(super) fn usage_chart_maximum(data: &[ProviderPoint]) -> f64 {
+    data.iter()
+        .flat_map(|point| [point.claude_tokens, point.codex_tokens])
+        .map(|value| value.max(0) as f64)
+        .fold(0.0_f64, f64::max)
+}
+
 pub(super) fn provider_usage_chart(
     data: Vec<ProviderPoint>,
     id_prefix: &'static str,
     cx: &App,
 ) -> gpui::Div {
-    let maximum = data
-        .iter()
-        .flat_map(|point| [point.claude, point.codex])
-        .filter(|value| value.is_finite())
-        .fold(0.0_f64, f64::max);
+    let maximum = usage_chart_maximum(&data);
     let point_count = data.len();
     let hover_targets: Vec<_> = data
         .iter()
@@ -61,10 +64,10 @@ pub(super) fn provider_usage_chart(
                 return None;
             }
             let (left, width, marker_x) = usage_hover_geometry(index, point_count);
-            let (marker_value, marker_color) = if point.claude > point.codex {
-                (point.claude, claude_accent())
+            let (marker_value, marker_color) = if point.claude_tokens > point.codex_tokens {
+                (point.claude_tokens.max(0) as f64, claude_accent())
             } else {
-                (point.codex, codex_accent())
+                (point.codex_tokens.max(0) as f64, codex_accent())
             };
             let marker_y = usage_marker_top(marker_value, maximum);
             let group: SharedString = format!("{id_prefix}-point-{index}").into();
@@ -103,6 +106,7 @@ pub(super) fn provider_usage_chart(
         .collect();
 
     div()
+        .debug_selector(move || format!("{id_prefix}-chart"))
         .relative()
         .w_full()
         .h(px(USAGE_CHART_HEIGHT))
@@ -110,11 +114,11 @@ pub(super) fn provider_usage_chart(
         .child(
             AreaChart::new(data)
                 .x(|point: &ProviderPoint| point.label.clone())
-                .y(|point: &ProviderPoint| point.claude)
+                .y(|point: &ProviderPoint| point.claude_tokens.max(0) as f64)
                 .stroke(claude_accent())
                 .fill(claude_accent().opacity(0.22))
                 .linear()
-                .y(|point: &ProviderPoint| point.codex)
+                .y(|point: &ProviderPoint| point.codex_tokens.max(0) as f64)
                 .stroke(codex_accent())
                 .fill(codex_accent().opacity(0.12))
                 .linear()

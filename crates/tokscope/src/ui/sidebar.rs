@@ -62,6 +62,14 @@ pub(crate) fn sidebar(
             "Monthly",
             overlay,
         ))
+        .child(sidebar_entry(
+            app,
+            cx,
+            "all-time",
+            Page::AllTime,
+            "All time",
+            overlay,
+        ))
 }
 
 pub(super) fn sidebar_entry(

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{Local, NaiveDate, TimeZone};
+use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use tokscope_core::history::{HistorySnapshot, ModelUsage, UsageKey, UsagePeriod};
 
 use crate::{ModelSortColumn, SortDirection, SortState};
@@ -26,6 +26,26 @@ pub(super) fn aggregate_model_usage<'a>(
         total.messages = total.messages.saturating_add(model.messages);
         total.turns = total.turns.saturating_add(model.turns);
         total.cost += model.cost;
+        total.cost_coverage.covered_tokens = total
+            .cost_coverage
+            .covered_tokens
+            .saturating_add(model.cost_coverage.covered_tokens);
+        total.cost_coverage.uncovered_tokens = total
+            .cost_coverage
+            .uncovered_tokens
+            .saturating_add(model.cost_coverage.uncovered_tokens);
+        total.cost_coverage.covered_messages = total
+            .cost_coverage
+            .covered_messages
+            .saturating_add(model.cost_coverage.covered_messages);
+        total.cost_coverage.uncovered_messages = total
+            .cost_coverage
+            .uncovered_messages
+            .saturating_add(model.cost_coverage.uncovered_messages);
+        total.cost_coverage.invalid_records = total
+            .cost_coverage
+            .invalid_records
+            .saturating_add(model.cost_coverage.invalid_records);
     }
     let mut models: Vec<_> = totals
         .into_values()
@@ -68,7 +88,21 @@ pub(super) fn current_usage_date(history: &HistorySnapshot) -> NaiveDate {
 
 pub(super) fn overview_model_usage(history: &HistorySnapshot) -> Vec<ModelUsage> {
     let end = current_usage_date(history);
-    let start = end - chrono::Duration::days(29);
+    let month_key = end.format("%Y-%m").to_string();
+    let monthly = aggregate_model_usage(
+        history
+            .usage
+            .monthly
+            .iter()
+            .filter(|bucket| bucket.key == month_key)
+            .flat_map(|bucket| &bucket.models),
+    );
+    if !monthly.is_empty() {
+        return monthly;
+    }
+
+    // Older snapshots may not contain model-level monthly buckets. Rebuild the
+    // same range from daily buckets instead of silently showing 30-day data.
     aggregate_model_usage(
         history
             .usage
@@ -77,7 +111,8 @@ pub(super) fn overview_model_usage(history: &HistorySnapshot) -> Vec<ModelUsage>
             .filter(|bucket| {
                 matches!(
                     bucket.typed_key(UsagePeriod::Daily),
-                    Some(UsageKey::Daily(date)) if (start..=end).contains(&date)
+                    Some(UsageKey::Daily(date))
+                        if date.year() == end.year() && date.month() == end.month()
                 )
             })
             .flat_map(|bucket| &bucket.models),

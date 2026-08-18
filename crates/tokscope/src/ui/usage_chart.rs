@@ -4,7 +4,7 @@ use tokscope_core::history::{HistorySnapshot, UsagePeriod};
 
 use super::{
     claude_accent, codex_accent, legend_chip, provider_usage_chart, section_title,
-    usage_chart_points, usage_summary_sidebar,
+    usage_chart_points, usage_summary_sidebar, UsageSummary,
 };
 
 pub(super) fn usage_chart_card(
@@ -15,7 +15,7 @@ pub(super) fn usage_chart_card(
 ) -> gpui::Div {
     let (title, id_prefix) = usage_chart_identity(period);
     let data = usage_chart_points(history, period);
-    let summary = usage_summary_sidebar(&data, "EST. API COST", cx);
+    let summary = usage_summary_sidebar(UsageSummary::from_points(&data), "EST. API COST", cx);
 
     v_flex()
         .gap_3()

@@ -16,7 +16,7 @@ pub(super) fn breakdown_card(
 ) -> gpui::Div {
     model_breakdown_card(
         overview_model_usage(history),
-        "Last 30 days",
+        "This month",
         Page::Overview,
         app.model_tables.sort(Page::Overview),
         cx,

@@ -18,8 +18,8 @@ sending your local session history to another service.
 
 - **All your accounts together.** Add multiple Codex or Claude Code accounts
   and reorder them however you like.
-- **The right level of detail.** Move between hourly, daily, and monthly usage
-  without losing the overall picture.
+- **The right level of detail.** Move between hourly, daily, monthly, and
+  all-time usage without losing the overall picture.
 - **Understand every token.** Compare models, input, output, cache usage,
   reasoning tokens, messages, turns, and estimated API cost.
 - **Know what is left.** See current plan-limit windows, with the latest good

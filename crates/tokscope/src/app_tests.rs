@@ -87,4 +87,17 @@ fn model_sorting_defaults_to_cost_and_is_independent_per_page() {
         state.sort(Page::Overview).column,
         Some(ModelSortColumn::Cost)
     );
+    assert_eq!(
+        state.sort(Page::AllTime).column,
+        Some(ModelSortColumn::Cost)
+    );
+    state.toggle_sort(Page::AllTime, ModelSortColumn::Messages);
+    assert_eq!(
+        state.sort(Page::AllTime).column,
+        Some(ModelSortColumn::Messages)
+    );
+    assert_eq!(
+        state.sort(Page::Hourly).column,
+        Some(ModelSortColumn::Input)
+    );
 }

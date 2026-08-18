@@ -169,5 +169,6 @@ fn page_id(page: Page) -> &'static str {
         Page::Hourly => "hourly",
         Page::Daily => "daily",
         Page::Monthly => "monthly",
+        Page::AllTime => "all-time",
     }
 }
