@@ -158,27 +158,47 @@ fn overview_joins_provider_days_by_key_instead_of_position() {
 }
 
 #[test]
-fn all_time_chart_fills_month_gaps_and_summary_uses_exact_totals() {
-    let source = |client: &str, total_cost: f64, total_tokens: i64| SourceHistory {
-        client: client.into(),
-        total_cost,
-        total_tokens,
+fn all_time_chart_aggregates_weeks_and_summary_uses_exact_totals() {
+    let daily_bucket = |key: &str, cost: f64, tokens: i64| UsageBucket {
+        key: key.into(),
+        cost,
+        tokens,
         ..Default::default()
     };
+    let source =
+        |client: &str, total_cost: f64, total_tokens: i64, daily: Vec<UsageBucket>| SourceHistory {
+            client: client.into(),
+            total_cost,
+            total_tokens,
+            usage: UsageSeries {
+                daily,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
     let history = HistorySnapshot {
-        sources: vec![source("claude", 90.0, 900), source("codex", 40.0, 400)],
+        sources: vec![
+            source(
+                "claude",
+                90.0,
+                900,
+                vec![
+                    daily_bucket("2026-01-06", 1.0, 10),
+                    daily_bucket("2026-01-07", 2.0, 20),
+                ],
+            ),
+            source(
+                "codex",
+                40.0,
+                400,
+                vec![daily_bucket("2026-01-20", 4.0, 40)],
+            ),
+        ],
         usage: UsageSeries {
-            monthly: vec![
-                UsageBucket {
-                    key: "2026-01".into(),
-                    tokens: 10,
-                    ..Default::default()
-                },
-                UsageBucket {
-                    key: "2026-03".into(),
-                    tokens: 30,
-                    ..Default::default()
-                },
+            daily: vec![
+                daily_bucket("2026-01-06", 1.0, 10),
+                daily_bucket("2026-01-07", 2.0, 20),
+                daily_bucket("2026-01-20", 4.0, 40),
             ],
             ..Default::default()
         },
@@ -191,9 +211,12 @@ fn all_time_chart_fills_month_gaps_and_summary_uses_exact_totals() {
             .iter()
             .map(|point| point.label.as_str())
             .collect::<Vec<_>>(),
-        ["Jan 2026", "Feb 2026", "Mar 2026"]
+        ["Jan 5", "Jan 12", "Jan 19"]
     );
+    assert_eq!(points[0].heading.as_str(), "January 5–11, 2026");
+    assert_eq!((points[0].claude, points[0].claude_tokens), (3.0, 30));
     assert_eq!(points[1].claude_tokens + points[1].codex_tokens, 0);
+    assert_eq!((points[2].codex, points[2].codex_tokens), (4.0, 40));
 
     let summary = all_time_summary(&history);
     assert_eq!(summary.claude_cost, 90.0);

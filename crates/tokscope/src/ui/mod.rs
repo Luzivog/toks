@@ -8,6 +8,7 @@ use crate::{Page, TokscopeApp};
 mod account_drag;
 mod action;
 mod all_time;
+mod all_time_data;
 mod chart_plot;
 mod chart_tooltip;
 mod format;
@@ -36,7 +37,7 @@ mod usage_table;
 use account_drag::account_drop_target;
 use action::{action_button, sort_action, text_action};
 #[cfg(test)]
-use all_time::{all_time_points, all_time_summary};
+use all_time_data::{all_time_points, all_time_summary};
 use chart_plot::provider_usage_chart;
 #[cfg(test)]
 use chart_plot::{usage_chart_maximum, usage_hover_geometry, usage_marker_top};
