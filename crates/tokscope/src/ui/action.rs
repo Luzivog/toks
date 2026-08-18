@@ -47,6 +47,8 @@ pub(super) fn sort_action(
     direction: SortDirection,
     cx: &App,
 ) -> Button {
+    const INDICATOR_WIDTH: f32 = 10.;
+    const SORT_GAP: f32 = 2.;
     let id = id.into();
     let selector = id.to_string();
     let indicator_selector = format!("{selector}-indicator");
@@ -64,23 +66,33 @@ pub(super) fn sort_action(
         .compact()
         .w(px(width))
         .h(px(24.))
-        .px_1()
+        .px_0()
         .justify_end()
-        .gap_1()
+        .overflow_hidden()
         .text_xs()
         .whitespace_nowrap()
         .text_color(foreground)
         .child(
             gpui::div()
-                .debug_selector(move || indicator_selector.clone())
-                .w(px(10.))
-                .flex_shrink_0()
-                .text_center()
-                .when(active, |slot| slot.child(indicator)),
-        )
-        .child(
-            gpui::div()
-                .debug_selector(move || label_selector.clone())
-                .child(label),
+                .flex()
+                .items_center()
+                .gap_0p5()
+                .min_w_0()
+                .child(
+                    gpui::div()
+                        .debug_selector(move || indicator_selector.clone())
+                        .w(px(INDICATOR_WIDTH))
+                        .flex_shrink_0()
+                        .text_center()
+                        .when(active, |slot| slot.child(indicator)),
+                )
+                .child(
+                    gpui::div()
+                        .debug_selector(move || label_selector.clone())
+                        .min_w_0()
+                        .max_w(px((width - INDICATOR_WIDTH - SORT_GAP).max(0.)))
+                        .truncate()
+                        .child(label),
+                ),
         )
 }

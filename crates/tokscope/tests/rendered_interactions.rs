@@ -1,7 +1,4 @@
 #![cfg(feature = "test-support")]
-
-use std::ops::Deref;
-
 use chrono::{NaiveDate, TimeZone, Utc};
 use gpui::{
     point, px, size, AppContext, Bounds, Entity, Modifiers, MouseButton, Pixels, Size,
@@ -9,6 +6,7 @@ use gpui::{
     WindowOptions,
 };
 use gpui_component::TitleBar;
+use std::ops::Deref;
 use tokscope::test_support::{initialize, set_page, sidebar_open, WindowAction, WindowFrame};
 use tokscope::{Page, TokscopeApp};
 use tokscope_core::history::{
@@ -16,21 +14,17 @@ use tokscope_core::history::{
 };
 use tokscope_core::limits::{LimitWindow, SnapshotFreshness, SnapshotStatus};
 use tokscope_core::{LimitSnapshot, Provider, ProviderAccount};
-
 const VIEWPORT: Size<Pixels> = size(px(1600.0), px(1800.0));
 const RIGHT_EDGE: &str = "resize-right";
-
 struct Harness {
     app: Entity<TokscopeApp>,
     frame: Entity<WindowFrame>,
     cx: &'static mut VisualTestContext,
 }
-
 impl Harness {
     fn open(cx: &mut TestAppContext, page: Page, viewport: Size<Pixels>) -> Self {
         Self::open_with_limits(cx, page, viewport, Vec::new())
     }
-
     fn open_with_limits(
         cx: &mut TestAppContext,
         page: Page,
@@ -71,23 +65,19 @@ impl Harness {
         cx.run_until_parked();
         Self { app, frame, cx }
     }
-
     fn bounds(&mut self, selector: &'static str) -> Bounds<Pixels> {
         self.cx
             .debug_bounds(selector)
             .unwrap_or_else(|| panic!("missing rendered selector: {selector}"))
     }
-
     fn has(&mut self, selector: &'static str) -> bool {
         self.cx.debug_bounds(selector).is_some()
     }
-
     fn move_to(&mut self, selector: &'static str) {
         let position = self.bounds(selector).center();
         self.cx
             .simulate_mouse_move(position, None::<MouseButton>, Modifiers::none());
     }
-
     fn click(&mut self, selector: &'static str) {
         self.move_to(RIGHT_EDGE);
         let position = self.bounds(selector).center();
@@ -96,7 +86,6 @@ impl Harness {
         self.cx.simulate_click(position, Modifiers::none());
         self.cx.run_until_parked();
     }
-
     fn above(&mut self, first: &'static str, second: &'static str) -> bool {
         self.bounds(first).center().y < self.bounds(second).center().y
     }
@@ -210,10 +199,23 @@ fn daily_usage_actions_survive_the_resize_edge(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn hourly_time_header_toggles_grouped_chronological_order(cx: &mut TestAppContext) {
+fn sort_headers_keep_the_arrow_with_the_label_and_toggle_time(cx: &mut TestAppContext) {
     let mut harness = Harness::open(cx, Page::Hourly, VIEWPORT);
     let earlier = "usage-row-hourly-2026-08-18 02:00";
     let later = "usage-row-hourly-2026-08-18 03:00";
+    let header_before = harness.bounds("model-sort-hourly-cache-write");
+    let label_before = harness.bounds("model-sort-hourly-cache-write-label");
+    harness.click("model-sort-hourly-cache-write");
+    let header_after = harness.bounds("model-sort-hourly-cache-write");
+    let label_after = harness.bounds("model-sort-hourly-cache-write-label");
+    let arrow = harness.bounds("model-sort-hourly-cache-write-indicator");
+    assert_eq!(header_before, header_after);
+    assert_eq!(label_before.origin, label_after.origin);
+    assert!(
+        header_after.contains(&arrow.center()),
+        "header {header_after:?}, arrow {arrow:?}, label {label_after:?}"
+    );
+    assert!(arrow.origin.x + arrow.size.width <= label_after.origin.x);
     harness.click("usage-sort-hourly-period");
     assert!(harness.has("usage-sort-hourly-period-indicator"));
     assert!(harness.has("usage-day-2026-08-18"));
