@@ -3,13 +3,13 @@
 
 # Tokscope
 
-**Understand your AI coding usage at a glance.**
+**Claude Code and Codex usage, clearly.**
 
 Linux · Native Rust · Local-first
 </div>
 
-See usage remaining and token activity for Codex and Claude Code in one native
-Linux app.
+A local-first Linux desktop app for tracking Claude Code and Codex token usage,
+estimated costs, models, and usage remaining.
 
 ![Tokscope overview showing usage trends and remaining usage limits](docs/images/overview.png)
 
