@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  repository-quality:
+    name: Repository quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repository scripts
+        run: |
+          bash -n install.sh
+          bash -n scripts/quality/check-repository.sh
+      - name: Enforce repository conventions
+        run: scripts/quality/check-repository.sh
+
+  rust:
+    name: Rust workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake desktop-file-utils perl pkg-config \
+            libfontconfig1-dev libvulkan-dev libwayland-dev libxcb1-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev
+      - name: Resolve pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Verify locked workspace metadata
+        run: cargo metadata --locked --format-version 1 --no-deps >/dev/null
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Run tests
+        run: cargo test --workspace --all-targets --all-features --locked
+      - name: Build release workspace
+        run: cargo build --workspace --release --locked
+      - name: Smoke-test portable installation
+        run: |
+          tokscope_prefix="$RUNNER_TEMP/tokscope-prefix"
+          tokscope_data="$RUNNER_TEMP/tokscope-data"
+          TOKSCOPE_INSTALL_PREFIX="$tokscope_prefix" \
+            XDG_DATA_HOME="$tokscope_data" ./install.sh
+          test -x "$tokscope_prefix/bin/tokscope"
+          grep -Fx "Exec=$tokscope_prefix/bin/tokscope" \
+            "$tokscope_data/applications/tokscope.desktop"
+          grep -Fx "TryExec=$tokscope_prefix/bin/tokscope" \
+            "$tokscope_data/applications/tokscope.desktop"

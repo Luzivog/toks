@@ -1,0 +1,27 @@
+/target/
+.linklibs/
+
+# Local configuration and credentials. Keep documented examples public.
+.env
+.env.*
+!.env.example
+!.env.*.example
+/.secrets/
+
+# Editor, operating-system, and diagnostic artifacts.
+.DS_Store
+/.idea/
+/.vscode/
+/.cache/
+/.tmp/
+/*.log
+/*.tmp
+/*.bak
+*.swp
+*~
+
+# Raw documentation captures may contain account details. Curated images belong
+# directly in docs/images/ and remain trackable.
+/docs/images/raw/
+/docs/captures/
+/codex-clipboard-*.png

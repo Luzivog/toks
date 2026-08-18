@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="codex-area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e6e6e4" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#e6e6e4" stop-opacity="0.02"/>
+    </linearGradient>
+    <linearGradient id="claude-area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d97757" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0.03"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#16161d"/>
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="none" stroke="#2a2a35" stroke-width="4"/>
+  <!-- grid -->
+  <g stroke="#2a2a35" stroke-width="3">
+    <line x1="40" y1="96" x2="216" y2="96"/>
+    <line x1="40" y1="140" x2="216" y2="140"/>
+    <line x1="40" y1="184" x2="216" y2="184"/>
+  </g>
+  <!-- provider usage chart -->
+  <path d="M40 176 L64 160 L88 168 L112 116 L136 144 L160 84 L184 124 L216 60 L216 196 L40 196 Z" fill="url(#codex-area)"/>
+  <path d="M40 192 L64 184 L88 176 L112 162 L136 170 L160 136 L184 146 L216 116 L216 196 L40 196 Z" fill="url(#claude-area)"/>
+  <path d="M40 176 L64 160 L88 168 L112 116 L136 144 L160 84 L184 124 L216 60" fill="none" stroke="#e6e6e4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 192 L64 184 L88 176 L112 162 L136 170 L160 136 L184 146 L216 116" fill="none" stroke="#d97757" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- latest values -->
+  <circle cx="216" cy="60" r="10" fill="#e6e6e4"/>
+  <circle cx="216" cy="60" r="17" fill="#e6e6e4" opacity="0.18"/>
+  <circle cx="216" cy="116" r="10" fill="#d97757"/>
+  <circle cx="216" cy="116" r="17" fill="#d97757" opacity="0.22"/>
+</svg>

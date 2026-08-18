@@ -1,0 +1,4 @@
+[build]
+# Optional repository-local compatibility links. Standard distro development
+# packages take precedence; this relative path keeps local builds portable.
+rustflags = ["-L", ".linklibs"]
