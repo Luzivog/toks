@@ -1,0 +1,10 @@
+#![cfg(feature = "test-support")]
+
+#[path = "ui_interactions/email_privacy_interaction.rs"]
+mod email_privacy_interaction;
+#[path = "ui_interactions/reauth_interactions.rs"]
+mod reauth_interactions;
+#[path = "ui_interactions/sidebar_interactions.rs"]
+mod sidebar_interactions;
+#[path = "ui_interactions/usage_scope_interactions.rs"]
+mod usage_scope_interactions;

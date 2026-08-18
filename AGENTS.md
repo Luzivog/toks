@@ -2,51 +2,56 @@
 
 ## Project Structure & Module Organization
 
-Tokscope is a Rust 2021 workspace. `crates/tokscope/` is the GPUI desktop app,
+Tokscope is a Rust workspace. `crates/tokscope/` is the GPUI app,
 `crates/tokscope-core/` owns account, limit, and history behavior, and
-`crates/tokscope-ingest/` contains the repository-owned scanning, parsing,
-caching, and pricing engine. Integration tests live under each crate's `tests/`
-directory; focused unit tests may sit beside their module. Desktop assets are in
-`assets/`, repository checks in `scripts/quality/`, and CI in `.github/workflows/`.
+`crates/tokscope-ingest/` contains repository-owned parsing, caching, and
+pricing. Tests live beside modules or under each crate's `tests/`; desktop
+assets are in `assets/`, and repository checks are in `scripts/quality/`.
 
 ## Build, Test, and Development Commands
 
 - `cargo run -p tokscope --locked` starts the Linux desktop app.
 - `cargo run -p tokscope-core --bin tokscope-dump --locked -- history` prints a
-  headless JSON snapshot; use `limits` for account limits.
-- `cargo test --workspace --all-targets --locked` runs the test suite.
+  headless snapshot; use `limits` for account limits.
+- `cargo check --locked -p tokscope` is the default UI compile check.
+- `cargo test --locked -p tokscope --lib <filter>` runs focused unit tests.
+- `cargo test --locked -p tokscope --test <target> <filter>` runs one integration
+  target with only required features.
+- `cargo clippy --locked -p tokscope --lib -- -D warnings` lints the app.
 - `cargo fmt --all --check` verifies formatting.
-- `cargo clippy --workspace --all-targets --locked -- -D warnings` runs linting.
-- `cargo build --workspace --release --locked` creates release artifacts.
 - `scripts/quality/check-repository.sh` checks source-size, import, and
   portability rules.
 
-Install the Linux packages listed in `README.md`; do not add machine-specific
-linker paths or home directories to repository files.
+Run workspace tests and Clippy once as final gates, not after each edit. Build
+release only for release, installation, or packaging. Before broad/all-target or
+release-LTO commands, check free disk and active Cargo, rustc, and linker work;
+wait instead of competing or writing into unsafe free space. Keep Cargo's native
+parallelism and iterative incremental compilation. Use `CARGO_INCREMENTAL=0`
+only for a coordinated one-shot gate, and `--profile debugging` only for full
+debug symbols. Without explicit approval, do not clean/delete target artifacts,
+change a shared target directory, or add build caches/linkers. Never add
+machine-specific linker paths or home directories.
 
 ## Coding Style & Naming Conventions
 
-Use default `rustfmt` formatting and four-space indentation. Follow Rust naming:
-`snake_case` modules/functions/tests, `CamelCase` types, and
-`SCREAMING_SNAKE_CASE` constants. Prefer typed structs and enums at crate seams.
-Keep hand-written production files below 200 lines and test files below 500.
-Split by coherent responsibility, not arbitrary line ranges. Avoid internal
-wildcard imports and re-exports; generated exceptions require both a generated
-path/name and an explicit generated-file marker. The imported ingest parser
-foundation has an exact CI debt ratchet; those entries may shrink, never grow.
+Use `rustfmt` and Rust naming: `snake_case` items, `CamelCase` types,
+and `SCREAMING_SNAKE_CASE` constants. Prefer typed structs and enums at crate
+seams. Keep hand-written production files below 200 lines and tests below 500;
+split by responsibility. Avoid internal wildcard imports/re-exports. Generated
+exceptions require a generated path/name and marker. Existing ingest debt is
+ratcheted: entries may shrink, never grow.
 
 ## Testing Guidelines
 
-Use descriptive tests such as `codex_windows_discovered_structurally`. Build
-fixtures from temporary directories and synthetic JSON, never real credentials
-or home-directory state. Parser changes should cover current, legacy, malformed,
-and unknown-schema inputs. Test behavior through the module's public interface.
+Use descriptive names such as `codex_windows_discovered_structurally`. Use
+temporary directories and synthetic JSON, never real credentials. Cover
+current, legacy, malformed, and unknown parser inputs through public interfaces.
+Group GPUI tests when process sharing is safe; isolate process-global mutation.
 
 ## Commits, Pull Requests, and Security
 
-Use short, sentence-case commit summaries and keep commits focused. Pull
-requests should describe user-visible behavior, list validation commands, link
-issues, and include screenshots for GPUI changes. Call out filesystem, cache,
-credential, or network changes. Never log or commit tokens, account identifiers,
-rollout contents, or local cache files. Preserve the Tokscale MIT attribution in
-`NOTICE` and `crates/tokscope-ingest/LICENSE`.
+Use focused, sentence-case commits. Pull requests should explain visible
+behavior, validation, linked issues, and include screenshots for GPUI changes.
+Call out filesystem, cache, credential, or network changes. Never commit tokens,
+account identifiers, rollout contents, or local caches. Preserve Tokscale MIT
+attribution in `NOTICE` and `crates/tokscope-ingest/LICENSE`.
