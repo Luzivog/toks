@@ -91,8 +91,14 @@ fn overview_ranges_stack_in_a_narrow_window(cx: &mut TestAppContext) {
     let mut harness = Harness::open(cx, size(px(1200.), px(1800.)));
     let today = harness.bounds("overview-today-card");
     let month = harness.bounds("overview-month-card");
+    let today_chart = harness.bounds("overview-today-chart");
+    let month_chart = harness.bounds("overview-month-chart");
 
     assert!(month.top() >= today.bottom());
+    assert!(today.contains(&today_chart.center()));
+    assert!(month.contains(&month_chart.center()));
+    assert!(today_chart.size.width >= px(500.));
+    assert!(month_chart.size.width >= px(500.));
 }
 
 fn history(generated_at_ms: i64) -> HistorySnapshot {

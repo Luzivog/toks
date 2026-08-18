@@ -3,7 +3,8 @@ use gpui_component::{h_flex, skeleton::Skeleton, v_flex, ActiveTheme};
 use tokscope_core::history::UsagePeriod;
 
 use super::{
-    loading_plot, loading_status, loading_summary_sidebar, section_title, usage_chart_identity,
+    loading_plot, loading_status, loading_summary_sidebar, section_title, summary_chart_row,
+    usage_chart_identity,
 };
 
 pub(super) fn table_loading_card(title: &'static str, rows: usize, cx: &App) -> gpui::Div {
@@ -63,13 +64,7 @@ pub(super) fn usage_chart_loading_card(period: UsagePeriod, accent: Hsla, cx: &A
                 )
                 .child(loading_status("Scanning local usage", cx)),
         )
-        .child(
-            h_flex()
-                .gap_6()
-                .items_start()
-                .child(summary)
-                .child(div().flex_1().min_w_0().child(loading_plot(280., cx))),
-        )
+        .child(summary_chart_row(summary, loading_plot(280., cx)))
 }
 
 pub(super) fn usage_page_loading(period: UsagePeriod, accent: Hsla, cx: &App) -> gpui::Div {

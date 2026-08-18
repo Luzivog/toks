@@ -7,8 +7,8 @@ use crate::Page;
 
 use super::{
     claude_accent, codex_accent, current_usage_date, provider_point, provider_usage_chart,
-    section_title, source_bucket_values, usage_chart_points, usage_summary_sidebar, ProviderPoint,
-    UsageSummary,
+    section_title, source_bucket_values, summary_chart_row, usage_chart_points,
+    usage_summary_sidebar, ProviderPoint, UsageSummary,
 };
 
 pub(super) fn usage_block(h: &HistorySnapshot, cx: &App) -> gpui::Div {
@@ -78,14 +78,10 @@ fn overview_range_card(
                         .child(legend_chip("Claude Code", claude_accent(), cx)),
                 ),
         )
-        .child(
-            h_flex().gap_6().items_start().child(summary).child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(provider_usage_chart(data, id_prefix, cx)),
-            ),
-        )
+        .child(summary_chart_row(
+            summary,
+            provider_usage_chart(data, id_prefix, cx),
+        ))
 }
 
 /// Month-to-date points used by the secondary Overview chart.

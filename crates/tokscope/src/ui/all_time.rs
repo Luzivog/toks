@@ -6,6 +6,7 @@ use crate::{Page, TokscopeApp};
 
 use super::{
     all_time_data::{all_time_points, all_time_summary},
+    chart_layout::summary_chart_row,
     chart_plot::provider_usage_chart,
     loading_chart::{loading_plot, loading_status, loading_summary_sidebar},
     model_data::aggregate_model_usage,
@@ -56,17 +57,10 @@ fn all_time_chart(history: &HistorySnapshot, cx: &App) -> gpui::Div {
         .border_1()
         .border_color(cx.theme().border)
         .child(chart_heading(cx))
-        .child(
-            h_flex()
-                .gap_6()
-                .items_start()
-                .child(usage_summary_sidebar(summary, "EST. API COST", cx))
-                .child(div().flex_1().min_w_0().child(provider_usage_chart(
-                    data,
-                    "all-time-usage",
-                    cx,
-                ))),
-        )
+        .child(summary_chart_row(
+            usage_summary_sidebar(summary, "EST. API COST", cx),
+            provider_usage_chart(data, "all-time-usage", cx),
+        ))
 }
 
 fn chart_heading(cx: &App) -> gpui::Div {
@@ -117,11 +111,8 @@ fn all_time_loading(cx: &App) -> gpui::Div {
                 .child(section_title("Usage — all time by week"))
                 .child(loading_status("Scanning complete history", cx)),
         )
-        .child(
-            h_flex()
-                .gap_6()
-                .items_start()
-                .child(loading_summary_sidebar(cx))
-                .child(div().flex_1().min_w_0().child(loading_plot(280., cx))),
-        )
+        .child(summary_chart_row(
+            loading_summary_sidebar(cx),
+            loading_plot(280., cx),
+        ))
 }

@@ -4,7 +4,7 @@ use tokscope_core::history::{HistorySnapshot, UsagePeriod};
 
 use super::{
     claude_accent, codex_accent, legend_chip, provider_usage_chart, section_title,
-    usage_chart_points, usage_summary_sidebar, UsageSummary,
+    summary_chart_row, usage_chart_points, usage_summary_sidebar, UsageSummary,
 };
 
 pub(super) fn usage_chart_card(
@@ -42,14 +42,10 @@ pub(super) fn usage_chart_card(
                         .child(legend_chip("Claude Code", claude_accent(), cx)),
                 ),
         )
-        .child(
-            h_flex().gap_6().items_start().child(summary).child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(provider_usage_chart(data, id_prefix, cx)),
-            ),
-        )
+        .child(summary_chart_row(
+            summary,
+            provider_usage_chart(data, id_prefix, cx),
+        ))
 }
 
 pub(super) fn usage_chart_identity(period: UsagePeriod) -> (&'static str, &'static str) {

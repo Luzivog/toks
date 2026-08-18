@@ -3,7 +3,7 @@ use gpui_component::{h_flex, skeleton::Skeleton, v_flex, ActiveTheme};
 
 use crate::Page;
 
-use super::{page_accent, section_title};
+use super::{page_accent, section_title, summary_chart_row};
 
 pub(super) fn loading_status(text: &'static str, cx: &App) -> gpui::Div {
     h_flex()
@@ -76,13 +76,7 @@ fn overview_range_loading_card(title: &'static str, page: Page, cx: &App) -> gpu
                 )
                 .child(loading_status("Scanning local usage", cx)),
         )
-        .child(
-            h_flex()
-                .gap_6()
-                .items_start()
-                .child(summary)
-                .child(div().flex_1().min_w_0().child(loading_plot(280., cx))),
-        )
+        .child(summary_chart_row(summary, loading_plot(280., cx)))
 }
 
 pub(super) fn loading_summary_sidebar(_cx: &App) -> gpui::Div {
