@@ -1,0 +1,27 @@
+[package]
+name = "toks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "A local-first Linux desktop app for understanding AI coding usage and plan limits"
+publish = false
+
+[features]
+test-support = ["gpui/test-support"]
+
+[dependencies]
+toks-core = { path = "../toks-core" }
+gpui = "0.2.2"
+gpui-component = "0.5.1"
+chrono.workspace = true
+anyhow.workspace = true
+smol = "2"
+
+[[bin]]
+name = "toks"
+path = "src/main.rs"
+
+[dev-dependencies]
+gpui = "0.2.2"

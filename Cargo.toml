@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/tokscope-ingest", "crates/tokscope-core", "crates/tokscope"]
+members = ["crates/toks-ingest", "crates/toks-core", "crates/toks"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/Luzivog/tokscope"
-homepage = "https://github.com/Luzivog/tokscope"
+repository = "https://github.com/Luzivog/toks"
+homepage = "https://github.com/Luzivog/toks"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

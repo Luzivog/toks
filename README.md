@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="assets/tokscope.svg" width="88" alt="Tokscope logo">
+  <img src="assets/toks.svg" width="88" alt="Toks logo">
 
-# Tokscope
+# Toks
 
 **Claude Code and Codex usage, clearly.**
 
@@ -11,29 +11,29 @@ Linux · Native Rust · Local-first
 A local-first Linux desktop app for tracking Claude Code and Codex token usage,
 estimated costs, models, and usage remaining.
 
-![Tokscope overview showing usage trends and remaining usage limits](docs/images/overview.png)
+![Toks overview showing usage trends and remaining usage limits](docs/images/overview.png)
 
 ## Install
 
 ### With an AI coding agent
 
 ```text
-Install Tokscope from https://github.com/Luzivog/tokscope and follow its README.
+Install Toks from https://github.com/Luzivog/toks and follow its README.
 ```
 
 ### Manually
 
-Tokscope currently supports Linux. Install Rust with
+Toks currently supports Linux. Install Rust with
 [rustup](https://rustup.rs/), sign in to the Codex CLI and/or Claude Code, then:
 
 ```bash
-git clone https://github.com/Luzivog/tokscope.git
-cd tokscope
-cargo build -p tokscope --release --locked
+git clone https://github.com/Luzivog/toks.git
+cd toks
+cargo build -p toks --release --locked
 ./install.sh
 ```
 
-Open **Tokscope** from your application launcher. The installer is user-local:
+Open **Toks** from your application launcher. The installer is user-local:
 the binary goes to `~/.local/bin` and no `sudo` is required.
 
 <details>
@@ -54,7 +54,7 @@ required.
 
 ## How it works
 
-Tokscope reads local Codex and Claude Code history. Once captured, usage survives
+Toks reads local Codex and Claude Code history. Once captured, usage survives
 provider-log cleanup in a compact local archive. It only goes online to refresh
 plan limits and public pricing. Tokscale is not required.
 
@@ -63,8 +63,8 @@ Costs are API-rate estimates, not subscription spend.
 ## Development
 
 ```bash
-cargo run -p tokscope --locked
-cargo test -p tokscope --lib --locked
+cargo run -p toks --locked
+cargo test -p toks --lib --locked
 scripts/quality/check-repository.sh
 ```
 
@@ -73,6 +73,6 @@ Architecture, conventions, and contribution expectations are documented in
 
 ## Credits and license
 
-Tokscope is available under the [MIT License](LICENSE). The ingestion engine was
+Toks is available under the [MIT License](LICENSE). The ingestion engine was
 derived from Tokscale; attribution is preserved in [NOTICE](NOTICE). The UI was
 inspired by [T3 Code](https://github.com/pingdotgg/t3code).

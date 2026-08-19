@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Toks
+GenericName=AI Usage Monitor
+Comment=Token usage, cost, and plan limits for Claude Code and Codex
+Exec=toks
+TryExec=toks
+Icon=toks
+Terminal=false
+Categories=Utility;
+Keywords=ai;tokens;usage;claude;codex;limits;cost;monitor;
+StartupWMClass=toks

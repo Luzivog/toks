@@ -2,22 +2,22 @@
 
 ## Project Structure & Module Organization
 
-Tokscope is a Rust workspace. `crates/tokscope/` is the GPUI app,
-`crates/tokscope-core/` owns account, limit, and history behavior, and
-`crates/tokscope-ingest/` contains repository-owned parsing, caching, and
+Toks is a Rust workspace. `crates/toks/` is the GPUI app,
+`crates/toks-core/` owns account, limit, and history behavior, and
+`crates/toks-ingest/` contains repository-owned parsing, caching, and
 pricing. Tests live beside modules or under each crate's `tests/`; desktop
 assets are in `assets/`, and repository checks are in `scripts/quality/`.
 
 ## Build, Test, and Development Commands
 
-- `cargo run -p tokscope --locked` starts the Linux desktop app.
-- `cargo run -p tokscope-core --bin tokscope-dump --locked -- history` prints a
+- `cargo run -p toks --locked` starts the Linux desktop app.
+- `cargo run -p toks-core --bin toks-dump --locked -- history` prints a
   headless snapshot; use `limits` for account limits.
-- `cargo check --locked -p tokscope` is the default UI compile check.
-- `cargo test --locked -p tokscope --lib <filter>` runs focused unit tests.
-- `cargo test --locked -p tokscope --test <target> <filter>` runs one integration
+- `cargo check --locked -p toks` is the default UI compile check.
+- `cargo test --locked -p toks --lib <filter>` runs focused unit tests.
+- `cargo test --locked -p toks --test <target> <filter>` runs one integration
   target with only required features.
-- `cargo clippy --locked -p tokscope --lib -- -D warnings` lints the app.
+- `cargo clippy --locked -p toks --lib -- -D warnings` lints the app.
 - `cargo fmt --all --check` verifies formatting.
 - `scripts/quality/check-repository.sh` checks source-size, import, and
   portability rules.
@@ -54,4 +54,4 @@ Use focused, sentence-case commits. Pull requests should explain visible
 behavior, validation, linked issues, and include screenshots for GPUI changes.
 Call out filesystem, cache, credential, or network changes. Never commit tokens,
 account identifiers, rollout contents, or local caches. Preserve Tokscale MIT
-attribution in `NOTICE` and `crates/tokscope-ingest/LICENSE`.
+attribution in `NOTICE` and `crates/toks-ingest/LICENSE`.

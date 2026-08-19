@@ -6383,7 +6383,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokscope"
+name = "toks"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -6391,11 +6391,11 @@ dependencies = [
  "gpui",
  "gpui-component",
  "smol",
- "tokscope-core",
+ "toks-core",
 ]
 
 [[package]]
-name = "tokscope-core"
+name = "toks-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -6411,11 +6411,11 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
- "tokscope-ingest",
+ "toks-ingest",
 ]
 
 [[package]]
-name = "tokscope-ingest"
+name = "toks-ingest"
 version = "0.1.0"
 dependencies = [
  "bincode",

@@ -1,13 +1,13 @@
 # Pricing methodology
 
-Tokscope shows an **estimated API-equivalent cost**. It answers: “What would
+Toks shows an **estimated API-equivalent cost**. It answers: “What would
 these recorded requests have cost at the providers' public, standard API token
 rates?” It is not subscription spend, an invoice, or the value of a Codex Pro
 or Claude Max plan.
 
 ## Accounting contract
 
-Tokscope normalizes every request into additive, non-overlapping token buckets:
+Toks normalizes every request into additive, non-overlapping token buckets:
 
 ```text
 total = input + cache read + cache write + output + reasoning
@@ -17,13 +17,13 @@ The columns intentionally expose every term in that equation.
 
 Provider logs do not all use the same convention:
 
-- Codex reports `input_tokens` inclusive of cached input. Tokscope subtracts
+- Codex reports `input_tokens` inclusive of cached input. Toks subtracts
   `cached_input_tokens` from Input and records it as Cache read.
 - Codex reports `reasoning_output_tokens` as a subset of `output_tokens`.
-  Tokscope subtracts reasoning from Output and records it separately. Output and
+  Toks subtracts reasoning from Output and records it separately. Output and
   Reasoning are then added and billed exactly once at the output rate.
 - Claude reports Input, Cache read, Cache write, and Output as distinct buckets,
-  so Tokscope retains them independently.
+  so Toks retains them independently.
 
 This normalization is load-bearing. Treating Codex's raw Output and Reasoning
 as sibling buckets inflates both Total and cost.
@@ -49,7 +49,7 @@ whole request. Cache-write pricing is also retained where the selected model's
 catalog entry provides it. Claude input, output, cache-read, and cache-write
 rates are resolved independently from Anthropic's public pricing.
 
-Tokscope preserves a compact request-level pricing basis in its durable history
+Toks preserves a compact request-level pricing basis in its durable history
 so historical usage can be repriced from the active catalog without pretending
 an aggregate bucket was one large request. Provider-reported costs, when
 available, remain authoritative; estimated rows are never added on top of them.
@@ -91,7 +91,7 @@ interoperability note rather than an assertion about future Tokscale releases.
 Local transcripts provide token accounting, model, provider, and sometimes an
 authoritative reported cost. They generally cannot prove optional commercial
 modifiers such as Batch, Priority/Fast processing, regional data residency,
-contract discounts, credits, or separately billed server-side tools. Tokscope
+contract discounts, credits, or separately billed server-side tools. Toks
 therefore labels the result **Est. API cost** and assumes ordinary global API
 pricing unless a provider-reported cost is present.
 
