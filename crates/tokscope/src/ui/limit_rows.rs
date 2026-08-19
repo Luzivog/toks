@@ -1,13 +1,20 @@
+use std::rc::Rc;
+
 use chrono::{DateTime, Utc};
-use gpui::{div, prelude::*, px, relative, App, Context};
-use gpui_component::{box_shadow, h_flex, v_flex, ActiveTheme, StyledExt};
+use gpui::{div, prelude::*, Context};
+use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
 use tokscope_core::{limits::SnapshotFreshness, LimitSnapshot};
 
 use crate::TokscopeApp;
 
 use super::{
-    accent_for_provider, account_drag::reorder_handle, limit_header_status, limit_issue_row,
-    pending_limit_row, plan_badge::plan_badge_label, quota_row,
+    accent_for_provider,
+    account_drag::reorder_handle,
+    account_email::account_email,
+    account_menu::{account_menu, AccountRemovalHandler, AccountRemovalState, AccountRemovalView},
+    limit_header_status, limit_issue_row, pending_limit_row,
+    plan_badge::plan_badge_label,
+    quota_row,
 };
 
 pub(super) fn account_limits_group(
@@ -16,10 +23,39 @@ pub(super) fn account_limits_group(
     separated: bool,
     emails_hidden: bool,
     reorder_enabled: bool,
+    removal_state: AccountRemovalState,
     cx: &mut Context<TokscopeApp>,
 ) -> gpui::Div {
     let accent = accent_for_provider(s.provider);
     let selector = format!("account-group-{}-{}", s.provider.slug(), s.account.id);
+    let header_selector = format!("account-header-{}-{}", s.provider.slug(), s.account.id);
+    let app_handle = cx.entity().downgrade();
+    let prompt_handle = app_handle.clone();
+    let prompt_handler: AccountRemovalHandler = Rc::new(move |key, _, cx| {
+        let _ = prompt_handle.update(cx, |app, cx| {
+            app.account_removals.confirm(key);
+            cx.notify();
+        });
+    });
+    let removal_handler: AccountRemovalHandler = Rc::new(move |key, _, cx| {
+        let _ = app_handle.update(cx, |app, cx| {
+            crate::app::request_removal(app, key, cx);
+        });
+    });
+    let cancel_handle = cx.entity().downgrade();
+    let cancel_handler: AccountRemovalHandler = Rc::new(move |key, _, cx| {
+        let _ = cancel_handle.update(cx, |app, cx| {
+            app.account_removals.cancel_confirmation(&key);
+            cx.notify();
+        });
+    });
+    let removal_menu = account_menu(
+        AccountRemovalView::new(s.provider, &s.account, removal_state),
+        prompt_handler,
+        removal_handler,
+        cancel_handler,
+        cx,
+    );
     let mut group = v_flex()
         .debug_selector(move || selector.clone())
         .w_full()
@@ -30,6 +66,7 @@ pub(super) fn account_limits_group(
         })
         .child(
             h_flex()
+                .debug_selector(move || header_selector.clone())
                 .bg(accent.opacity(0.04))
                 .px_3()
                 .py_2p5()
@@ -84,7 +121,13 @@ pub(super) fn account_limits_group(
                                 }),
                         ),
                 )
-                .child(limit_header_status(s, now, cx)),
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_1()
+                        .child(limit_header_status(s, now, cx))
+                        .child(removal_menu),
+                ),
         );
 
     if !s.windows.is_empty() {
@@ -109,63 +152,4 @@ pub(super) fn account_limits_group(
         );
     }
     group
-}
-
-fn account_email(
-    email: &str,
-    hidden: bool,
-    provider: &str,
-    account_id: &str,
-    cx: &App,
-) -> gpui::Div {
-    let selector = format!("account-email-{provider}-{account_id}");
-    let blur_selector = format!("account-email-blur-{provider}-{account_id}");
-    div()
-        .debug_selector(move || selector.clone())
-        .relative()
-        .min_w_0()
-        .child(
-            div()
-                .min_w_0()
-                .truncate()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(email.to_string()),
-        )
-        .when(hidden, |email| email.child(privacy_blur(blur_selector, cx)))
-}
-
-fn privacy_blur(selector: String, cx: &App) -> gpui::Div {
-    let haze = cx.theme().muted_foreground.opacity(0.2);
-    let soft_shadow = box_shadow(px(0.), px(0.), px(6.), px(1.), haze);
-    div()
-        .debug_selector(move || selector.clone())
-        .absolute()
-        .top(px(-1.))
-        .bottom(px(-1.))
-        .left(px(-2.))
-        .right(px(-2.))
-        .overflow_hidden()
-        .rounded_md()
-        .border_1()
-        .border_color(cx.theme().foreground.opacity(0.045))
-        .bg(cx.theme().secondary.opacity(0.9))
-        .children(
-            [
-                (0.05_f32, 0.34_f32, 0.24_f32),
-                (0.35, 0.28, 0.16),
-                (0.64, 0.31, 0.2),
-            ]
-            .map(|(left, width, opacity)| {
-                div()
-                    .absolute()
-                    .left(relative(left))
-                    .top(px(6.))
-                    .w(relative(width))
-                    .h(px(5.))
-                    .rounded_full()
-                    .bg(cx.theme().muted_foreground.opacity(opacity))
-                    .shadow(vec![soft_shadow.clone()])
-            }),
-        )
 }

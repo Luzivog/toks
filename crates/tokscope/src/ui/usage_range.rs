@@ -3,6 +3,8 @@ use tokscope_core::history::{UsageBucket, UsagePeriod, UsageSeries};
 
 use crate::{SortDirection, SortState, UsageSortColumn};
 
+use super::cost_per_million;
+
 pub(super) fn usage_period_label(period: UsagePeriod) -> &'static str {
     match period {
         UsagePeriod::Daily => "Daily",
@@ -63,9 +65,14 @@ pub(super) fn sort_usage_buckets(buckets: &mut [&UsageBucket], sort: SortState<U
             UsageSortColumn::Messages => a.messages.cmp(&b.messages),
             UsageSortColumn::Input => a.input.cmp(&b.input),
             UsageSortColumn::Output => a.output.cmp(&b.output),
+            UsageSortColumn::Reasoning => a.reasoning.cmp(&b.reasoning),
             UsageSortColumn::CacheRead => a.cache_read.cmp(&b.cache_read),
+            UsageSortColumn::CacheWrite => a.cache_write.cmp(&b.cache_write),
             UsageSortColumn::Total => a.tokens.cmp(&b.tokens),
             UsageSortColumn::Cost => a.cost.total_cmp(&b.cost),
+            UsageSortColumn::CostPerMillion => cost_per_million(a.cost, a.tokens)
+                .unwrap_or_default()
+                .total_cmp(&cost_per_million(b.cost, b.tokens).unwrap_or_default()),
         };
         match sort.direction {
             SortDirection::Ascending => order,

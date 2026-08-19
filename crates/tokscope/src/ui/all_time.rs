@@ -1,3 +1,4 @@
+use chrono::{Local, TimeZone};
 use gpui::{div, prelude::*, App};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use tokscope_core::history::HistorySnapshot;
@@ -8,6 +9,7 @@ use super::{
     all_time_data::{all_time_points, all_time_summary},
     chart_layout::summary_chart_row,
     chart_plot::provider_usage_chart,
+    history_freshness_text,
     loading_chart::{loading_plot, loading_status, loading_summary_sidebar},
     model_data::aggregate_model_usage,
     models::model_breakdown_card,
@@ -18,11 +20,22 @@ use super::{
 };
 
 pub(super) fn all_time_page(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeApp>) -> gpui::Div {
+    let mut capture = app
+        .history
+        .as_ref()
+        .and_then(capture_label)
+        .unwrap_or_default();
+    if let Some(refresh) = history_freshness_text(&app.history_refresh, app.now) {
+        if !capture.is_empty() {
+            capture.push_str(" · ");
+        }
+        capture.push_str(&refresh);
+    }
     let page = v_flex()
         .debug_selector(|| "all-time-page".to_string())
         .p_6()
         .gap_6()
-        .child(section_header_large("All time", None, String::new(), cx));
+        .child(section_header_large("All time", None, capture, cx));
     let Some(history) = &app.history else {
         return page.child(if let Some(error) = &app.history_error {
             history_error_card(error, cx)
@@ -44,6 +57,41 @@ pub(super) fn all_time_page(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeAp
             app.model_tables.sort(Page::AllTime),
             cx,
         ))
+}
+
+fn capture_label(history: &HistorySnapshot) -> Option<String> {
+    let mut parts = Local
+        .timestamp_millis_opt(history.captured_since_ms?)
+        .single()
+        .map(|captured| {
+            vec![format!(
+                "Recorded locally since {}",
+                captured.format("%b %-d, %Y")
+            )]
+        })?;
+    if history.weak_events > 0 {
+        parts.push(format!(
+            "{} best-effort {}",
+            history.weak_events,
+            plural(history.weak_events, "record", "records")
+        ));
+    }
+    if history.history_conflicts > 0 {
+        parts.push(format!(
+            "{} {} preserved",
+            history.history_conflicts,
+            plural(history.history_conflicts, "conflict", "conflicts")
+        ));
+    }
+    Some(parts.join(" · "))
+}
+
+fn plural<'a>(count: i64, singular: &'a str, plural: &'a str) -> &'a str {
+    if count == 1 {
+        singular
+    } else {
+        plural
+    }
 }
 
 fn all_time_chart(history: &HistorySnapshot, cx: &App) -> gpui::Div {
@@ -113,6 +161,6 @@ fn all_time_loading(cx: &App) -> gpui::Div {
         )
         .child(summary_chart_row(
             loading_summary_sidebar(cx),
-            loading_plot(280., cx),
+            loading_plot(cx),
         ))
 }

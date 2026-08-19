@@ -4,8 +4,10 @@ use crate::limits::{self, Provider};
 use base64::Engine as _;
 
 use super::discovery::{discover_managed_profiles, retain_unique_profiles};
-use super::login::exact_profile;
-use super::{write_metadata, AccountProfile, ProfileMetadata, ProviderAccount, PROFILE_VERSION};
+use super::{
+    write_metadata, AccountId, AccountIdentityKind, AccountProfile, AccountSource,
+    CredentialProfileId, CredentialProfileKind, ProfileMetadata, ProviderAccount, PROFILE_VERSION,
+};
 
 #[test]
 fn discovers_every_managed_account_in_creation_order() {
@@ -30,7 +32,7 @@ fn discovers_every_managed_account_in_creation_order() {
     let profiles = discover_managed_profiles(&root, Provider::Codex);
     let ids: Vec<&str> = profiles
         .iter()
-        .map(|profile| profile.account.id.as_str())
+        .map(|profile| profile.profile_id.as_str())
         .collect();
     assert_eq!(ids, ["first", "later"]);
     assert!(profiles.iter().all(|profile| profile.managed));
@@ -91,9 +93,16 @@ fn provider_profiles_keep_independent_local_snapshots() {
         .unwrap();
         AccountProfile {
             provider: Provider::Claude,
+            profile_id: CredentialProfileId::new(id),
             account: ProviderAccount {
-                id: id.to_string(),
+                id: AccountId::new(id),
+                identity_kind: AccountIdentityKind::ProfileFallback,
                 email: None,
+                sources: vec![AccountSource {
+                    profile_id: CredentialProfileId::new(id),
+                    kind: CredentialProfileKind::Managed,
+                    primary: true,
+                }],
             },
             home_dir: home,
             config_dir,
@@ -140,9 +149,12 @@ fn reads_codex_email_from_the_profile_id_token() {
 fn same_email_profiles_keep_distinct_stable_local_identities() {
     let profile = |id: &str| AccountProfile {
         provider: Provider::Codex,
+        profile_id: CredentialProfileId::new(id),
         account: ProviderAccount {
             id: id.into(),
+            identity_kind: AccountIdentityKind::ProfileFallback,
             email: Some("same@example.com".into()),
+            sources: Vec::new(),
         },
         home_dir: id.into(),
         config_dir: format!("{id}/.codex").into(),
@@ -155,31 +167,7 @@ fn same_email_profiles_keep_distinct_stable_local_identities() {
 
     let ids: Vec<_> = profiles
         .iter()
-        .map(|profile| profile.account.id.as_str())
+        .map(|profile| profile.profile_id.as_str())
         .collect();
     assert_eq!(ids, ["first", "second"]);
-}
-
-#[test]
-fn reauthentication_resolves_only_the_exact_provider_and_account() {
-    let profile = |provider: Provider, id: &str| AccountProfile {
-        provider,
-        account: ProviderAccount {
-            id: id.into(),
-            email: Some("same@example.com".into()),
-        },
-        home_dir: format!("/{id}/home").into(),
-        config_dir: format!("/{id}/config").into(),
-        managed: true,
-        created_at_ms: Some(1),
-    };
-    let profiles = vec![
-        profile(Provider::Claude, "first"),
-        profile(Provider::Codex, "first"),
-        profile(Provider::Claude, "second"),
-    ];
-    let found = exact_profile(profiles.clone(), Provider::Claude, "second").unwrap();
-    assert_eq!(found.account.id, "second");
-    assert_eq!(found.provider, Provider::Claude);
-    assert!(exact_profile(profiles, Provider::Codex, "missing").is_none());
 }

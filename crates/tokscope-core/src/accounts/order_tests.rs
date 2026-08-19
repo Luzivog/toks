@@ -3,14 +3,23 @@ use std::fs;
 use crate::limits::{LimitSnapshot, Provider, SnapshotStatus};
 
 use super::order::{apply_order, load_order, reorder_to, save_order};
-use super::{AccountOrderKey, ProviderAccount};
+use super::{
+    AccountId, AccountIdentityKind, AccountOrderKey, AccountSource, CredentialProfileId,
+    CredentialProfileKind, ProviderAccount,
+};
 
 fn snapshot(provider: Provider, id: &str, email: &str) -> LimitSnapshot {
     LimitSnapshot {
         provider,
         account: ProviderAccount {
-            id: id.into(),
+            id: AccountId::new(format!("logical-{id}")),
+            identity_kind: AccountIdentityKind::ProfileFallback,
             email: Some(email.into()),
+            sources: vec![AccountSource {
+                profile_id: CredentialProfileId::new(id),
+                kind: CredentialProfileKind::Managed,
+                primary: true,
+            }],
         },
         plan: None,
         plan_multiplier: None,
@@ -41,7 +50,25 @@ fn saved_order_is_global_and_unlisted_accounts_are_deterministic() {
         &mut snapshots,
         &[AccountOrderKey::new(Provider::Codex, "z")],
     );
-    assert_eq!(ids(&snapshots), ["z", "a", "b"]);
+    assert_eq!(ids(&snapshots), ["logical-z", "logical-a", "logical-b"]);
+}
+
+#[test]
+fn legacy_profile_order_still_ranks_logical_accounts() {
+    let mut snapshots = vec![
+        snapshot(Provider::Codex, "second-profile", "second@example.com"),
+        snapshot(Provider::Codex, "first-profile", "first@example.com"),
+    ];
+
+    apply_order(
+        &mut snapshots,
+        &[AccountOrderKey::new(Provider::Codex, "first-profile")],
+    );
+
+    assert_eq!(
+        ids(&snapshots),
+        ["logical-first-profile", "logical-second-profile"]
+    );
 }
 
 #[test]

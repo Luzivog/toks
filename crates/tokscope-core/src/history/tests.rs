@@ -36,6 +36,8 @@ fn message(hour: u32, turns: bool) -> UnifiedMessage {
         message_count: 2,
         agent: None,
         dedup_key: None,
+        durable_identity: None,
+        accounting_aliases: Vec::new(),
         session_title: None,
         is_turn_start: turns,
         model_attribution_conflicted: false,

@@ -164,6 +164,22 @@ pub struct HistorySnapshot {
     /// Usage across every tracked provider and account.
     pub usage: UsageSeries,
     pub generated_at_ms: i64,
+    /// First time an accounting event was durably accepted by Tokscope.
+    #[serde(default)]
+    pub captured_since_ms: Option<i64>,
+    /// Most recent successful archive observation. While history is catching
+    /// up, older provider sources can still remain unindexed.
+    #[serde(default)]
+    pub captured_through_ms: Option<i64>,
+    /// Durable events backed by a provider/parser identity.
+    #[serde(default)]
+    pub strong_events: i64,
+    /// Durable events accepted through a conservative fallback identity.
+    #[serde(default)]
+    pub weak_events: i64,
+    /// Contradictory observations retained for diagnosis.
+    #[serde(default)]
+    pub history_conflicts: i64,
     pub cost_coverage: CostCoverage,
     /// Compatibility flag: token-bearing usage without verified cost coverage.
     pub unpriced: bool,

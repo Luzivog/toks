@@ -3,6 +3,10 @@
 fn main() -> anyhow::Result<()> {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "all".into());
 
+    if mode == "forget-history-range" {
+        return forget_history_range();
+    }
+
     if mode == "limits" || mode == "all" {
         let snapshots = tokscope_core::limits::collect_all();
         println!("{}", serde_json::to_string_pretty(&snapshots)?);
@@ -39,5 +43,30 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn forget_history_range() -> anyhow::Result<()> {
+    use chrono::{Local, NaiveDate, TimeZone};
+
+    let mut arguments = std::env::args().skip(2);
+    let start = arguments
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("missing start date"))?;
+    let end = arguments
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("missing exclusive end date"))?;
+    let local_midnight = |value: &str| -> anyhow::Result<i64> {
+        let date = NaiveDate::parse_from_str(value, "%Y-%m-%d")?;
+        let naive = date.and_hms_opt(0, 0, 0).expect("midnight is valid");
+        Local
+            .from_local_datetime(&naive)
+            .single()
+            .map(|time| time.timestamp_millis())
+            .ok_or_else(|| anyhow::anyhow!("date does not resolve to one local midnight"))
+    };
+    let removed =
+        tokscope_core::history::forget_range(local_midnight(&start)?, local_midnight(&end)?)?;
+    eprintln!("forgot {removed} retained usage events from {start} through {end} (exclusive)");
     Ok(())
 }

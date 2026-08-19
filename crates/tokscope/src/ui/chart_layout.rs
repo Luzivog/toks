@@ -10,7 +10,6 @@ pub(super) fn summary_chart_row(summary: Div, chart: Div) -> Div {
         .w_full()
         .min_w_0()
         .gap_6()
-        .items_start()
         .child(summary)
         .child(chart.flex_1().min_w_0())
 }

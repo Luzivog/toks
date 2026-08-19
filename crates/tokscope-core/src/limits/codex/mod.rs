@@ -6,9 +6,11 @@
 mod auth_plan;
 mod local;
 mod parser;
+mod principal;
 
 pub use local::read;
 pub use parser::parse;
 
 pub(crate) use auth_plan::read_plan_from_auth;
 pub(crate) use local::{codex_home, read_email_from_home, read_from_home};
+pub(crate) use principal::read_principal_material;

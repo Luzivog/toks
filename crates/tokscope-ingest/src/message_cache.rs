@@ -12,6 +12,19 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 
+mod accounting_seed;
+mod legacy_codex;
+mod legacy_wire;
+#[cfg(test)]
+use legacy_wire::{LegacyCachedSourceEntryV4, LegacyUnifiedMessageV5, FORMAT_V4};
+#[cfg(test)]
+mod legacy_wire_tests;
+#[cfg(test)]
+pub(crate) use accounting_seed::{
+    load_codex_accounting_seed, reset_shard_read_count, shard_read_count,
+};
+pub(crate) use accounting_seed::{load_codex_accounting_seeds, CodexAccountingSeed};
+
 // CACHE_FORMAT_VERSION changes only when the serialized storage layout or a
 // cross-client type such as UnifiedMessage changes incompatibly. Parser-only
 // changes belong in parser_version() so one client cannot evict every other
@@ -28,8 +41,10 @@ use std::time::UNIX_EPOCH;
 // 5: Prime Agent entries cache reconciliation accounting beside their messages.
 // Version-4 shards have an explicit wire migration below, so other clients stay
 // warm and Prime entries need only one rebuild/backfill.
-const CACHE_FORMAT_VERSION: u32 = 5;
-const LEGACY_CACHE_FORMAT_VERSION: u32 = 4;
+// 6: UnifiedMessage gained a durable accounting identity and best-effort
+// accounting aliases. Explicit v4/v5 wire migrations preserve retained Claude
+// turns that a cold reparse cannot recover.
+const CACHE_FORMAT_VERSION: u32 = 6;
 // V2 intentionally starts cold and leaves source-message-cache.bin untouched:
 // the monolith did not record a trustworthy parser owner for migration.
 const CACHE_SHARD_DIRNAME: &str = "source-message-cache-v2";
@@ -941,12 +956,16 @@ impl CacheIdentity {
     }
 }
 
-fn parser_version(client: ClientId) -> u32 {
+pub(crate) fn parser_version(client: ClientId) -> u32 {
     match client {
         // These clients accumulated parser-only invalidations under the old
         // global schema. Their independent counters start from those histories
         // so future changes have an obvious local version to increment.
-        ClientId::Codex => 6,
+        // v6->v7: token_count rows now carry source-native durable accounting
+        // identities and fork-replay aliases, and Codex incremental state
+        // retains identity occurrence counters. Existing Codex shards must
+        // reparse to seed all three.
+        ClientId::Codex => 7,
         // v4->v5: jcode's assistant-message timestamp is now back-calculated
         // to the turn start (timestamp - tool_duration_ms) instead of using
         // the recorded (end-anchored) timestamp directly. Follow-up to #890.
@@ -1124,36 +1143,6 @@ pub(crate) struct CachedSourceEntry {
     /// transcripts. It shares this entry's parser identity and fingerprint, so
     /// a message cache hit can never pair with accounting from different bytes.
     pub prime_accounting: Option<crate::sessions::prime_agent::PrimeFileAccounting>,
-}
-
-/// Exact version-4 entry layout. Keeping this wire type lets existing shards
-/// migrate without discarding cached messages for unrelated clients. Prime
-/// entries convert with no accounting and are backfilled once on their next
-/// unchanged scan.
-#[derive(Debug, Serialize, Deserialize)]
-struct LegacyCachedSourceEntryV4 {
-    parser_namespace: String,
-    parser_version: u32,
-    path: CachedPath,
-    fingerprint: SourceFingerprint,
-    messages: Vec<UnifiedMessage>,
-    fallback_timestamp_indices: Vec<usize>,
-    codex_incremental: Option<CodexIncrementalCache>,
-}
-
-impl From<LegacyCachedSourceEntryV4> for CachedSourceEntry {
-    fn from(entry: LegacyCachedSourceEntryV4) -> Self {
-        Self {
-            parser_namespace: entry.parser_namespace,
-            parser_version: entry.parser_version,
-            path: entry.path,
-            fingerprint: entry.fingerprint,
-            messages: entry.messages,
-            fallback_timestamp_indices: entry.fallback_timestamp_indices,
-            codex_incremental: entry.codex_incremental,
-            prime_accounting: None,
-        }
-    }
 }
 
 impl CachedSourceEntry {
@@ -1689,16 +1678,12 @@ fn read_shard_with_limit(
         return ShardReadStatus::Stale;
     }
 
-    if envelope.format_version == LEGACY_CACHE_FORMAT_VERSION {
-        return match bincode::options()
-            .with_limit(max_shard_bytes)
-            .deserialize::<Vec<LegacyCachedSourceEntryV4>>(&envelope.payload)
-        {
-            Ok(entries) => ShardReadStatus::Migrated(
-                entries.into_iter().map(CachedSourceEntry::from).collect(),
-            ),
-            Err(error) => ShardReadStatus::Invalid(error.to_string()),
-        };
+    if let Some(result) =
+        legacy_wire::decode(envelope.format_version, &envelope.payload, max_shard_bytes)
+    {
+        return result
+            .map(ShardReadStatus::Migrated)
+            .unwrap_or_else(ShardReadStatus::Invalid);
     }
     if envelope.format_version != CACHE_FORMAT_VERSION {
         return ShardReadStatus::Stale;
@@ -2568,8 +2553,8 @@ mod tests {
     }
 
     #[test]
-    fn test_codex_duration_parser_version_invalidates_v4_entries() {
-        assert_eq!(parser_version(ClientId::Codex), 6);
+    fn test_codex_durable_identity_parser_version_invalidates_v6_entries() {
+        assert_eq!(parser_version(ClientId::Codex), 7);
         assert_eq!(parser_version(ClientId::Claude), 2);
     }
 
@@ -3506,7 +3491,7 @@ mod tests {
         let stale_path = shard_path(&cache_shard_dir().unwrap(), &stale_key);
         ensure_cache_dir(stale_path.parent().unwrap()).unwrap();
         let stale_envelope = CachedShardEnvelope {
-            format_version: LEGACY_CACHE_FORMAT_VERSION - 1,
+            format_version: FORMAT_V4 - 1,
             parser_namespace: codex.namespace.to_string(),
             parser_version: codex.parser_version,
             payload: b"prior UnifiedMessage layout".to_vec(),
@@ -3540,12 +3525,16 @@ mod tests {
             parser_version: entry.parser_version,
             path: entry.path,
             fingerprint: entry.fingerprint,
-            messages: entry.messages,
+            messages: entry
+                .messages
+                .into_iter()
+                .map(LegacyUnifiedMessageV5::from)
+                .collect(),
             fallback_timestamp_indices: entry.fallback_timestamp_indices,
-            codex_incremental: entry.codex_incremental,
+            codex_incremental: entry.codex_incremental.map(Into::into),
         };
         let envelope = CachedShardEnvelope {
-            format_version: LEGACY_CACHE_FORMAT_VERSION,
+            format_version: FORMAT_V4,
             parser_namespace: identity.namespace.to_string(),
             parser_version: identity.parser_version,
             payload: bincode::options().serialize(&vec![legacy_entry]).unwrap(),

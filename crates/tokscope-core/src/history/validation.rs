@@ -9,7 +9,10 @@ use super::{
 };
 
 pub(super) fn validate(snapshot: &HistorySnapshot) -> Result<()> {
-    if snapshot.generated_at_ms < 0 || !coverage_valid(snapshot.cost_coverage) {
+    if snapshot.generated_at_ms < 0
+        || !capture_valid(snapshot)
+        || !coverage_valid(snapshot.cost_coverage)
+    {
         bail!("invalid history snapshot metadata");
     }
     let mut clients = HashSet::new();
@@ -23,6 +26,22 @@ pub(super) fn validate(snapshot: &HistorySnapshot) -> Result<()> {
         bail!("invalid aggregate usage series");
     }
     Ok(())
+}
+
+fn capture_valid(snapshot: &HistorySnapshot) -> bool {
+    let timestamps_valid = snapshot.captured_since_ms.is_none_or(|value| value >= 0)
+        && snapshot.captured_through_ms.is_none_or(|value| value >= 0)
+        && match (snapshot.captured_since_ms, snapshot.captured_through_ms) {
+            (Some(since), Some(through)) => since <= through,
+            (Some(_), None) => false,
+            _ => true,
+        };
+    let total = snapshot.strong_events.saturating_add(snapshot.weak_events);
+    timestamps_valid
+        && snapshot.strong_events >= 0
+        && snapshot.weak_events >= 0
+        && snapshot.history_conflicts >= 0
+        && snapshot.history_conflicts <= total
 }
 
 fn validate_source(source: &SourceHistory) -> Result<()> {

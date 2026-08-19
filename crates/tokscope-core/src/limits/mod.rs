@@ -35,6 +35,14 @@ pub use plan::PlanMultiplier;
 pub(crate) use plan::{read_claude_plan, PlanDetails};
 pub use status::{LimitIssue, LimitIssueKind, SnapshotFreshness, SnapshotStatus};
 
+pub(crate) fn forget_account_profile(
+    provider: Provider,
+    profile_id: &crate::accounts::CredentialProfileId,
+) {
+    live::forget_profile(provider, profile_id);
+    let _ = snapshot_cache::remove_for_profile(provider, profile_id);
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
@@ -104,7 +112,7 @@ impl LimitWindow {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LimitSnapshot {
     pub provider: Provider,
-    /// Local, non-secret identity for the provider profile being observed.
+    /// Opaque logical account identity plus its exact local credential sources.
     pub account: crate::accounts::ProviderAccount,
     /// Plan name as reported by the source ("max", "pro", …).
     pub plan: Option<String>,

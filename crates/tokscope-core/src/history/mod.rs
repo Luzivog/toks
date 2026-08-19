@@ -1,27 +1,44 @@
 //! Usage history built on Tokscope's scan, parse, deduplication, and pricing
 //! pipeline, then reshaped into chart-ready series.
 //!
-//! [`collect`] is the single interface used by the app. Its implementation
-//! reuses the ingest cache, performs one scan, and derives every period from
-//! the same parsed messages.
+//! [`LocalHistory`] is the deep module used by new callers. It owns discovery,
+//! durable hydration, refresh, pricing, and last-good fallback behind three
+//! entry points. [`collect`] and [`hydrate`] remain compatibility shims while
+//! the desktop app migrates to that interface.
 
+mod archive;
 mod cache;
 mod collect;
+mod hydration;
+#[cfg(test)]
 mod ingress;
 mod keys;
+mod local_history;
+#[cfg(test)]
+mod materialize;
+#[cfg(test)]
 mod rollup;
+#[cfg(test)]
 mod source;
+#[cfg(test)]
 mod totals;
 mod types;
 mod validation;
 
 pub use collect::collect;
+pub use hydration::{hydrate, HistoryHydration};
 pub use keys::{UsageKey, UsageRange};
-pub use source::minute_label;
+pub use local_history::{CatchUpRetry, HistoryStatus, HistoryView, LocalHistory};
 pub use types::{
     CostCoverage, DaySlice, HistorySnapshot, MinuteSlice, ModelRow, ModelUsage, SourceHistory,
     UsageBucket, UsagePeriod, UsageSeries,
 };
+
+/// Permanently exclude an already captured local-time range from Tokscope.
+/// Provider transcript files are never modified.
+pub fn forget_range(start_ms: i64, end_ms: i64) -> anyhow::Result<usize> {
+    archive::forget_range_default(start_ms, end_ms)
+}
 
 /// Provider clients included in the initial product surface.
 const CLIENTS: &[&str] = &["claude", "codex"];
@@ -30,13 +47,20 @@ pub const MINUTES_SPAN: i64 = 60;
 /// Overview-history window, in days.
 pub const DAYS_SPAN: i64 = 30;
 
-/// Loads the last successfully collected aggregate without scanning providers.
-/// Corrupt, incompatible, or structurally invalid snapshots are ignored.
-pub fn hydrate() -> Option<HistorySnapshot> {
-    cache::load()
+/// Human time label for a unix-minute value, in local time (`HH:MM`).
+pub fn minute_label(minute: i64) -> String {
+    use chrono::TimeZone;
+
+    chrono::Local
+        .timestamp_opt(minute * 60, 0)
+        .single()
+        .map(|time| time.format("%H:%M").to_string())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod cache_tests;
+#[cfg(test)]
+mod materialize_tests;
 #[cfg(test)]
 mod tests;

@@ -9,6 +9,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{LimitSnapshot, Provider};
 
+mod cleanup;
+mod rank;
+pub(super) use cleanup::remove_accounts_at;
+
 const ORDER_VERSION: u8 = 1;
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -28,7 +32,7 @@ impl AccountOrderKey {
     }
 
     pub fn from_snapshot(snapshot: &LimitSnapshot) -> Self {
-        Self::new(snapshot.provider, snapshot.account.id.clone())
+        Self::new(snapshot.provider, snapshot.account.id.as_str())
     }
 }
 
@@ -105,17 +109,14 @@ pub(super) fn apply_order(snapshots: &mut [LimitSnapshot], order: &[AccountOrder
     snapshots.sort_by(|left, right| {
         let left_key = AccountOrderKey::from_snapshot(left);
         let right_key = AccountOrderKey::from_snapshot(right);
-        ranks
-            .get(&left_key)
-            .copied()
-            .unwrap_or(usize::MAX)
-            .cmp(&ranks.get(&right_key).copied().unwrap_or(usize::MAX))
+        rank::snapshot_rank(left, &left_key, &ranks)
+            .cmp(&rank::snapshot_rank(right, &right_key, &ranks))
             .then_with(|| left.provider.cmp(&right.provider))
             .then_with(|| left.account.id.cmp(&right.account.id))
     });
 }
 
-fn order_path() -> Result<PathBuf> {
+pub(super) fn order_path() -> Result<PathBuf> {
     dirs::data_local_dir()
         .or_else(dirs::data_dir)
         .map(|root| root.join("tokscope").join("account-order.json"))

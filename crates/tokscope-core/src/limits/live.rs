@@ -1,24 +1,16 @@
 //! Store-first live limit refresh with per-account backoff and in-flight deduplication.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+mod memo;
+
+use std::time::Duration;
 
 use chrono::Utc;
 
 use super::{LimitIssue, LimitIssueKind, LimitSnapshot, SnapshotFreshness, SnapshotStatus};
-use crate::accounts::AccountProfile;
+use crate::accounts::{AccountProfile, CredentialProfileId};
 
 const LIVE_TTL: Duration = Duration::from_secs(60);
 const FAILURE_BACKOFF_MAX: Duration = Duration::from_secs(15 * 60);
-#[derive(Clone)]
-struct MemoEntry {
-    attempted_at: Instant,
-    outcome: RefreshOutcome,
-    failures: u32,
-    retry_for: Duration,
-    credential_revision: Option<super::credentials::CredentialRevision>,
-}
 
 #[derive(Clone, Default)]
 pub(crate) struct RefreshOutcome {
@@ -26,9 +18,6 @@ pub(crate) struct RefreshOutcome {
     pub(crate) issue: Option<LimitIssue>,
 }
 
-type AccountLocks = HashMap<String, Arc<Mutex<()>>>;
-static MEMO: OnceLock<Mutex<HashMap<String, MemoEntry>>> = OnceLock::new();
-static LOCKS: OnceLock<Mutex<AccountLocks>> = OnceLock::new();
 pub(super) fn failure_backoff(failures: u32) -> Duration {
     let exponent = failures.saturating_sub(1).min(4);
     Duration::from_secs(60 * 2_u64.pow(exponent)).min(FAILURE_BACKOFF_MAX)
@@ -51,20 +40,15 @@ pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
 
     let key = profile.cache_key();
     let credential_revision = super::credentials::revision(profile);
-    let account_lock = account_lock(&key);
+    let account_lock = memo::account_lock(&key);
     let _guard = account_lock
         .lock()
         .unwrap_or_else(|poison| poison.into_inner());
-    if let Some(outcome) = memoized(&key, baseline.clone(), credential_revision) {
+    if let Some(outcome) = memo::get(&key, baseline.clone(), credential_revision) {
         return outcome;
     }
 
-    let previous_failures = memo()
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner())
-        .get(&key)
-        .map(|entry| entry.failures)
-        .unwrap_or(0);
+    let previous_failures = memo::previous_failures(&key);
     let (outcome, failures, retry_for) = match super::live_fetch::fetch(profile) {
         Ok(mut snapshot) => {
             snapshot.status = SnapshotStatus::at(SnapshotFreshness::Live);
@@ -95,19 +79,13 @@ pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
         }
         Err(error) => failed_refresh(error.issue, baseline, previous_failures + 1),
     };
-    memo()
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner())
-        .insert(
-            key,
-            MemoEntry {
-                attempted_at: Instant::now(),
-                outcome: outcome.clone(),
-                failures,
-                retry_for,
-                credential_revision: super::credentials::revision(profile),
-            },
-        );
+    memo::remember(
+        key,
+        outcome.clone(),
+        failures,
+        retry_for,
+        super::credentials::revision(profile),
+    );
     outcome
 }
 
@@ -140,50 +118,8 @@ fn failed_refresh(
     )
 }
 
-fn memoized(
-    key: &str,
-    baseline: Option<LimitSnapshot>,
-    credential_revision: Option<super::credentials::CredentialRevision>,
-) -> Option<RefreshOutcome> {
-    let entries = memo().lock().unwrap_or_else(|poison| poison.into_inner());
-    let entry = entries.get(key)?;
-    if entry.credential_revision != credential_revision
-        || entry.attempted_at.elapsed() >= entry.retry_for
-    {
-        return None;
-    }
-    let mut outcome = entry.outcome.clone();
-    if is_newer(&baseline, &outcome.snapshot) {
-        outcome.snapshot = baseline.map(|mut snapshot| {
-            if let Some(issue) = &outcome.issue {
-                snapshot.status = SnapshotStatus::failed(snapshot.status.freshness, issue.clone());
-            }
-            snapshot
-        });
-    }
-    Some(outcome)
-}
-
-fn is_newer(candidate: &Option<LimitSnapshot>, current: &Option<LimitSnapshot>) -> bool {
-    match (candidate, current) {
-        (Some(_), None) => true,
-        (Some(candidate), Some(current)) => candidate.fetched_at > current.fetched_at,
-        _ => false,
-    }
-}
-
-fn memo() -> &'static Mutex<HashMap<String, MemoEntry>> {
-    MEMO.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn account_lock(key: &str) -> Arc<Mutex<()>> {
-    LOCKS
-        .get_or_init(|| Mutex::new(HashMap::new()))
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner())
-        .entry(key.to_string())
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone()
+pub(crate) fn forget_profile(provider: crate::Provider, profile_id: &CredentialProfileId) {
+    memo::forget(provider, profile_id);
 }
 
 fn normalize(mut snapshot: LimitSnapshot, profile: &AccountProfile) -> LimitSnapshot {

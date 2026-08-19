@@ -2,6 +2,10 @@
 //!
 //! Each client has its own parser that converts to a unified message format.
 
+mod accounting_identity;
+#[cfg(test)]
+mod accounting_identity_tests;
+mod agent_names;
 pub mod amp;
 pub mod antigravity;
 pub mod antigravity_cli;
@@ -53,6 +57,15 @@ pub mod zcode;
 pub mod zed;
 
 use crate::TokenBreakdown;
+pub use accounting_identity::{
+    AccountingAlias, AccountingAliasScheme, DurableIdentity, DurableIdentityScheme,
+    IdentityStrength,
+};
+#[cfg(test)]
+use agent_names::strip_zero_width_chars;
+pub use agent_names::{
+    normalize_agent_name, normalize_copilot_agent_name, normalize_opencode_agent_name,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +96,13 @@ pub struct UnifiedMessage {
     pub message_count: i32,
     pub agent: Option<String>,
     pub dedup_key: Option<String>,
+    /// Source-native accounting identity used by Tokscope's durable archive.
+    /// Older source-cache entries deserialize without it.
+    #[serde(default)]
+    pub durable_identity: Option<DurableIdentity>,
+    /// Secondary same-fact hints; never authoritative durable identities.
+    #[serde(default)]
+    pub accounting_aliases: Vec<AccountingAlias>,
     /// Human-readable session title/name when the source client stores one
     /// (e.g. OpenCode's `session.title` column). `None` for clients that
     /// don't record a title; the Sessions tab falls back to showing just
@@ -101,175 +121,6 @@ pub struct UnifiedMessage {
 
 const fn default_message_count() -> i32 {
     1
-}
-
-pub fn normalize_agent_name(agent: &str) -> String {
-    let cleaned = strip_zero_width_chars(agent);
-    let trimmed = cleaned.trim();
-    let stripped = strip_agent_prefix(trimmed);
-    let canonical = canonicalize_agent_name(stripped);
-    let agent_lower = canonical.to_lowercase();
-
-    if agent_lower.contains("plan") {
-        if agent_lower.contains("omo") || agent_lower.contains("sisyphus") {
-            return "Planner-Sisyphus".to_string();
-        }
-        return titlecase_agent(&canonical);
-    }
-
-    if agent_lower == "omo" || agent_lower == "sisyphus" {
-        return "Sisyphus".to_string();
-    }
-
-    if agent_lower == "orchestrator-sisyphus" {
-        return "Atlas".to_string();
-    }
-
-    titlecase_agent(&canonical)
-}
-
-pub fn normalize_opencode_agent_name(agent: &str) -> String {
-    let cleaned = strip_zero_width_chars(agent);
-    let trimmed = cleaned.trim();
-    let stripped = strip_agent_prefix(trimmed);
-    let canonical = canonicalize_agent_name(stripped);
-    let agent_lower = canonical.to_lowercase();
-
-    if let Some(normalized) = normalize_oh_my_opencode_agent_name(&agent_lower) {
-        return normalized;
-    }
-
-    normalize_agent_name(&canonical)
-}
-
-pub fn normalize_copilot_agent_name(agent: &str) -> String {
-    // Hardcoded brand name for the default native agent
-    if agent.eq_ignore_ascii_case("github.copilot.default") {
-        return "GitHub Copilot".to_string();
-    }
-
-    // Native github.copilot.* agents: strip prefix, titlecase remainder
-    const GITHUB_COPILOT_PREFIX: &str = "github.copilot.";
-    if agent
-        .get(..GITHUB_COPILOT_PREFIX.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(GITHUB_COPILOT_PREFIX))
-    {
-        let remainder = &agent[GITHUB_COPILOT_PREFIX.len()..];
-        let hyphenated = remainder.replace('.', "-");
-        return titlecase_agent(&hyphenated);
-    }
-
-    // Plugin:team:slug format — titlecase each colon-separated part, join with ": "
-    const PLUGIN_PREFIX: &str = "Plugin:";
-    if agent
-        .get(..PLUGIN_PREFIX.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(PLUGIN_PREFIX))
-    {
-        let rest = &agent[PLUGIN_PREFIX.len()..];
-        let parts: Vec<&str> = rest.splitn(2, ':').collect();
-        if parts.len() == 2 {
-            let team = titlecase_agent(parts[0]);
-            let slug = titlecase_agent(parts[1]);
-            return format!("{}: {}", team, slug);
-        }
-        return titlecase_agent(rest);
-    }
-
-    normalize_agent_name(agent)
-}
-
-fn normalize_oh_my_opencode_agent_name(agent_lower: &str) -> Option<String> {
-    let normalized = match agent_lower {
-        // Parenthesized format and dash format
-        "sisyphus (ultraworker)"
-        | "sisyphus - ultraworker"
-        | "sisyphus ultraworker"
-        | "sisyphus" => "Sisyphus",
-        "hephaestus (deep agent)"
-        | "hephaestus - deep agent"
-        | "hephaestus deep agent"
-        | "hephaestus" => "Hephaestus",
-        "prometheus (plan builder)"
-        | "prometheus - plan builder"
-        | "prometheus plan builder"
-        | "prometheus (planner)"
-        | "prometheus" => "Prometheus",
-        "atlas (plan executor)" | "atlas - plan executor" | "atlas plan executor" | "atlas" => {
-            "Atlas"
-        }
-        "metis (plan consultant)"
-        | "metis - plan consultant"
-        | "metis plan consultant"
-        | "metis" => "Metis",
-        "momus (plan critic)"
-        | "momus - plan critic"
-        | "momus plan critic"
-        | "momus (plan reviewer)"
-        | "momus" => "Momus",
-        "orchestrator-sisyphus" => "Atlas",
-        "sisyphus-junior" => "Sisyphus-Junior",
-        "planner-sisyphus" => "Planner-Sisyphus",
-        _ => return None,
-    };
-
-    Some(normalized.to_string())
-}
-
-/// Strip zero-width Unicode characters that oh-my-openagent uses as
-/// invisible sort-order prefixes (U+200B ZERO WIDTH SPACE, U+200C ZERO
-/// WIDTH NON-JOINER, U+200D ZERO WIDTH JOINER, U+FEFF BOM/ZWNBSP).
-fn strip_zero_width_chars(s: &str) -> String {
-    if !s.contains(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}']) {
-        return s.to_string();
-    }
-    s.chars()
-        .filter(|c| !matches!(c, '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}'))
-        .collect()
-}
-
-fn strip_agent_prefix(name: &str) -> &str {
-    for prefix in &["astrape:", "oh-my-claudecode:", "oh-my-codex:"] {
-        if name
-            .get(..prefix.len())
-            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
-        {
-            return &name[prefix.len()..];
-        }
-    }
-    name
-}
-
-fn canonicalize_agent_name(name: &str) -> String {
-    name.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn titlecase_word(word: &str) -> String {
-    match word.to_lowercase().as_str() {
-        "ui" => "UI".to_string(),
-        "ux" => "UX".to_string(),
-        "api" => "API".to_string(),
-        _ => {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(c) => {
-                    let upper: String = c.to_uppercase().collect();
-                    upper + &chars.collect::<String>()
-                }
-            }
-        }
-    }
-}
-
-fn titlecase_agent(name: &str) -> String {
-    if name.is_empty() {
-        return String::new();
-    }
-    name.split('-')
-        .flat_map(|part| part.split_whitespace())
-        .map(titlecase_word)
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 impl UnifiedMessage {
@@ -372,6 +223,8 @@ impl UnifiedMessage {
             message_count: default_message_count(),
             agent,
             dedup_key,
+            durable_identity: None,
+            accounting_aliases: Vec::new(),
             session_title: None,
             is_turn_start: false,
             model_attribution_conflicted: false,

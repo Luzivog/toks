@@ -54,9 +54,9 @@ required.
 
 ## How it works
 
-Tokscope reads and aggregates local Codex and Claude Code history. It only goes
-online to refresh plan limits and public pricing, and keeps the latest good data
-locally. Everything required is in this repository; Tokscale is not required.
+Tokscope reads local Codex and Claude Code history. Once captured, usage survives
+provider-log cleanup in a compact local archive. It only goes online to refresh
+plan limits and public pricing. Tokscale is not required.
 
 Costs are API-rate estimates, not subscription spend.
 
@@ -64,7 +64,7 @@ Costs are API-rate estimates, not subscription spend.
 
 ```bash
 cargo run -p tokscope --locked
-cargo test --workspace --all-targets --locked
+cargo test -p tokscope --lib --locked
 scripts/quality/check-repository.sh
 ```
 

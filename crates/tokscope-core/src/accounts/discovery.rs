@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 
 use crate::limits::{self, Provider};
 
-use super::{profiles_root, AccountProfile, ProfileMetadata, ProviderAccount, PROFILE_VERSION};
+use super::{
+    profiles_root, provider_principal_id, AccountId, AccountIdentityKind, AccountProfile,
+    CredentialProfileId, ProfileMetadata, ProviderAccount, PROFILE_VERSION,
+};
 
 pub(crate) fn discover_profiles() -> Vec<AccountProfile> {
     let mut profiles = Vec::new();
@@ -18,17 +21,21 @@ pub(crate) fn discover_profiles() -> Vec<AccountProfile> {
                     limits::codex::codex_home().unwrap_or_else(|| home.join(".codex"))
                 }
             };
-            profiles.push(AccountProfile {
+            let profile_id = CredentialProfileId::new(format!("{}-current", provider.slug()));
+            profiles.push(with_logical_identity(AccountProfile {
                 provider,
+                profile_id: profile_id.clone(),
                 account: ProviderAccount {
-                    id: format!("{}-current", provider.slug()),
+                    id: AccountId::new(profile_id.as_str()),
+                    identity_kind: AccountIdentityKind::ProfileFallback,
                     email: account_email(provider, &home, &config_dir),
+                    sources: Vec::new(),
                 },
                 home_dir: home.clone(),
                 config_dir,
                 managed: false,
                 created_at_ms: None,
-            });
+            }));
         }
     }
 
@@ -52,7 +59,7 @@ pub(crate) fn discover_profiles() -> Vec<AccountProfile> {
 
 pub(super) fn retain_unique_profiles(profiles: &mut Vec<AccountProfile>) {
     let mut identities = HashSet::new();
-    profiles.retain(|profile| identities.insert((profile.provider, profile.account.id.clone())));
+    profiles.retain(|profile| identities.insert((profile.provider, profile.profile_id.clone())));
 }
 
 pub(super) fn discover_managed_profiles(root: &Path, provider: Provider) -> Vec<AccountProfile> {
@@ -80,23 +87,42 @@ pub(super) fn discover_managed_profiles(root: &Path, provider: Provider) -> Vec<
             Provider::Claude => home.join(".claude"),
             Provider::Codex => home.join(".codex"),
         };
+        let profile_id = CredentialProfileId::new(metadata.id);
         profiles.push((
             metadata.created_at_ms,
-            AccountProfile {
+            with_logical_identity(AccountProfile {
                 provider,
+                profile_id: profile_id.clone(),
                 account: ProviderAccount {
-                    id: metadata.id,
+                    id: AccountId::new(profile_id.as_str()),
+                    identity_kind: AccountIdentityKind::ProfileFallback,
                     email: account_email(provider, &home, &config_dir),
+                    sources: Vec::new(),
                 },
                 home_dir: home,
                 config_dir,
                 managed: true,
                 created_at_ms: Some(metadata.created_at_ms),
-            },
+            }),
         ));
     }
     profiles.sort_by_key(|(created_at_ms, _)| *created_at_ms);
     profiles.into_iter().map(|(_, profile)| profile).collect()
+}
+
+fn with_logical_identity(mut profile: AccountProfile) -> AccountProfile {
+    if let Some(account_id) = provider_principal_id(&profile) {
+        profile.account.id = account_id;
+        profile.account.identity_kind = AccountIdentityKind::ProviderPrincipal;
+    } else {
+        profile.account.id = AccountId::new(format!(
+            "{}-profile-{}",
+            profile.provider.slug(),
+            profile.profile_id
+        ));
+    }
+    profile.account.sources = vec![profile.source()];
+    profile
 }
 
 pub(super) fn account_email(provider: Provider, home: &Path, config_dir: &Path) -> Option<String> {

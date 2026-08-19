@@ -1,43 +1,27 @@
 //! Versioned, sanitized persistence for the last successful limit snapshot.
 
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+mod io;
+mod storage;
+
+#[cfg(test)]
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 
 use super::{LimitSnapshot, Provider, SnapshotFreshness, SnapshotStatus};
-use crate::accounts::AccountProfile;
-
-const CACHE_VERSION: u8 = 2;
-static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
-#[derive(Serialize, Deserialize)]
-struct CacheEnvelope {
-    version: u8,
-    snapshot: LimitSnapshot,
-}
+use crate::accounts::{AccountProfile, CredentialProfileId};
+use io::CacheEnvelope;
 
 pub(super) fn load(profile: &AccountProfile) -> Option<LimitSnapshot> {
-    let path = cache_file(profile)?;
-    let envelope = read_envelope(&path).ok()?;
-    if !matches!(envelope.version, 1 | CACHE_VERSION)
-        || envelope.snapshot.provider != profile.provider
-        || (envelope.version == CACHE_VERSION && envelope.snapshot.account.id != profile.account.id)
-    {
+    let path = storage::cache_file(profile)?;
+    let envelope = io::read_envelope(&path).ok()?;
+    if !matches_profile(&envelope, profile) {
         return None;
     }
-    let migrate = envelope.version < CACHE_VERSION;
     let mut snapshot = with_profile_identity(envelope.snapshot, profile);
     snapshot.status = SnapshotStatus::at(SnapshotFreshness::Cached);
     snapshot.source = "cache".into();
     snapshot.issue = None;
-    if migrate {
-        let _ = store(profile, &snapshot);
-    }
     Some(snapshot)
 }
 
@@ -59,12 +43,15 @@ pub(super) fn load_or_seed(profile: &AccountProfile) -> Option<LimitSnapshot> {
 }
 
 pub(super) fn store(profile: &AccountProfile, snapshot: &LimitSnapshot) -> Result<()> {
-    let path = cache_file(profile).context("no local data directory")?;
+    if !storage::profile_storage_active(profile) {
+        anyhow::bail!("account profile was removed while usage was refreshing");
+    }
+    let path = storage::cache_file(profile).context("no local data directory")?;
     let stored = sanitized_snapshot(profile, snapshot);
-    write_envelope(
+    io::write_envelope(
         &path,
         &CacheEnvelope {
-            version: CACHE_VERSION,
+            version: io::CACHE_VERSION,
             snapshot: stored,
         },
     )
@@ -102,89 +89,54 @@ fn with_profile_identity(mut snapshot: LimitSnapshot, profile: &AccountProfile) 
     snapshot
 }
 
-fn cache_file(profile: &AccountProfile) -> Option<PathBuf> {
-    let identity: String = profile
-        .account
-        .id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    dirs::data_local_dir().or_else(dirs::data_dir).map(|root| {
-        root.join("tokscope")
-            .join("limits")
-            .join(format!("{}-{identity}.json", profile.provider.slug()))
-    })
+fn matches_profile(envelope: &CacheEnvelope, profile: &AccountProfile) -> bool {
+    envelope.version == io::CACHE_VERSION
+        && envelope.snapshot.provider == profile.provider
+        && envelope.snapshot.account.id == profile.account.id
 }
 
-fn read_envelope(path: &Path) -> Result<CacheEnvelope> {
-    let bytes = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-    serde_json::from_slice(&bytes).with_context(|| format!("parsing {}", path.display()))
-}
-
-fn write_envelope(path: &Path, envelope: &CacheEnvelope) -> Result<()> {
-    let parent = path.parent().context("cache path has no parent")?;
-    fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
-    secure_directory(parent)?;
-    let temporary = unique_temp_path(path);
-    let result = (|| {
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&temporary)?;
-        file.write_all(&serde_json::to_vec(envelope)?)?;
-        file.sync_all()?;
-        fs::rename(&temporary, path)?;
-        fs::File::open(parent)?.sync_all()?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
-}
-
-fn unique_temp_path(path: &Path) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    path.with_extension(format!("tmp-{}-{nanos:x}-{sequence:x}", std::process::id()))
-}
-
-fn secure_directory(path: &Path) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    }
-    Ok(())
+pub(crate) fn remove_for_profile(
+    provider: Provider,
+    profile_id: &CredentialProfileId,
+) -> Result<()> {
+    storage::remove_for_profile(provider, profile_id)
 }
 
 #[cfg(test)]
 pub(super) fn round_trip_for_test(path: &Path, snapshot: LimitSnapshot) -> Result<LimitSnapshot> {
-    write_envelope(
+    io::write_envelope(
         path,
         &CacheEnvelope {
-            version: CACHE_VERSION,
+            version: io::CACHE_VERSION,
             snapshot,
         },
     )?;
-    Ok(read_envelope(path)?.snapshot)
+    Ok(io::read_envelope(path)?.snapshot)
 }
 
 #[cfg(test)]
 pub(super) fn decode_envelope_for_test(raw: &[u8]) -> Result<(u8, LimitSnapshot)> {
-    let envelope: CacheEnvelope = serde_json::from_slice(raw)?;
+    let envelope = io::decode_envelope(raw)?;
     Ok((envelope.version, envelope.snapshot))
+}
+
+#[cfg(test)]
+pub(super) fn cache_binding_for_test(
+    root: &Path,
+    profile: &AccountProfile,
+    snapshot: LimitSnapshot,
+) -> (PathBuf, bool) {
+    let envelope = CacheEnvelope {
+        version: io::CACHE_VERSION,
+        snapshot,
+    };
+    (
+        storage::cache_file_in(root, profile.provider, &profile.profile_id),
+        matches_profile(&envelope, profile),
+    )
+}
+
+#[cfg(test)]
+pub(super) fn profile_storage_active_for_test(profile: &AccountProfile) -> bool {
+    storage::profile_storage_active(profile)
 }

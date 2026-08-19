@@ -1,4 +1,5 @@
 pub mod aliases;
+pub mod basis;
 pub mod cache;
 pub mod custom;
 mod embedded;
@@ -18,7 +19,6 @@ use std::sync::{
 use tokio::sync::OnceCell;
 
 use crate::TokenBreakdown;
-
 pub use litellm::ModelPricing;
 
 static PRICING_SERVICE: OnceCell<Arc<PricingService>> = OnceCell::const_new();

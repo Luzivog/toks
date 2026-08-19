@@ -20,6 +20,7 @@ pub(super) fn usage_history_card(
     period: UsagePeriod,
     sort: SortState<UsageSortColumn>,
     visible_limit: usize,
+    freshness: Option<String>,
     cx: &mut gpui::Context<TokscopeApp>,
 ) -> gpui::Div {
     let generated = Local
@@ -43,6 +44,9 @@ pub(super) fn usage_history_card(
     let grouped_hourly = period == UsagePeriod::Hourly
         && matches!(sort.column, None | Some(UsageSortColumn::Period));
     let range = format!("{} · {row_count} rows", usage_range_label());
+    let context = freshness
+        .map(|freshness| format!("{freshness} · {range}"))
+        .unwrap_or(range);
 
     let mut body = v_flex();
     if rows.is_empty() {
@@ -95,7 +99,7 @@ pub(super) fn usage_history_card(
                     "{} usage",
                     usage_period_label(period)
                 )))
-                .child(section_meta(range, cx)),
+                .child(section_meta(context, cx)),
         )
         .child(usage_columns_header(period, sort, cx))
         .child(body)
@@ -105,7 +109,10 @@ pub(super) fn usage_history_card(
             card.child(
                 h_flex()
                     .justify_center()
-                    .pt_1()
+                    // The card already contributes 16px below this row. A
+                    // 12px inset above keeps the action optically centered
+                    // between the table divider and the card edge.
+                    .pt_3()
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .child(

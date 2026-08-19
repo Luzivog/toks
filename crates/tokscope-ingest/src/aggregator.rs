@@ -613,8 +613,6 @@ pub fn calculate_intensities(contributions: &mut [DailyContribution]) {
 mod tests {
     use super::*;
     use chrono::{DateTime, Utc};
-
-    // Helper function to create mock UnifiedMessage
     fn mock_unified_message(
         date: &str,
         tokens: i64,
@@ -622,12 +620,10 @@ mod tests {
         model: &str,
         client: &str,
     ) -> UnifiedMessage {
-        // Parse date string to timestamp
         let datetime = format!("{}T00:00:00Z", date)
             .parse::<DateTime<Utc>>()
             .unwrap();
         let timestamp = datetime.timestamp_millis();
-
         UnifiedMessage {
             client: client.to_string(),
             model_id: model.to_string(),
@@ -650,6 +646,8 @@ mod tests {
             message_count: 1,
             agent: None,
             dedup_key: None,
+            durable_identity: None,
+            accounting_aliases: Vec::new(),
             session_title: None,
             is_turn_start: false,
             model_attribution_conflicted: false,
@@ -1299,6 +1297,8 @@ mod tests {
             message_count: 1,
             agent: None,
             dedup_key: None,
+            durable_identity: None,
+            accounting_aliases: Vec::new(),
             session_title: None,
             is_turn_start: false,
             model_attribution_conflicted: false,

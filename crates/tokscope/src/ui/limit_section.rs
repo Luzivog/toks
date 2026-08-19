@@ -4,14 +4,15 @@ use gpui_component::{
     menu::{DropdownMenu, PopupMenuItem},
     v_flex, ActiveTheme, StyledExt,
 };
-use tokscope_core::{LimitSnapshot, Provider, ProviderAccount};
+use tokscope_core::{LimitSnapshot, Provider};
 
+use crate::app::RemovalStatus;
 use crate::window::{icon_element, TokscopeIcon};
 use crate::TokscopeApp;
 
 use super::{
-    account_drop_target, account_limits_group, account_limits_loading_content, action_button,
-    section_title,
+    account_drop_target, account_error_rows, account_limits_group, account_limits_loading_content,
+    action_button, section_title,
 };
 
 pub(super) fn account_limits_section(
@@ -65,31 +66,23 @@ pub(super) fn account_limits_section(
                     .on_click(move |_, _, cx| {
                         let result = tokscope_core::accounts::begin_add_account(choice);
                         let _ = app_handle.update(cx, |app, cx| {
-                            app.account_notice = Some(match result {
+                            match result {
                                 Ok(started) => {
-                                    let account = ProviderAccount {
-                                        id: started.account_id,
-                                        email: None,
-                                    };
-                                    if !app.limits.iter().any(|snapshot| {
-                                        snapshot.provider == started.provider
-                                            && snapshot.account.id == account.id
-                                    }) {
-                                        app.limits.push(LimitSnapshot::loading_account(
-                                            started.provider,
-                                            account,
-                                        ));
-                                        tokscope_core::accounts::apply_saved_order(&mut app.limits);
-                                    }
-                                    format!(
-                                        "Opened {} sign-in. The account email will appear automatically.",
-                                        started.provider.display_name()
-                                    )
+                                    let started_at = chrono::Utc::now();
+                                    app.account_operations.start_add(
+                                        started.provider,
+                                        started.account_id,
+                                        started_at,
+                                        &mut app.limits,
+                                    );
+                                    app.account_operations
+                                        .reconcile(&mut app.limits, started_at);
                                 }
-                                Err(error) => {
-                                    format!("Couldn't add {}: {error}", choice.display_name())
-                                }
-                            });
+                                Err(error) => app.account_operations.report_error(format!(
+                                    "Couldn't add {}: {error}",
+                                    choice.display_name()
+                                )),
+                            }
                             cx.notify();
                         });
                     }),
@@ -133,7 +126,7 @@ pub(super) fn account_limits_section(
                 .child(notice.clone()),
         );
     }
-
+    panel = panel.children(account_error_rows(app, cx));
     let snapshots: Vec<&LimitSnapshot> = app.limits.iter().collect();
     if snapshots.is_empty() {
         if app.limits_loaded {
@@ -159,12 +152,22 @@ pub(super) fn account_limits_section(
 
     let reorder_enabled = snapshots.len() > 1;
     for snapshot in snapshots {
+        let removal_key = tokscope_core::accounts::AccountOrderKey::from_snapshot(snapshot);
+        let removal_state = match app.account_removals.status(&removal_key) {
+            RemovalStatus::Ready => super::account_menu::AccountRemovalState::Ready,
+            RemovalStatus::Confirming => super::account_menu::AccountRemovalState::Confirming,
+            RemovalStatus::Pending => super::account_menu::AccountRemovalState::Pending,
+            RemovalStatus::Failed(message) => {
+                super::account_menu::AccountRemovalState::Failed(message.into())
+            }
+        };
         let group = account_limits_group(
             snapshot,
             app.now,
             true,
             app.emails_hidden,
             reorder_enabled,
+            removal_state,
             cx,
         );
         panel = if reorder_enabled {

@@ -1,27 +1,10 @@
 use gpui::{div, prelude::*};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
-use tokscope_core::history::{HistorySnapshot, ModelUsage};
+use tokscope_core::history::ModelUsage;
 
 use crate::{ModelSortColumn, Page, SortState, TokscopeApp};
 
-use super::{
-    model_columns_header, model_usage_row, overview_model_usage, section_meta, section_title,
-    sort_model_usage,
-};
-
-pub(super) fn breakdown_card(
-    history: &HistorySnapshot,
-    app: &TokscopeApp,
-    cx: &mut gpui::Context<TokscopeApp>,
-) -> gpui::Div {
-    model_breakdown_card(
-        overview_model_usage(history),
-        "This month",
-        Page::Overview,
-        app.model_tables.sort(Page::Overview),
-        cx,
-    )
-}
+use super::{model_columns_header, model_usage_row, section_meta, section_title, sort_model_usage};
 
 pub(super) fn model_breakdown_card(
     mut models: Vec<ModelUsage>,

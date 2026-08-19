@@ -2,12 +2,16 @@
 //!
 //! Parses JSONL files from ~/.claude/projects/
 
+#[cfg(test)]
+mod identity_tests;
+
 use super::utils::{
     extract_i64, extract_string, file_modified_timestamp_ms, parse_timestamp_value,
     read_file_or_none,
 };
 use super::{
-    normalize_agent_name, normalize_workspace_key, workspace_label_from_key, UnifiedMessage,
+    normalize_agent_name, normalize_workspace_key, workspace_label_from_key, DurableIdentity,
+    UnifiedMessage,
 };
 use crate::{pricing, provider_identity, TokenBreakdown};
 use serde::Deserialize;
@@ -691,6 +695,10 @@ pub fn parse_claude_file_with_cache_and_home(
                     duration_between_ms(pending_request_start_timestamp_ms, parsed_timestamp);
 
                 // Insert dedup index only after all checks pass, right before push
+                let durable_identity = pending_hash
+                    .as_ref()
+                    .cloned()
+                    .map(DurableIdentity::claude_provider_response);
                 let dedup_key = pending_hash.inspect(|hash| {
                     processed_hashes.insert(hash.clone(), messages.len());
                 });
@@ -711,6 +719,7 @@ pub fn parse_claude_file_with_cache_and_home(
                     0.0,
                     dedup_key,
                 );
+                unified.durable_identity = durable_identity;
                 unified.duration_ms = duration_ms;
                 unified.agent = sidechain_agent.clone();
                 unified.set_workspace(workspace_key.clone(), workspace_label.clone());
@@ -2204,21 +2213,6 @@ mod tests {
         assert_eq!(messages.len(), 2);
         assert!(!messages[0].is_turn_start);
         assert!(!messages[1].is_turn_start);
-    }
-
-    #[test]
-    fn test_token_breakdown_parsing() {
-        let content = r#"{"type":"assistant","timestamp":"2024-12-01T10:00:00.000Z","requestId":"req_001","message":{"id":"msg_001","model":"claude-3-5-sonnet","usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":100}}}"#;
-
-        let file = create_test_file(content);
-        let messages = parse_claude_file(file.path());
-
-        assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].tokens.input, 1000);
-        assert_eq!(messages[0].tokens.output, 500);
-        assert_eq!(messages[0].tokens.cache_read, 200);
-        assert_eq!(messages[0].tokens.cache_write, 100);
-        assert_eq!(messages[0].tokens.reasoning, 0);
     }
 
     #[test]

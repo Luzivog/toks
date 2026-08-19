@@ -1,53 +1,31 @@
-use chrono::{Datelike, Duration};
-use gpui::{div, prelude::*, px, App, Hsla};
+use chrono::Duration;
+use gpui::{div, prelude::*, App, Hsla};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
-use tokscope_core::history::{HistorySnapshot, UsagePeriod};
-
-use crate::Page;
+use tokscope_core::history::HistorySnapshot;
 
 use super::{
-    claude_accent, codex_accent, current_usage_date, provider_point, provider_usage_chart,
-    section_title, source_bucket_values, summary_chart_row, usage_chart_points,
+    claude_accent, codex_accent, current_usage_date, overview_metrics_card, provider_point,
+    provider_usage_chart, section_title, source_bucket_values, summary_chart_row,
     usage_summary_sidebar, ProviderPoint, UsageSummary,
 };
 
-pub(super) fn usage_block(h: &HistorySnapshot, cx: &App) -> gpui::Div {
-    h_flex()
-        .w_full()
-        .flex_wrap()
-        .gap_4()
-        .child(overview_range_card(
-            "Today",
-            "Usage by hour",
-            usage_chart_points(h, UsagePeriod::Daily),
-            "overview-today",
-            super::page_accent(Page::Daily, cx),
-            cx,
-        ))
-        .child(overview_range_card(
-            "This month",
-            "Usage by day",
-            overview_usage_points(h),
-            "overview-month",
-            super::page_accent(Page::Monthly, cx),
-            cx,
-        ))
-}
-
-fn overview_range_card(
-    title: &'static str,
-    cadence: &'static str,
-    data: Vec<ProviderPoint>,
-    id_prefix: &'static str,
-    accent: Hsla,
+pub(super) fn usage_block(
+    history: &HistorySnapshot,
+    refresh_label: Option<String>,
     cx: &App,
 ) -> gpui::Div {
-    let summary = usage_summary_sidebar(UsageSummary::from_points(&data), "EST. API COST", cx);
+    last_thirty_days_card(history, refresh_label, cx)
+}
 
+fn last_thirty_days_card(
+    history: &HistorySnapshot,
+    refresh_label: Option<String>,
+    cx: &App,
+) -> gpui::Div {
+    let data = overview_usage_points(history);
+    let summary = usage_summary_sidebar(UsageSummary::from_points(&data), "EST. API COST", cx);
     v_flex()
-        .debug_selector(move || format!("{id_prefix}-card"))
-        .flex_1()
-        .min_w(px(700.))
+        .debug_selector(|| "overview-usage-card".to_string())
         .gap_3()
         .p_4()
         .rounded_xl()
@@ -60,16 +38,17 @@ fn overview_range_card(
                 .items_center()
                 .child(
                     h_flex()
-                        .gap_2()
                         .items_center()
-                        .child(div().size_2().rounded_full().bg(accent))
-                        .child(section_title(title))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(cadence),
-                        ),
+                        .gap_2()
+                        .child(section_title("Usage — last 30 days"))
+                        .when_some(refresh_label, |heading, label| {
+                            heading.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(label),
+                            )
+                        }),
                 )
                 .child(
                     h_flex()
@@ -80,19 +59,18 @@ fn overview_range_card(
         )
         .child(summary_chart_row(
             summary,
-            provider_usage_chart(data, id_prefix, cx),
+            provider_usage_chart(data, "overview-usage", cx),
         ))
+        .child(overview_metrics_card(history, cx))
 }
 
-/// Month-to-date points used by the secondary Overview chart.
-pub(super) fn overview_usage_points(h: &HistorySnapshot) -> Vec<ProviderPoint> {
-    let claude = h.source("claude");
-    let codex = h.source("codex");
-    let today = current_usage_date(h);
-    let first = today.with_day(1).unwrap_or(today);
-    (0..i64::from(today.day()))
+pub(super) fn overview_usage_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {
+    let claude = history.source("claude");
+    let codex = history.source("codex");
+    let today = current_usage_date(history);
+    (0..30)
         .map(|offset| {
-            let date = first + Duration::days(offset);
+            let date = today - Duration::days(29 - offset);
             let key = date.format("%Y-%m-%d").to_string();
             provider_point(
                 date.format("%A, %B %-d, %Y").to_string(),

@@ -1,12 +1,9 @@
-use super::{
-    fmt_cost_full, fmt_tokens, hourly_bucket_full_label, page_accent, sort_action,
-    usage_bucket_label,
-};
-use crate::{Page, SortState, TokscopeApp, UsageSortColumn};
+use super::{sort_action, UsageColumn};
+use crate::{SortState, TokscopeApp, UsageSortColumn};
 use chrono::NaiveDate;
 use gpui::{div, prelude::*, px, App, SharedString};
 use gpui_component::{button::Button, h_flex, ActiveTheme, StyledExt};
-use tokscope_core::history::{UsageBucket, UsagePeriod};
+use tokscope_core::history::UsagePeriod;
 pub(super) fn usage_columns_header(
     period: UsagePeriod,
     sort: SortState<UsageSortColumn>,
@@ -16,80 +13,34 @@ pub(super) fn usage_columns_header(
         UsagePeriod::Hourly => "Time",
         UsagePeriod::Daily | UsagePeriod::Monthly => "Period",
     };
-    h_flex()
-        .gap_3()
+    let mut header = h_flex()
+        .gap_2()
         .min_w_0()
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .child(
-            div().flex_1().min_w(px(130.)).child(
-                usage_sort_header(
-                    period_label,
-                    130.,
-                    UsageSortColumn::Period,
-                    period,
-                    sort,
-                    cx,
-                )
-                .justify_start(),
-            ),
-        )
-        .child(usage_sort_header(
-            "Turns",
-            58.,
-            UsageSortColumn::Turns,
-            period,
-            sort,
-            cx,
-        ))
-        .child(usage_sort_header(
-            "Messages",
-            72.,
-            UsageSortColumn::Messages,
-            period,
-            sort,
-            cx,
-        ))
-        .child(usage_sort_header(
-            "Input",
-            82.,
-            UsageSortColumn::Input,
-            period,
-            sort,
-            cx,
-        ))
-        .child(usage_sort_header(
-            "Output",
-            82.,
-            UsageSortColumn::Output,
-            period,
-            sort,
-            cx,
-        ))
-        .child(usage_sort_header(
-            "Cache read",
-            88.,
-            UsageSortColumn::CacheRead,
-            period,
-            sort,
-            cx,
-        ))
-        .child(usage_sort_header(
-            "Total",
-            88.,
-            UsageSortColumn::Total,
-            period,
-            sort,
-            cx,
-        ))
-        .child(usage_sort_header(
-            "Est. API cost",
-            98.,
-            UsageSortColumn::Cost,
-            period,
-            sort,
-            cx,
-        ))
+            div()
+                .flex_1()
+                .min_w(px(130.))
+                .child(usage_period_sort_header(period_label, period, sort, cx).justify_start()),
+        );
+    for column in UsageColumn::ALL {
+        header = header.child(usage_sort_header(column, period, sort, cx));
+    }
+    header
+}
+
+pub(super) fn usage_static_columns_header(first: &'static str, cx: &App) -> gpui::Div {
+    let mut header = h_flex()
+        .gap_2()
+        .min_w_0()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(div().flex_1().min_w(px(130.)).child(first));
+    for column in UsageColumn::ALL {
+        header = header.child(static_header(column));
+    }
+    header
 }
 
 pub(super) fn hourly_day_separator(date: NaiveDate, cx: &App) -> gpui::Div {
@@ -105,65 +56,49 @@ pub(super) fn hourly_day_separator(date: NaiveDate, cx: &App) -> gpui::Div {
         .child(date.format("%A, %B %-d, %Y").to_string())
 }
 
-pub(super) fn usage_data_row(
-    bucket: &UsageBucket,
-    period: UsagePeriod,
-    grouped_hourly: bool,
-    highlighted: bool,
-    cx: &App,
-) -> gpui::Div {
-    let selector = format!("usage-row-{}-{}", usage_period_id(period), bucket.key);
-    let label = if period == UsagePeriod::Hourly && !grouped_hourly {
-        hourly_bucket_full_label(&bucket.key)
-    } else {
-        usage_bucket_label(period, &bucket.key)
-    };
-    h_flex()
-        .debug_selector(move || selector)
-        .gap_3()
-        .min_w_0()
-        .py_2()
-        .border_t_1()
-        .border_color(cx.theme().border)
-        .text_sm()
-        .text_color(if highlighted {
-            page_accent(Page::Daily, cx)
-        } else {
-            cx.theme().foreground
-        })
-        .child(div().flex_1().min_w(px(130.)).font_medium().child(label))
-        .child(metric_cell(58., fmt_tokens(bucket.turns), false))
-        .child(metric_cell(72., fmt_tokens(bucket.messages), false))
-        .child(metric_cell(82., fmt_tokens(bucket.input), false))
-        .child(metric_cell(82., fmt_tokens(bucket.output), false))
-        .child(metric_cell(88., fmt_tokens(bucket.cache_read), false))
-        .child(metric_cell(88., fmt_tokens(bucket.tokens), true))
-        .child(metric_cell(98., fmt_cost_full(bucket.cost), true))
-}
-
-fn usage_sort_header(
+fn usage_period_sort_header(
     label: &'static str,
-    width: f32,
-    column: UsageSortColumn,
     period: UsagePeriod,
     sort: SortState<UsageSortColumn>,
     cx: &mut gpui::Context<TokscopeApp>,
 ) -> Button {
-    let active = sort.column == Some(column);
+    let column = UsageSortColumn::Period;
     sort_action(
-        SharedString::from(format!(
-            "usage-sort-{}-{}",
-            usage_period_id(period),
-            usage_sort_column_id(column)
-        )),
+        SharedString::from(format!("usage-sort-{}-period", usage_period_id(period))),
         label,
-        width,
-        active,
+        130.,
+        sort.column == Some(column),
         sort.direction,
         cx,
     )
     .on_click(cx.listener(move |app, _, _, cx| {
         app.usage_tables.toggle_sort(period, column);
+        cx.notify();
+    }))
+}
+
+fn usage_sort_header(
+    column: UsageColumn,
+    period: UsagePeriod,
+    sort: SortState<UsageSortColumn>,
+    cx: &mut gpui::Context<TokscopeApp>,
+) -> Button {
+    let sort_column = column.sort_column();
+    let active = sort.column == Some(sort_column);
+    sort_action(
+        SharedString::from(format!(
+            "usage-sort-{}-{}",
+            usage_period_id(period),
+            column.id()
+        )),
+        column.label(),
+        column.width(),
+        active,
+        sort.direction,
+        cx,
+    )
+    .on_click(cx.listener(move |app, _, _, cx| {
+        app.usage_tables.toggle_sort(period, sort_column);
         cx.notify();
     }))
 }
@@ -176,24 +111,10 @@ fn usage_period_id(period: UsagePeriod) -> &'static str {
     }
 }
 
-fn usage_sort_column_id(column: UsageSortColumn) -> &'static str {
-    match column {
-        UsageSortColumn::Period => "period",
-        UsageSortColumn::Turns => "turns",
-        UsageSortColumn::Messages => "messages",
-        UsageSortColumn::Input => "input",
-        UsageSortColumn::Output => "output",
-        UsageSortColumn::CacheRead => "cache-read",
-        UsageSortColumn::Total => "total",
-        UsageSortColumn::Cost => "cost",
-    }
-}
-
-fn metric_cell(width: f32, value: String, emphasized: bool) -> gpui::Div {
+fn static_header(column: UsageColumn) -> gpui::Div {
     div()
-        .w(px(width))
+        .w(px(column.width()))
         .flex_shrink_0()
         .text_right()
-        .when(emphasized, |cell| cell.font_semibold())
-        .child(value)
+        .child(column.label())
 }

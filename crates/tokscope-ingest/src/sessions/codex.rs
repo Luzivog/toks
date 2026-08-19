@@ -10,103 +10,23 @@
 //! `codex_token_count_dedup_key`.
 //! Note: This parser has stateful logic to track model and delta calculations.
 
+#[cfg(test)]
+mod fork_alias_tests;
+#[cfg(test)]
+mod identity_tests;
+mod schema;
+
+use super::accounting_identity::{codex_fork_replay_alias, CodexIdentityTracker};
 use super::utils::{
     extract_i64, extract_string, file_modified_timestamp_ms, parse_timestamp_value,
 };
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::provider_identity::inferred_provider_from_model;
 use crate::TokenBreakdown;
-use serde::Deserialize;
+pub use schema::{CodexEntry, CodexInfo, CodexModelInfo, CodexPayload, CodexTokenUsage};
 use serde_json::Value;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
-
-/// Codex entry structure (from JSONL files)
-#[derive(Debug, Deserialize)]
-pub struct CodexEntry {
-    #[serde(rename = "type")]
-    pub entry_type: String,
-    pub timestamp: Option<String>,
-    pub payload: Option<CodexPayload>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CodexPayload {
-    pub id: Option<String>,
-    pub forked_from_id: Option<String>,
-    #[serde(rename = "type")]
-    pub payload_type: Option<String>,
-    pub model: Option<String>,
-    pub model_name: Option<String>,
-    pub model_info: Option<CodexModelInfo>,
-    pub info: Option<CodexInfo>,
-    pub turn_id: Option<String>,
-    /// Unix timestamp (seconds) from `task_started` events. Legacy Codex turns
-    /// may use UUID v4 ids, so this is their only causal ordering signal.
-    /// Confirmed against codex-rs (`TurnStartedEvent::started_at`, serialized
-    /// under `task_started`): documented as "Unix timestamp (in seconds)",
-    /// `Option<i64>`. Deserialized leniently anyway: int/float values coerce
-    /// to `i64`, and any other JSON type (string, object, ...) decodes as
-    /// `None` rather than failing the whole `task_started` entry. A strict
-    /// `Option<i64>` would make a wrong-typed value reject deserialization of
-    /// the entire JSONL line, silently dropping the rest of that payload too.
-    #[serde(default, deserialize_with = "deserialize_lenient_i64")]
-    pub started_at: Option<i64>,
-    pub source: Option<Value>,
-    /// Thread origin from session_meta. `"user"` marks a human-initiated fork
-    /// (e.g. a VS Code "fork conversation"), which replays parent history but
-    /// never emits a `task_started` for the child's own turn.
-    pub thread_source: Option<String>,
-    /// Current working directory from session_meta.
-    pub cwd: Option<String>,
-    /// Provider identity from session_meta (e.g. "openai", "azure")
-    pub model_provider: Option<String>,
-    /// Agent name from session_meta
-    pub agent_nickname: Option<String>,
-    /// Free-text body of an `event_msg` `user_message` payload. Used to detect
-    /// human turn boundaries: real human input is plain text, whereas
-    /// system-injected context (`<environment_context>`, `<system-reminder>`,
-    /// `<user_instructions>`, …) begins with `<`.
-    pub message: Option<String>,
-}
-
-/// Lenient `Option<i64>` deserializer for `CodexPayload::started_at`. Coerces
-/// JSON integers and floats to `i64`; any other type (string, bool, object,
-/// array) or `null`/absent decodes as `None` instead of failing the entry.
-fn deserialize_lenient_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<Value>::deserialize(deserializer)?;
-    Ok(value.and_then(|v| {
-        v.as_i64()
-            .or_else(|| v.as_u64().map(|u| u as i64))
-            .or_else(|| v.as_f64().map(|f| f as i64))
-    }))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CodexModelInfo {
-    pub slug: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CodexInfo {
-    pub model: Option<String>,
-    pub model_name: Option<String>,
-    pub last_token_usage: Option<CodexTokenUsage>,
-    pub total_token_usage: Option<CodexTokenUsage>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct CodexTokenUsage {
-    pub input_tokens: Option<i64>,
-    pub output_tokens: Option<i64>,
-    pub cached_input_tokens: Option<i64>,
-    pub cache_read_input_tokens: Option<i64>,
-    pub reasoning_output_tokens: Option<i64>,
-    pub total_tokens: Option<i64>,
-}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct CodexTotals {
@@ -191,12 +111,15 @@ impl CodexTotals {
         // Clamp cached to not exceed input to prevent inflated totals when
         // malformed data reports more cached tokens than input tokens.
         let clamped_cached = self.cached.min(self.input).max(0);
+        // Codex reports reasoning as a detail inside output_tokens. Our
+        // normalized buckets are additive, so split the subset out once.
+        let clamped_reasoning = self.reasoning.max(0).min(self.output.max(0));
         TokenBreakdown {
             input: (self.input - clamped_cached).max(0),
-            output: self.output.max(0),
+            output: (self.output.max(0) - clamped_reasoning).max(0),
             cache_read: clamped_cached,
             cache_write: 0,
-            reasoning: self.reasoning.max(0),
+            reasoning: clamped_reasoning,
         }
     }
 }
@@ -244,6 +167,8 @@ pub(crate) struct CodexParseState {
     /// it across incremental re-parses.
     #[serde(default)]
     pub forked_child_is_user_fork: bool,
+    #[serde(default)]
+    pub durable_identity_tracker: CodexIdentityTracker,
 }
 
 #[derive(Debug, Clone)]
@@ -338,6 +263,18 @@ fn parse_codex_reader<R: BufRead>(
                 let payload_model = extract_model(&payload);
                 let is_token_count = entry.entry_type == "event_msg"
                     && payload.payload_type.as_deref() == Some("token_count");
+                let durable_identity = is_token_count.then(|| {
+                    let logical_session_id = state
+                        .session_id_from_meta
+                        .clone()
+                        .unwrap_or_else(|| session_id.to_string());
+                    let parent_session_id = state.session_forked_from_id.clone();
+                    state.durable_identity_tracker.next(
+                        parent_session_id.as_deref(),
+                        &logical_session_id,
+                        entry.timestamp.as_deref(),
+                    )
+                });
                 let info_model = if is_token_count {
                     payload.info.as_ref().and_then(extract_model_from_info)
                 } else {
@@ -633,6 +570,7 @@ fn parse_codex_reader<R: BufRead>(
                         0.0,
                         agent,
                     );
+                    message.durable_identity = durable_identity;
                     message.duration_ms = duration_ms;
                     // Apply a deferred human-turn marker from a preceding
                     // user_message to this assistant reply — the first
@@ -661,6 +599,13 @@ fn parse_codex_reader<R: BufRead>(
                             dedup_scope_id,
                             total_usage,
                         );
+                        if state.session_forked_from_id.is_some() {
+                            if let Some(dedup_key) = message.dedup_key.as_deref() {
+                                message
+                                    .accounting_aliases
+                                    .push(codex_fork_replay_alias(dedup_key));
+                            }
+                        }
                     }
                     message.set_workspace(
                         state.session_workspace_key.clone(),
@@ -1088,6 +1033,37 @@ pub(crate) fn parse_codex_file_incremental(
     let fallback_timestamp = file_modified_timestamp_ms(path);
     let reader = BufReader::new(file);
     parse_codex_reader(reader, &session_id, fallback_timestamp, start_offset, state)
+}
+
+pub(crate) fn parse_codex_file_range(
+    path: &Path,
+    start_offset: u64,
+    end_offset: u64,
+    state: CodexParseState,
+) -> ParsedCodexFile {
+    let fallback = || ParsedCodexFile {
+        messages: Vec::new(),
+        fallback_timestamp_indices: Vec::new(),
+        consumed_offset: start_offset,
+        parse_succeeded: false,
+        unresolved_model_events: false,
+        state: state.clone(),
+    };
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(_) => return fallback(),
+    };
+    if end_offset < start_offset || file.seek(SeekFrom::Start(start_offset)).is_err() {
+        return fallback();
+    }
+    let reader = BufReader::new(file.take(end_offset - start_offset));
+    parse_codex_reader(
+        reader,
+        &session_id_from_path(path),
+        file_modified_timestamp_ms(path),
+        start_offset,
+        state,
+    )
 }
 
 fn extract_model(payload: &CodexPayload) -> Option<String> {
@@ -1602,7 +1578,7 @@ mod tests {
             ]
         );
         assert_eq!(messages[0].tokens.input, 8);
-        assert_eq!(messages[0].tokens.output, 3);
+        assert_eq!(messages[0].tokens.output, 2);
         assert_eq!(messages[0].tokens.cache_read, 2);
         assert_eq!(messages[0].tokens.reasoning, 1);
         assert_eq!(messages[1].tokens.input, 4);
@@ -1610,7 +1586,7 @@ mod tests {
         assert_eq!(messages[1].tokens.cache_read, 1);
         assert_eq!(messages[1].tokens.reasoning, 0);
         assert_eq!(messages[2].tokens.input, 6);
-        assert_eq!(messages[2].tokens.output, 2);
+        assert_eq!(messages[2].tokens.output, 1);
         assert_eq!(messages[2].tokens.cache_read, 1);
         assert_eq!(messages[2].tokens.reasoning, 1);
 
@@ -1743,7 +1719,7 @@ mod tests {
 
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].tokens.input, 80);
-        assert_eq!(messages[0].tokens.output, 30);
+        assert_eq!(messages[0].tokens.output, 25);
         assert_eq!(messages[0].tokens.cache_read, 20);
         assert_eq!(messages[0].tokens.reasoning, 5);
     }
@@ -1760,11 +1736,11 @@ mod tests {
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].tokens.input, 80);
-        assert_eq!(messages[0].tokens.output, 30);
+        assert_eq!(messages[0].tokens.output, 25);
         assert_eq!(messages[0].tokens.cache_read, 20);
         assert_eq!(messages[0].tokens.reasoning, 5);
         assert_eq!(messages[1].tokens.input, 8);
-        assert_eq!(messages[1].tokens.output, 3);
+        assert_eq!(messages[1].tokens.output, 2);
         assert_eq!(messages[1].tokens.cache_read, 2);
         assert_eq!(messages[1].tokens.reasoning, 1);
     }
@@ -1782,11 +1758,11 @@ mod tests {
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].tokens.input, 80);
-        assert_eq!(messages[0].tokens.output, 30);
+        assert_eq!(messages[0].tokens.output, 25);
         assert_eq!(messages[0].tokens.cache_read, 20);
         assert_eq!(messages[0].tokens.reasoning, 5);
         assert_eq!(messages[1].tokens.input, 8);
-        assert_eq!(messages[1].tokens.output, 3);
+        assert_eq!(messages[1].tokens.output, 2);
         assert_eq!(messages[1].tokens.cache_read, 2);
         assert_eq!(messages[1].tokens.reasoning, 1);
     }
@@ -1811,12 +1787,12 @@ mod tests {
         assert_eq!(messages.len(), 2);
         // First message: full total
         assert_eq!(messages[0].tokens.input, 80);
-        assert_eq!(messages[0].tokens.output, 30);
+        assert_eq!(messages[0].tokens.output, 25);
         assert_eq!(messages[0].tokens.cache_read, 20);
         assert_eq!(messages[0].tokens.reasoning, 5);
         // Second message: delta from 50→80
         assert_eq!(messages[1].tokens.input, 25);
-        assert_eq!(messages[1].tokens.output, 10);
+        assert_eq!(messages[1].tokens.output, 8);
         assert_eq!(messages[1].tokens.cache_read, 5);
         assert_eq!(messages[1].tokens.reasoning, 2);
     }
@@ -1834,7 +1810,7 @@ mod tests {
         let tokens = totals.into_tokens();
         assert_eq!(tokens.cache_read, 50); // Clamped to input
         assert_eq!(tokens.input, 0); // input - clamped_cached = 0
-        assert_eq!(tokens.output, 30);
+        assert_eq!(tokens.output, 25);
         assert_eq!(tokens.reasoning, 5);
     }
 
@@ -1851,11 +1827,11 @@ mod tests {
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].tokens.input, 80);
-        assert_eq!(messages[0].tokens.output, 30);
+        assert_eq!(messages[0].tokens.output, 25);
         assert_eq!(messages[0].tokens.cache_read, 20);
         assert_eq!(messages[0].tokens.reasoning, 5);
         assert_eq!(messages[1].tokens.input, 8);
-        assert_eq!(messages[1].tokens.output, 3);
+        assert_eq!(messages[1].tokens.output, 2);
         assert_eq!(messages[1].tokens.cache_read, 2);
         assert_eq!(messages[1].tokens.reasoning, 1);
     }
@@ -1874,12 +1850,12 @@ mod tests {
 
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0].tokens.input, 80);
-        assert_eq!(messages[0].tokens.output, 30);
+        assert_eq!(messages[0].tokens.output, 25);
         assert_eq!(messages[0].tokens.cache_read, 20);
         assert_eq!(messages[0].tokens.reasoning, 5);
 
         assert_eq!(messages[1].tokens.input, 8);
-        assert_eq!(messages[1].tokens.output, 3);
+        assert_eq!(messages[1].tokens.output, 2);
         assert_eq!(messages[1].tokens.cache_read, 2);
         assert_eq!(messages[1].tokens.reasoning, 1);
 
@@ -1934,17 +1910,17 @@ mod tests {
 
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[0].tokens.input, 9000);
-        assert_eq!(messages[0].tokens.output, 400);
+        assert_eq!(messages[0].tokens.output, 350);
         assert_eq!(messages[0].tokens.cache_read, 1000);
         assert_eq!(messages[0].tokens.reasoning, 50);
 
         assert_eq!(messages[1].tokens.input, 20);
-        assert_eq!(messages[1].tokens.output, 4);
+        assert_eq!(messages[1].tokens.output, 3);
         assert_eq!(messages[1].tokens.cache_read, 5);
         assert_eq!(messages[1].tokens.reasoning, 1);
 
         assert_eq!(messages[2].tokens.input, 20);
-        assert_eq!(messages[2].tokens.output, 4);
+        assert_eq!(messages[2].tokens.output, 3);
         assert_eq!(messages[2].tokens.cache_read, 5);
         assert_eq!(messages[2].tokens.reasoning, 1);
     }
@@ -1961,11 +1937,11 @@ mod tests {
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].tokens.input, 10);
-        assert_eq!(messages[0].tokens.output, 5);
+        assert_eq!(messages[0].tokens.output, 4);
         assert_eq!(messages[0].tokens.cache_read, 2);
         assert_eq!(messages[0].tokens.reasoning, 1);
         assert_eq!(messages[1].tokens.input, 10);
-        assert_eq!(messages[1].tokens.output, 5);
+        assert_eq!(messages[1].tokens.output, 4);
         assert_eq!(messages[1].tokens.cache_read, 2);
         assert_eq!(messages[1].tokens.reasoning, 1);
     }
@@ -1983,11 +1959,11 @@ mod tests {
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].tokens.input, 450);
-        assert_eq!(messages[0].tokens.output, 80);
+        assert_eq!(messages[0].tokens.output, 70);
         assert_eq!(messages[0].tokens.cache_read, 50);
         assert_eq!(messages[0].tokens.reasoning, 10);
         assert_eq!(messages[1].tokens.input, 8);
-        assert_eq!(messages[1].tokens.output, 3);
+        assert_eq!(messages[1].tokens.output, 2);
         assert_eq!(messages[1].tokens.cache_read, 2);
         assert_eq!(messages[1].tokens.reasoning, 1);
     }
@@ -2072,8 +2048,9 @@ mod tests {
         assert_eq!(messages[0].workspace_key.as_deref(), Some("/repo-child"));
         assert_eq!(messages[0].tokens.input, 500);
         assert_eq!(messages[0].tokens.cache_read, 1000);
-        assert_eq!(messages[0].tokens.output, 200);
+        assert_eq!(messages[0].tokens.output, 150);
         assert_eq!(messages[0].tokens.reasoning, 50);
+        assert_eq!(messages[0].tokens.total(), 1_700);
     }
 
     #[test]
@@ -2124,7 +2101,7 @@ mod tests {
         assert_eq!(messages[0].model_id, "gpt-5.5");
         assert_eq!(messages[0].tokens.input, 500);
         assert_eq!(messages[0].tokens.cache_read, 1000);
-        assert_eq!(messages[0].tokens.output, 200);
+        assert_eq!(messages[0].tokens.output, 150);
         assert_eq!(messages[0].tokens.reasoning, 50);
     }
 
@@ -2538,7 +2515,7 @@ mod tests {
         assert_eq!(incremental.messages.len(), 1);
         assert_eq!(incremental.messages[0].tokens.input, 500);
         assert_eq!(incremental.messages[0].tokens.cache_read, 1000);
-        assert_eq!(incremental.messages[0].tokens.output, 200);
+        assert_eq!(incremental.messages[0].tokens.output, 150);
         assert_eq!(incremental.messages[0].tokens.reasoning, 50);
     }
 
@@ -2572,7 +2549,7 @@ mod tests {
 
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].tokens.input, 8);
-        assert_eq!(messages[0].tokens.output, 3);
+        assert_eq!(messages[0].tokens.output, 2);
         assert_eq!(messages[0].tokens.cache_read, 2);
         assert_eq!(
             messages[0].workspace_key.as_deref(),
@@ -2658,7 +2635,7 @@ mod tests {
 
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[1].tokens.input, 45);
-        assert_eq!(messages[1].tokens.output, 10);
+        assert_eq!(messages[1].tokens.output, 8);
         assert_eq!(messages[1].tokens.cache_read, 5);
         assert_eq!(messages[1].tokens.reasoning, 2);
     }

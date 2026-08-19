@@ -13,7 +13,10 @@ use tokscope::TokscopeApp;
 use tokscope_core::limits::{
     LimitIssue, LimitIssueKind, LimitWindow, SnapshotFreshness, SnapshotStatus,
 };
-use tokscope_core::{LimitSnapshot, Provider, ProviderAccount};
+use tokscope_core::{
+    accounts::{AccountIdentityKind, AccountSource, CredentialProfileKind},
+    LimitSnapshot, Provider, ProviderAccount,
+};
 
 #[gpui::test]
 fn only_authentication_issues_offer_exact_account_sign_in(cx: &mut TestAppContext) {
@@ -22,11 +25,20 @@ fn only_authentication_issues_offer_exact_account_sign_in(cx: &mut TestAppContex
         .with_ymd_and_hms(2026, 8, 18, 12, 0, 0)
         .single()
         .expect("valid fixture timestamp");
-    let mut limits = vec![failed_snapshot(
-        "auth-account",
-        LimitIssueKind::Authentication,
-        now,
-    )];
+    let mut limits = vec![
+        failed_snapshot(
+            Provider::Claude,
+            "auth-claude",
+            LimitIssueKind::Authentication,
+            now,
+        ),
+        failed_snapshot(
+            Provider::Codex,
+            "auth-codex",
+            LimitIssueKind::Authentication,
+            now,
+        ),
+    ];
     limits.extend(
         [
             LimitIssueKind::Network,
@@ -37,7 +49,9 @@ fn only_authentication_issues_offer_exact_account_sign_in(cx: &mut TestAppContex
         ]
         .into_iter()
         .enumerate()
-        .map(|(index, kind)| failed_snapshot(&format!("other-{index}"), kind, now)),
+        .map(|(index, kind)| {
+            failed_snapshot(Provider::Claude, &format!("other-{index}"), kind, now)
+        }),
     );
     let app = cx.new(|_| TokscopeApp::from_snapshots(None, limits, now));
     let content = app.clone();
@@ -60,8 +74,10 @@ fn only_authentication_issues_offer_exact_account_sign_in(cx: &mut TestAppContex
     let cx = VisualTestContext::from_window(*window.deref(), cx).into_mut();
     cx.run_until_parked();
 
-    assert!(has(cx, "reauthenticate-claude-auth-account"));
-    assert!(has(cx, "quota-row-weekly-auth-account"));
+    assert!(has(cx, "reauthenticate-claude-auth-claude"));
+    assert!(has(cx, "reauthenticate-codex-auth-codex"));
+    assert!(has(cx, "quota-row-weekly-auth-claude"));
+    assert!(has(cx, "quota-row-weekly-auth-codex"));
     for selector in [
         "reauthenticate-claude-other-0",
         "reauthenticate-claude-other-1",
@@ -77,12 +93,23 @@ fn has(cx: &mut VisualTestContext, selector: &'static str) -> bool {
     cx.debug_bounds(selector).is_some()
 }
 
-fn failed_snapshot(id: &str, kind: LimitIssueKind, now: chrono::DateTime<Utc>) -> LimitSnapshot {
+fn failed_snapshot(
+    provider: Provider,
+    id: &str,
+    kind: LimitIssueKind,
+    now: chrono::DateTime<Utc>,
+) -> LimitSnapshot {
     LimitSnapshot {
-        provider: Provider::Claude,
+        provider,
         account: ProviderAccount {
             id: id.into(),
+            identity_kind: AccountIdentityKind::ProviderPrincipal,
             email: Some(format!("{id}@example.test")),
+            sources: vec![AccountSource {
+                profile_id: id.into(),
+                kind: CredentialProfileKind::Managed,
+                primary: true,
+            }],
         },
         plan: Some("Max".into()),
         plan_multiplier: None,

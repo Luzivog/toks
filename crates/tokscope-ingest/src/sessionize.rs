@@ -417,7 +417,6 @@ where
 mod tests {
     use super::*;
     use chrono::{FixedOffset, TimeZone};
-
     fn make_msg(client: &str, session_id: &str, timestamp: i64) -> UnifiedMessage {
         UnifiedMessage {
             client: client.to_string(),
@@ -440,13 +439,14 @@ mod tests {
             message_count: 1,
             agent: None,
             dedup_key: None,
+            durable_identity: None,
+            accounting_aliases: Vec::new(),
             session_title: None,
             is_turn_start: false,
             model_attribution_conflicted: false,
             duration_ms: None,
         }
     }
-
     fn make_timed_msg(
         client: &str,
         session_id: &str,

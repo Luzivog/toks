@@ -76,29 +76,43 @@ fn all_time_navigation_opens_summary_chart_and_model_breakdown(cx: &mut TestAppC
 }
 
 #[gpui::test]
-fn overview_ranges_share_a_row_when_both_remain_readable(cx: &mut TestAppContext) {
-    let mut harness = Harness::open(cx, size(px(1900.), px(1000.)));
-    let today = harness.bounds("overview-today-card");
-    let month = harness.bounds("overview-month-card");
+fn overview_chart_and_current_rows_fit_a_narrow_window(cx: &mut TestAppContext) {
+    let mut harness = Harness::open(cx, size(px(1200.), px(1800.)));
+    let card = harness.bounds("overview-usage-card");
+    let chart = harness.bounds("overview-usage-chart");
+    let summary = harness.bounds("usage-summary-sidebar");
+    let current = harness.bounds("overview-current-usage");
+    let today = harness.bounds("overview-usage-today");
+    let month = harness.bounds("overview-usage-month");
 
-    assert_eq!(today.top(), month.top());
-    assert!(today.size.width >= px(700.));
-    assert!(month.size.width >= px(700.));
+    assert!(card.contains(&chart.center()));
+    assert!(card.contains(&current.center()));
+    assert!(chart.size.width >= px(500.));
+    assert_eq!(chart.size.height, summary.size.height);
+    assert!(current.top() >= chart.bottom());
+    assert!(current.contains(&today.center()));
+    assert!(current.contains(&month.center()));
+    assert!(today.left() >= current.left() && today.right() <= current.right());
+    assert!(month.left() >= current.left() && month.right() <= current.right());
 }
 
 #[gpui::test]
-fn overview_ranges_stack_in_a_narrow_window(cx: &mut TestAppContext) {
-    let mut harness = Harness::open(cx, size(px(1200.), px(1800.)));
-    let today = harness.bounds("overview-today-card");
-    let month = harness.bounds("overview-month-card");
-    let today_chart = harness.bounds("overview-today-chart");
-    let month_chart = harness.bounds("overview-month-chart");
+fn usage_headers_place_average_cost_before_totals(cx: &mut TestAppContext) {
+    let mut harness = Harness::open(cx, size(px(1600.), px(1000.)));
+    harness.click("daily");
 
-    assert!(month.top() >= today.bottom());
-    assert!(today.contains(&today_chart.center()));
-    assert!(month.contains(&month_chart.center()));
-    assert!(today_chart.size.width >= px(500.));
-    assert!(month_chart.size.width >= px(500.));
+    let output = harness.bounds("usage-sort-daily-output");
+    let reasoning = harness.bounds("usage-sort-daily-reasoning");
+    let cache_write = harness.bounds("usage-sort-daily-cache-write");
+    let average = harness.bounds("usage-sort-daily-cost-per-million");
+    let total = harness.bounds("usage-sort-daily-total");
+    let cost = harness.bounds("usage-sort-daily-cost");
+
+    assert!(output.left() < reasoning.left());
+    assert!(reasoning.left() < cache_write.left());
+    assert!(cache_write.left() < average.left());
+    assert!(average.left() < total.left());
+    assert!(total.left() < cost.left());
 }
 
 fn history(generated_at_ms: i64) -> HistorySnapshot {

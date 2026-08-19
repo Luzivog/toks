@@ -93,6 +93,7 @@ pub(super) fn usage_summary_sidebar(
     }
 
     v_flex()
+        .debug_selector(|| "usage-summary-sidebar".to_string())
         .w(px(290.))
         .flex_shrink_0()
         .gap_6()

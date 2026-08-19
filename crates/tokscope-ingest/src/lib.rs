@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-
+pub mod accounting_delta;
 mod aggregator;
 pub mod bucket_tz;
 mod cc_mirror;
@@ -17,25 +17,25 @@ pub mod scanner;
 pub mod sessionize;
 pub mod sessions;
 pub mod tui_signal;
-
 pub use aggregator::*;
 pub use bucket_tz::BucketTimezone;
 pub use clients::{ClientCounts, ClientDef, ClientId, PathRoot};
 pub use model_alias::ModelAliasMap;
 pub use parser::*;
+use rayon::prelude::*;
 pub use scanner::*;
 pub use sessionize::{
     compute_daily_active_time, compute_daily_active_time_in, compute_time_metrics, sessionize,
     SessionInterval, TimeMetrics, DEFAULT_IDLE_GAP_MS,
 };
-pub use sessions::{CostSource, UnifiedMessage};
-
-use rayon::prelude::*;
+pub use sessions::{
+    AccountingAlias, AccountingAliasScheme, CostSource, DurableIdentity, DurableIdentityScheme,
+    IdentityStrength, UnifiedMessage,
+};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
-
 /// Strip a CLIProxyAPI-style `(level)` reasoning-effort suffix from a model id.
 ///
 /// Mirrors <https://help.router-for.me/configuration/thinking>: the proxy
@@ -4830,7 +4830,6 @@ fn filter_parsed_messages(
     }
     filtered
 }
-
 pub fn parsed_to_unified(msg: &ParsedMessage, cost: f64) -> UnifiedMessage {
     UnifiedMessage {
         client: msg.client.clone(),
@@ -4854,12 +4853,13 @@ pub fn parsed_to_unified(msg: &ParsedMessage, cost: f64) -> UnifiedMessage {
         message_count: msg.message_count,
         agent: msg.agent.clone(),
         dedup_key: None,
+        durable_identity: None,
+        accounting_aliases: Vec::new(),
         session_title: None,
         is_turn_start: false,
         model_attribution_conflicted: false,
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::{

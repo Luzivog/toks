@@ -5,9 +5,9 @@ use tokscope_core::history::UsagePeriod;
 use crate::{Page, TokscopeApp};
 
 use super::{
-    account_limits_section, breakdown_card, model_breakdown_card, overview_history_loading,
-    page_accent, period_model_usage, table_loading_card, usage_block, usage_chart_card,
-    usage_history_card, usage_page_loading, usage_period_label,
+    account_limits_section, history_freshness_text, model_breakdown_card, overview_history_loading,
+    page_accent, period_model_usage, usage_block, usage_chart_card, usage_history_card,
+    usage_page_loading, usage_period_label,
 };
 
 pub(crate) fn detail(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeApp>) -> impl IntoElement {
@@ -28,10 +28,14 @@ pub(crate) fn detail(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeApp>) -> 
 pub(super) fn overview_page(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeApp>) -> gpui::Div {
     let mut root = v_flex().p_6().gap_5();
 
-    // Historical summary first, followed by current plan state. The detailed
-    // cross-provider breakdown is intentionally the final overview section.
+    // Keep the Overview focused on time ranges and current plan state. Detailed
+    // model attribution remains available on the scoped usage pages.
     if let Some(history) = &app.history {
-        root = root.child(usage_block(history, cx));
+        root = root.child(usage_block(
+            history,
+            history_freshness_text(&app.history_refresh, app.now),
+            cx,
+        ));
     } else if let Some(error) = &app.history_error {
         root = root.child(history_error_card(error, cx));
     } else {
@@ -39,12 +43,6 @@ pub(super) fn overview_page(app: &TokscopeApp, cx: &mut gpui::Context<TokscopeAp
     }
 
     root = root.child(account_limits_section(app, "Usage remaining", cx));
-    if let Some(history) = &app.history {
-        root = root.child(breakdown_card(history, app, cx));
-    } else if app.history_error.is_none() {
-        root = root.child(table_loading_card("Model breakdown", 5, cx));
-    }
-
     root
 }
 
@@ -54,10 +52,11 @@ pub(super) fn usage_page(
     cx: &mut gpui::Context<TokscopeApp>,
 ) -> gpui::Div {
     let mut root = v_flex().p_6().gap_6();
+    let refresh = history_freshness_text(&app.history_refresh, app.now).unwrap_or_default();
     root = root.child(section_header_large(
         usage_period_label(period),
         None,
-        String::new(),
+        refresh,
         cx,
     ));
 
@@ -86,6 +85,7 @@ pub(super) fn usage_page(
                 period,
                 app.usage_tables.sort(period),
                 app.usage_tables.visible_limit(period),
+                history_freshness_text(&app.history_refresh, app.now),
                 cx,
             ));
     } else if let Some(error) = &app.history_error {

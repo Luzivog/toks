@@ -10,6 +10,17 @@ tokscope_binary_dest="$tokscope_prefix/bin/tokscope"
 tokscope_icon_root="$tokscope_data_home/icons/hicolor"
 tokscope_app_root="$tokscope_data_home/applications"
 tokscope_desktop_dest="$tokscope_app_root/tokscope.desktop"
+tokscope_was_running=false
+
+for tokscope_process in /proc/[0-9]*; do
+    tokscope_process_command=$(
+        tr '\0' '\n' <"$tokscope_process/cmdline" 2>/dev/null | head -n 1 || true
+    )
+    if [[ "$tokscope_process_command" == "$tokscope_binary_dest" ]]; then
+        tokscope_was_running=true
+        break
+    fi
+done
 
 if [[ ! -x "$tokscope_binary" ]]; then
     echo "release binary missing — run: cargo build --release --locked" >&2
@@ -50,3 +61,6 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
 fi
 
 echo "installed: $tokscope_binary_dest + $tokscope_desktop_dest"
+if [[ "$tokscope_was_running" == true ]]; then
+    echo "Tokscope is running — restart it to use the newly installed build."
+fi

@@ -29,6 +29,16 @@ pub(crate) fn fmt_cost_full(c: f64) -> String {
     format!("${s}{grouped}.{rem:02}")
 }
 
+pub(super) fn cost_per_million(cost: f64, tokens: i64) -> Option<f64> {
+    (tokens > 0 && cost.is_finite() && cost >= 0.0).then(|| cost * 1_000_000.0 / tokens as f64)
+}
+
+pub(super) fn fmt_cost_per_million(cost: f64, tokens: i64) -> String {
+    cost_per_million(cost, tokens)
+        .map(fmt_cost_full)
+        .unwrap_or_else(|| "—".into())
+}
+
 pub(super) fn fmt_reset(now: DateTime<Utc>, at: Option<DateTime<Utc>>) -> String {
     let Some(at) = at else {
         return "No scheduled reset".into();

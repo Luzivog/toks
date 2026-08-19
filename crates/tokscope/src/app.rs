@@ -4,10 +4,18 @@ use chrono::Utc;
 use gpui::{AppContext, Context};
 use tokscope_core::{history::UsagePeriod, HistorySnapshot, LimitSnapshot};
 
-use crate::{sidebar_motion::SidebarMotion, ModelTablesState, UsageTablesState};
+use crate::{
+    history_refresh::HistoryRefreshState, sidebar_motion::SidebarMotion, ModelTablesState,
+    UsageTablesState,
+};
+
+mod account_operations;
+mod account_removals;
+mod history_task;
+pub(crate) use account_operations::AccountOperations;
+pub(crate) use account_removals::{request_removal, AccountRemovals, RemovalStatus};
 
 const LIMITS_REFRESH: Duration = Duration::from_secs(15);
-const HISTORY_REFRESH: Duration = Duration::from_secs(60);
 pub(super) fn sidebar_open_for_layout(
     currently_open: bool,
     previous_compact_layout: Option<bool>,
@@ -47,7 +55,10 @@ pub struct TokscopeApp {
     pub(crate) limits_loaded: bool,
     pub(crate) history: Option<HistorySnapshot>,
     pub(crate) history_error: Option<String>,
+    pub(crate) history_refresh: HistoryRefreshState,
     pub(crate) account_notice: Option<String>,
+    pub(crate) account_operations: AccountOperations,
+    pub(crate) account_removals: AccountRemovals,
     pub(crate) emails_hidden: bool,
     pub(crate) usage_tables: UsageTablesState,
     pub(crate) model_tables: ModelTablesState,
@@ -77,12 +88,24 @@ impl TokscopeApp {
             }
 
             loop {
+                if this
+                    .update(cx, |app, _| {
+                        for key in app.account_operations.authenticated_accounts() {
+                            app.account_removals.allow(&key);
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
                 let mut limits = cx
                     .background_spawn(async { tokscope_core::limits::collect_all() })
                     .await;
                 tokscope_core::accounts::apply_saved_order(&mut limits);
                 if this
                     .update(cx, |app, cx| {
+                        app.account_removals.filter_refresh(&mut limits);
+                        app.account_operations.reconcile(&mut limits, Utc::now());
                         app.limits = limits;
                         app.limits_loaded = true;
                         cx.notify();
@@ -112,46 +135,7 @@ impl TokscopeApp {
         })
         .detach();
 
-        // Publish the last complete aggregate immediately, then refresh the
-        // scanner in the background. A failed scan never replaces last-good
-        // history with an empty page.
-        cx.spawn(async move |this, cx| {
-            let hydrated = cx
-                .background_spawn(async { tokscope_core::history::hydrate() })
-                .await;
-            if this
-                .update(cx, |app, cx| {
-                    if hydrated.is_some() {
-                        app.history = hydrated;
-                    }
-                    cx.notify();
-                })
-                .is_err()
-            {
-                return;
-            }
-
-            loop {
-                let result = cx
-                    .background_spawn(async { tokscope_core::history::collect() })
-                    .await;
-                let ok = this.update(cx, |app, cx| {
-                    match result {
-                        Ok(h) => {
-                            app.history = Some(h);
-                            app.history_error = None;
-                        }
-                        Err(e) => app.history_error = Some(e.to_string()),
-                    }
-                    cx.notify();
-                });
-                if ok.is_err() {
-                    break;
-                }
-                smol::Timer::after(HISTORY_REFRESH).await;
-            }
-        })
-        .detach();
+        history_task::spawn(cx);
 
         Self::from_snapshots(None, Vec::new(), Utc::now())
     }
@@ -166,6 +150,12 @@ impl TokscopeApp {
         now: chrono::DateTime<Utc>,
     ) -> Self {
         let limits_loaded = !limits.is_empty();
+        let mut history_refresh = HistoryRefreshState::ready();
+        history_refresh.complete(
+            history
+                .as_ref()
+                .and_then(|snapshot| snapshot.captured_through_ms),
+        );
         Self {
             page: Page::Overview,
             sidebar_open: true,
@@ -173,7 +163,10 @@ impl TokscopeApp {
             limits_loaded,
             history,
             history_error: None,
+            history_refresh,
             account_notice: None,
+            account_operations: AccountOperations::default(),
+            account_removals: AccountRemovals::default(),
             emails_hidden: false,
             usage_tables: UsageTablesState::new(),
             model_tables: ModelTablesState::new(),

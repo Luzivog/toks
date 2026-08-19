@@ -48,12 +48,12 @@ pub fn parse(
     LimitSnapshot {
         provider: Provider::Codex,
         account: crate::accounts::ProviderAccount {
-            id: format!("{}-unidentified", Provider::Codex.slug()),
             email: rate_limits
                 .get("email")
                 .and_then(Value::as_str)
                 .filter(|email| !email.is_empty())
                 .map(str::to_string),
+            ..crate::accounts::ProviderAccount::unidentified_for(Provider::Codex)
         },
         plan,
         plan_multiplier,

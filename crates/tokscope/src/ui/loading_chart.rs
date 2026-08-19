@@ -15,8 +15,8 @@ pub(super) fn loading_status(text: &'static str, cx: &App) -> gpui::Div {
         .child(text)
 }
 
-pub(super) fn loading_plot(height: f32, cx: &App) -> gpui::Div {
-    let mut plot = div().relative().w_full().h(px(height)).overflow_hidden();
+pub(super) fn loading_plot(cx: &App) -> gpui::Div {
+    let mut plot = div().relative().w_full().overflow_hidden();
     for top in [0.08_f32, 0.31, 0.54, 0.77, 1.0] {
         plot = plot.child(
             div()
@@ -76,7 +76,18 @@ fn overview_range_loading_card(title: &'static str, page: Page, cx: &App) -> gpu
                 )
                 .child(loading_status("Scanning local usage", cx)),
         )
-        .child(summary_chart_row(summary, loading_plot(280., cx)))
+        .child(summary_chart_row(summary, loading_plot(cx)))
+        .child(overview_metrics_loading(cx))
+}
+
+fn overview_metrics_loading(_cx: &App) -> gpui::Div {
+    v_flex()
+        .debug_selector(|| "overview-current-usage".to_string())
+        .mt_5()
+        .pt_3()
+        .child(Skeleton::new().w_full().h(px(24.)).rounded_md())
+        .child(Skeleton::new().w_full().h(px(36.)).rounded_md())
+        .child(Skeleton::new().w_full().h(px(36.)).rounded_md())
 }
 
 pub(super) fn loading_summary_sidebar(_cx: &App) -> gpui::Div {
@@ -116,10 +127,5 @@ pub(super) fn loading_summary_sidebar(_cx: &App) -> gpui::Div {
 }
 
 pub(super) fn overview_history_loading(cx: &App) -> gpui::Div {
-    h_flex()
-        .w_full()
-        .flex_wrap()
-        .gap_4()
-        .child(overview_range_loading_card("Today", Page::Daily, cx))
-        .child(overview_range_loading_card("This month", Page::Monthly, cx))
+    overview_range_loading_card("Usage — last 30 days", Page::Overview, cx).w_full()
 }

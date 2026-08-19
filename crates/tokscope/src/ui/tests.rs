@@ -1,9 +1,9 @@
 use super::{
-    aggregate_model_usage, all_time_points, all_time_summary, fmt_age, hourly_bucket_day,
-    overview_usage_points, provider_rows, sort_model_usage, sort_usage_buckets, split_limit_label,
-    usage_bucket_is_current, usage_bucket_label, usage_chart_maximum, usage_chart_points,
-    usage_hover_geometry, usage_marker_top, visible_usage_buckets, visible_usage_row_count,
-    ProviderPoint,
+    aggregate_model_usage, all_time_points, all_time_summary, fmt_age, fmt_cost_per_million,
+    hourly_bucket_day, overview_usage_points, provider_rows, sort_model_usage, sort_usage_buckets,
+    split_limit_label, usage_bucket_is_current, usage_bucket_label, usage_chart_maximum,
+    usage_chart_points, usage_hover_geometry, usage_marker_top, visible_usage_buckets,
+    visible_usage_row_count, ProviderPoint,
 };
 use crate::{ModelSortColumn, ModelTablesState, Page, SortDirection, SortState, UsageSortColumn};
 use chrono::{Local, NaiveDate, TimeZone, Utc};
@@ -47,8 +47,8 @@ fn account_freshness_uses_compact_relative_time() {
 fn marker_position_matches_chart_scale() {
     let highest = usage_marker_top(100.0, 100.0);
     let baseline = usage_marker_top(0.0, 100.0);
-    assert!((highest - 10.0 / 280.0).abs() < f32::EPSILON);
-    assert!((baseline - 262.0 / 280.0).abs() < f32::EPSILON);
+    assert_eq!(highest, 0.0);
+    assert_eq!(baseline, 1.0);
 }
 
 #[test]
@@ -120,7 +120,13 @@ fn page_charts_stop_at_the_current_hour_and_day() {
     assert_eq!(usage_chart_points(&history, UsagePeriod::Hourly).len(), 60);
     assert_eq!(usage_chart_points(&history, UsagePeriod::Daily).len(), 13);
     assert_eq!(usage_chart_points(&history, UsagePeriod::Monthly).len(), 18);
-    assert_eq!(overview_usage_points(&history).len(), 18);
+    assert_eq!(overview_usage_points(&history).len(), 30);
+}
+
+#[test]
+fn aggregate_cost_per_million_is_clear_and_zero_safe() {
+    assert_eq!(fmt_cost_per_million(2.5, 5_000_000), "$0.50");
+    assert_eq!(fmt_cost_per_million(0.0, 0), "—");
 }
 
 #[test]
@@ -306,6 +312,31 @@ fn usage_metrics_sort_globally_in_both_directions() {
         },
     );
     assert_eq!(rows[0].tokens, 10);
+}
+
+#[test]
+fn usage_cost_per_million_sorts_across_the_full_result_set() {
+    let low = UsageBucket {
+        key: "2025-01-01".into(),
+        tokens: 2_000_000,
+        cost: 1.0,
+        ..Default::default()
+    };
+    let high = UsageBucket {
+        key: "2026-01-01".into(),
+        tokens: 1_000_000,
+        cost: 3.0,
+        ..Default::default()
+    };
+    let mut rows = vec![&low, &high];
+    sort_usage_buckets(
+        &mut rows,
+        SortState {
+            column: Some(UsageSortColumn::CostPerMillion),
+            direction: SortDirection::Descending,
+        },
+    );
+    assert_eq!(rows[0].key, "2026-01-01");
 }
 
 #[test]

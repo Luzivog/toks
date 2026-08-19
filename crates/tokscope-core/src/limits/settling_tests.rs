@@ -67,6 +67,7 @@ fn current_cli_profile_never_uses_managed_sign_in_grace() {
     let temp = tempfile::tempdir().unwrap();
     let profile = AccountProfile {
         provider: Provider::Claude,
+        profile_id: "claude-current".into(),
         account: ProviderAccount::unidentified_for(Provider::Claude),
         home_dir: temp.path().to_path_buf(),
         config_dir: temp.path().join(".claude"),
@@ -84,6 +85,7 @@ fn loading_account_has_no_false_error_or_usage() {
         ProviderAccount {
             id: "new-account".into(),
             email: None,
+            ..ProviderAccount::unidentified_for(Provider::Codex)
         },
     );
     assert!(snapshot.is_pending());
@@ -114,6 +116,7 @@ fn managed_profile(provider: Provider, created_at_ms: u128) -> (tempfile::TempDi
     .unwrap();
     let profile = AccountProfile {
         provider,
+        profile_id: "managed-profile".into(),
         account: ProviderAccount::unidentified_for(provider),
         home_dir: home,
         config_dir,

@@ -31,6 +31,41 @@ pub(super) fn store(snapshot: &HistorySnapshot) -> Result<()> {
     store_at(&path, snapshot)
 }
 
+/// Preserve the pre-archive aggregate for inspection without treating it as
+/// event-level history. Aggregate rows have no identities and cannot be merged
+/// safely with the durable archive.
+pub(super) fn preserve_legacy_snapshot() {
+    let Some(path) = cache_file() else {
+        return;
+    };
+    let Some(parent) = path.parent() else {
+        return;
+    };
+    let legacy = parent.join("snapshot-before-archive.json");
+    if legacy.exists() || load_from(&path).is_err() {
+        return;
+    }
+    let temporary = unique_temp_path(&legacy);
+    let result = (|| {
+        let mut source = fs::File::open(&path)?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut target = options.open(&temporary)?;
+        std::io::copy(&mut source, &mut target)?;
+        target.sync_all()?;
+        fs::rename(&temporary, &legacy)?;
+        fs::File::open(parent)?.sync_all()
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+}
+
 fn cache_file() -> Option<PathBuf> {
     dirs::data_local_dir()
         .or_else(dirs::data_dir)

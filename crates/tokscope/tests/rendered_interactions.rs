@@ -9,13 +9,13 @@ use gpui_component::TitleBar;
 use std::ops::Deref;
 use tokscope::test_support::{initialize, set_page, sidebar_open, WindowAction, WindowFrame};
 use tokscope::{Page, TokscopeApp};
+use tokscope_core::accounts::{AccountIdentityKind, AccountSource, CredentialProfileKind};
 use tokscope_core::history::{
     DaySlice, HistorySnapshot, MinuteSlice, ModelUsage, SourceHistory, UsageBucket, UsageSeries,
 };
 use tokscope_core::limits::{LimitWindow, SnapshotFreshness, SnapshotStatus};
 use tokscope_core::{LimitSnapshot, Provider, ProviderAccount};
 const VIEWPORT: Size<Pixels> = size(px(1600.0), px(1800.0));
-const RIGHT_EDGE: &str = "resize-right";
 struct Harness {
     app: Entity<TokscopeApp>,
     frame: Entity<WindowFrame>,
@@ -79,7 +79,7 @@ impl Harness {
             .simulate_mouse_move(position, None::<MouseButton>, Modifiers::none());
     }
     fn click(&mut self, selector: &'static str) {
-        self.move_to(RIGHT_EDGE);
+        self.move_to("resize-right");
         let position = self.bounds(selector).center();
         self.cx
             .simulate_mouse_move(position, None::<MouseButton>, Modifiers::none());
@@ -90,7 +90,6 @@ impl Harness {
         self.bounds(first).center().y < self.bounds(second).center().y
     }
 }
-
 #[gpui::test]
 fn account_handle_drops_onto_another_account_row(cx: &mut TestAppContext) {
     let previous_data_home = std::env::var_os("XDG_DATA_HOME");
@@ -260,6 +259,7 @@ fn assert_usage_actions(
         "cache-read",
         "total",
         "cost",
+        "cost-per-million",
     ] {
         let selector: &'static str =
             Box::leak(format!("usage-sort-{period}-{column}").into_boxed_str());
@@ -268,11 +268,6 @@ fn assert_usage_actions(
         harness.click(selector);
         assert!(harness.above(low_row, high_row), "{selector} ascending");
     }
-}
-
-#[gpui::test]
-fn overview_model_headers_are_clickable(cx: &mut TestAppContext) {
-    assert_model_actions(Harness::open(cx, Page::Overview, VIEWPORT), "overview");
 }
 
 #[gpui::test]
@@ -440,7 +435,7 @@ fn model(name: &str, value: i64) -> ModelUsage {
         tokens: value.saturating_mul(5),
         messages: value,
         turns: value,
-        cost: value as f64,
+        cost: (value as f64).powi(2),
         ..Default::default()
     }
 }
@@ -456,7 +451,7 @@ fn bucket(key: String, value: i64, models: Vec<ModelUsage>) -> UsageBucket {
         tokens: value.saturating_mul(5),
         messages: value,
         turns: value,
-        cost: value as f64,
+        cost: (value as f64).powi(2),
         models,
         ..Default::default()
     }
@@ -471,7 +466,13 @@ fn limit_snapshot(provider: Provider, id: &str) -> LimitSnapshot {
         provider,
         account: ProviderAccount {
             id: id.into(),
+            identity_kind: AccountIdentityKind::ProviderPrincipal,
             email: Some(format!("{id}@example.test")),
+            sources: vec![AccountSource {
+                profile_id: format!("profile-{id}").into(),
+                kind: CredentialProfileKind::Managed,
+                primary: true,
+            }],
         },
         plan: None,
         plan_multiplier: None,

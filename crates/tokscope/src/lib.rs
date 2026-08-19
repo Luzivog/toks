@@ -1,6 +1,7 @@
 //! Tokscope application library and deterministic test seam.
 
 mod app;
+mod history_refresh;
 mod palette;
 mod shell;
 mod sidebar_motion;

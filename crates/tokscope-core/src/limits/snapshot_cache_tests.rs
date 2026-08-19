@@ -1,7 +1,10 @@
 use serde_json::json;
 
 use super::{
-    snapshot_cache::{decode_envelope_for_test, round_trip_for_test, sanitized_snapshot},
+    snapshot_cache::{
+        cache_binding_for_test, decode_envelope_for_test, profile_storage_active_for_test,
+        round_trip_for_test, sanitized_snapshot,
+    },
     LimitIssue, LimitIssueKind, LimitSnapshot, LimitWindow, PlanMultiplier, Provider,
     SnapshotFreshness, SnapshotStatus,
 };
@@ -11,9 +14,11 @@ fn profile() -> AccountProfile {
     let home = std::path::PathBuf::from("/not-read-by-this-test");
     AccountProfile {
         provider: Provider::Codex,
+        profile_id: "stable-local-id".into(),
         account: ProviderAccount {
             id: "stable-local-id".into(),
             email: Some("person@example.com".into()),
+            ..ProviderAccount::unidentified_for(Provider::Codex)
         },
         home_dir: home.clone(),
         config_dir: home.join(".codex"),
@@ -41,7 +46,7 @@ fn cache_replacement_round_trips_without_leaving_temporary_files() {
     };
 
     let restored = round_trip_for_test(&path, snapshot).unwrap();
-    assert_eq!(restored.account.id, "stable-local-id");
+    assert_eq!(restored.account.id.as_str(), "stable-local-id");
     assert_eq!(restored.plan_multiplier, Some(PlanMultiplier::Five));
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
     #[cfg(unix)]
@@ -87,9 +92,44 @@ fn persisted_snapshot_excludes_identity_raw_payloads_and_transient_failures() {
     assert!(!json.contains("temporary outage"));
     assert!(!json.contains("/private/provider/path"));
     assert!(stored.extras.is_empty());
-    assert_eq!(stored.account.id, "stable-local-id");
+    assert_eq!(stored.account.id.as_str(), "stable-local-id");
     assert_eq!(stored.plan_multiplier, Some(PlanMultiplier::Twenty));
     assert_eq!(stored.windows[0].percent_used, 42.0);
+}
+
+#[test]
+fn cache_path_is_profile_stable_but_snapshot_binding_is_logical_account_specific() {
+    let temp = tempfile::tempdir().unwrap();
+    let first = profile();
+    let mut transitioned = first.clone();
+    transitioned.account.id = "provider-principal-b".into();
+    let snapshot = LimitSnapshot::loading_account(Provider::Codex, first.account.clone());
+
+    let (first_path, first_matches) = cache_binding_for_test(temp.path(), &first, snapshot.clone());
+    let (transitioned_path, transitioned_matches) =
+        cache_binding_for_test(temp.path(), &transitioned, snapshot);
+
+    assert_eq!(first_path, transitioned_path);
+    assert!(first_matches);
+    assert!(!transitioned_matches);
+}
+
+#[test]
+fn removed_managed_profile_cannot_recreate_its_limit_cache() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut removed = profile();
+    removed.home_dir = temp.path().join("removed-profile").join("home");
+    removed.config_dir = removed.home_dir.join(".codex");
+
+    std::fs::create_dir_all(&removed.config_dir).unwrap();
+    assert!(!profile_storage_active_for_test(&removed));
+
+    std::fs::write(
+        removed.home_dir.parent().unwrap().join("profile.json"),
+        b"{}",
+    )
+    .unwrap();
+    assert!(profile_storage_active_for_test(&removed));
 }
 
 #[test]

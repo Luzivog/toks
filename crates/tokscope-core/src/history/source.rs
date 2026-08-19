@@ -1,4 +1,4 @@
-use chrono::{Duration, Local, TimeZone};
+use chrono::Duration;
 use std::collections::HashMap;
 use tokscope_ingest::bucket_tz::BucketTimezone;
 use tokscope_ingest::sessions::UnifiedMessage;
@@ -98,13 +98,4 @@ impl Accum {
             cost_coverage: total.coverage(),
         }
     }
-}
-
-/// Human time label for a unix-minute value, in local time (HH:MM).
-pub fn minute_label(minute: i64) -> String {
-    Local
-        .timestamp_opt(minute * 60, 0)
-        .single()
-        .map(|t| t.format("%H:%M").to_string())
-        .unwrap_or_default()
 }

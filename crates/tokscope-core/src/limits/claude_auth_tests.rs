@@ -129,6 +129,7 @@ fn profile() -> (tempfile::TempDir, AccountProfile) {
     .unwrap();
     let profile = AccountProfile {
         provider: Provider::Claude,
+        profile_id: "claude-current".into(),
         account: ProviderAccount::unidentified_for(Provider::Claude),
         home_dir: temp.path().to_path_buf(),
         config_dir,

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{Datelike, Local, NaiveDate, TimeZone};
+use chrono::{Local, NaiveDate, TimeZone};
 use tokscope_core::history::{HistorySnapshot, ModelUsage, UsageKey, UsagePeriod};
 
 use crate::{ModelSortColumn, SortDirection, SortState};
@@ -56,16 +56,27 @@ pub(super) fn aggregate_model_usage<'a>(
 }
 
 pub(super) fn current_usage_date(history: &HistorySnapshot) -> NaiveDate {
-    history
-        .sources
-        .iter()
-        .filter_map(|source| {
-            source
-                .days
-                .last()
-                .and_then(|day| NaiveDate::parse_from_str(&day.date, "%Y-%m-%d").ok())
+    let generated = if history.generated_at_ms > 0 {
+        Local
+            .timestamp_millis_opt(history.generated_at_ms)
+            .single()
+            .map(|time| time.date_naive())
+    } else {
+        None
+    };
+    generated
+        .or_else(|| {
+            history
+                .sources
+                .iter()
+                .filter_map(|source| {
+                    source
+                        .days
+                        .last()
+                        .and_then(|day| NaiveDate::parse_from_str(&day.date, "%Y-%m-%d").ok())
+                })
+                .max()
         })
-        .max()
         .or_else(|| {
             history
                 .usage
@@ -77,46 +88,7 @@ pub(super) fn current_usage_date(history: &HistorySnapshot) -> NaiveDate {
                 })
                 .max()
         })
-        .or_else(|| {
-            Local
-                .timestamp_millis_opt(history.generated_at_ms)
-                .single()
-                .map(|time| time.date_naive())
-        })
         .unwrap_or_else(|| Local::now().date_naive())
-}
-
-pub(super) fn overview_model_usage(history: &HistorySnapshot) -> Vec<ModelUsage> {
-    let end = current_usage_date(history);
-    let month_key = end.format("%Y-%m").to_string();
-    let monthly = aggregate_model_usage(
-        history
-            .usage
-            .monthly
-            .iter()
-            .filter(|bucket| bucket.key == month_key)
-            .flat_map(|bucket| &bucket.models),
-    );
-    if !monthly.is_empty() {
-        return monthly;
-    }
-
-    // Older snapshots may not contain model-level monthly buckets. Rebuild the
-    // same range from daily buckets instead of silently showing 30-day data.
-    aggregate_model_usage(
-        history
-            .usage
-            .daily
-            .iter()
-            .filter(|bucket| {
-                matches!(
-                    bucket.typed_key(UsagePeriod::Daily),
-                    Some(UsageKey::Daily(date))
-                        if date.year() == end.year() && date.month() == end.month()
-                )
-            })
-            .flat_map(|bucket| &bucket.models),
-    )
 }
 
 pub(super) fn period_model_usage(

@@ -64,7 +64,7 @@ pub(super) fn usage_chart_loading_card(period: UsagePeriod, accent: Hsla, cx: &A
                 )
                 .child(loading_status("Scanning local usage", cx)),
         )
-        .child(summary_chart_row(summary, loading_plot(280., cx)))
+        .child(summary_chart_row(summary, loading_plot(cx)))
 }
 
 pub(super) fn usage_page_loading(period: UsagePeriod, accent: Hsla, cx: &App) -> gpui::Div {

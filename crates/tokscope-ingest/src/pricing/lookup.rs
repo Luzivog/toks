@@ -1,4 +1,8 @@
-use super::{aliases, litellm::ModelPricing};
+use super::{
+    aliases,
+    basis::{compute_basis_cost, PricingBasis},
+    litellm::ModelPricing,
+};
 use crate::{provider_identity, strip_parenthesized_reasoning_tier, TokenBreakdown};
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -83,9 +87,6 @@ const FUZZY_BLOCKLIST: &[&str] = &[
 ];
 
 const MAX_LOOKUP_CACHE_ENTRIES: usize = 512;
-const TIERED_PRICING_THRESHOLD_128K_TOKENS: f64 = 128_000.0;
-const TIERED_PRICING_THRESHOLD_200K_TOKENS: f64 = 200_000.0;
-const TIERED_PRICING_THRESHOLD_256K_TOKENS: f64 = 256_000.0;
 const TIERED_PRICING_THRESHOLD_272K_TOKENS: f64 = 272_000.0;
 
 const MIN_FUZZY_MATCH_LEN: usize = 5;
@@ -1248,6 +1249,21 @@ impl PricingLookup {
         compute_cost_for_lookup(&result, provider_id, usage)
     }
 
+    pub(crate) fn calculate_basis_cost_with_provider(
+        &self,
+        model_id: &str,
+        provider_id: Option<&str>,
+        usage: &TokenBreakdown,
+        basis: &PricingBasis,
+        long_context: bool,
+    ) -> f64 {
+        let provider_id = normalize_provider_hint(provider_id);
+        let Some(result) = self.resolve_for_usage(model_id, provider_id, usage) else {
+            return 0.0;
+        };
+        compute_basis_cost_for_lookup(&result, provider_id, basis, long_context)
+    }
+
     pub(crate) fn covers_usage_with_provider(
         &self,
         model_id: &str,
@@ -1435,31 +1451,35 @@ fn compute_cost_for_lookup(
     provider_id: Option<&str>,
     usage: &TokenBreakdown,
 ) -> f64 {
-    let calculate = |pricing| {
-        compute_cost(
-            pricing,
-            usage.input,
-            usage.output,
-            usage.cache_read,
-            usage.cache_write,
-            usage.reasoning,
-        )
-    };
     let total_input = usage
         .input
         .max(0)
         .saturating_add(usage.cache_read.max(0))
         .saturating_add(usage.cache_write.max(0));
+    compute_basis_cost_for_lookup(
+        result,
+        provider_id,
+        &PricingBasis::from_usage(usage),
+        total_input > TIERED_PRICING_THRESHOLD_272K_TOKENS as i64,
+    )
+}
+
+fn compute_basis_cost_for_lookup(
+    result: &LookupResult,
+    provider_id: Option<&str>,
+    basis: &PricingBasis,
+    long_context: bool,
+) -> f64 {
     if !uses_openai_full_request_272k_pricing(result, provider_id) {
-        return calculate(&result.pricing);
+        return compute_basis_cost(&result.pricing, basis);
     }
 
     let mut pricing = result.pricing.clone();
-    if total_input <= TIERED_PRICING_THRESHOLD_272K_TOKENS as i64 {
+    if !long_context {
         pricing.input_cost_per_token_above_272k_tokens = None;
         pricing.output_cost_per_token_above_272k_tokens = None;
         pricing.cache_read_input_token_cost_above_272k_tokens = None;
-        return calculate(&pricing);
+        return compute_basis_cost(&pricing, basis);
     }
 
     if let Some(high) = pricing
@@ -1518,7 +1538,7 @@ fn compute_cost_for_lookup(
         }
     }
 
-    calculate(&pricing)
+    compute_basis_cost(&pricing, basis)
 }
 
 pub fn compute_cost(
@@ -1529,117 +1549,16 @@ pub fn compute_cost(
     cache_write: i64,
     reasoning: i64,
 ) -> f64 {
-    let safe_price = |opt: Option<f64>| opt.filter(|v| is_valid_price_value(*v)).unwrap_or(0.0);
-    let tiered_cost = |tokens: f64, base: Option<f64>, tiers: &[(f64, Option<f64>)]| {
-        let base_price = safe_price(base);
-        let mut cost = 0.0;
-        let mut lower_bound = 0.0;
-        let mut active_price = base_price;
-
-        for (threshold, tier_price) in tiers {
-            let Some(tier_price) = tier_price.filter(|v| is_valid_price_value(*v)) else {
-                continue;
-            };
-
-            if !threshold.is_finite() || *threshold <= lower_bound {
-                continue;
-            }
-
-            if tokens <= *threshold {
-                return cost + (tokens - lower_bound).max(0.0) * active_price;
-            }
-
-            cost += (*threshold - lower_bound) * active_price;
-            lower_bound = *threshold;
-            active_price = tier_price;
-        }
-
-        cost + (tokens - lower_bound).max(0.0) * active_price
-    };
-
-    let input_clamped = input.max(0) as f64;
-    let output_clamped = output.max(0).saturating_add(reasoning.max(0)) as f64;
-    let cache_read_clamped = cache_read.max(0) as f64;
-    let cache_write_clamped = cache_write.max(0) as f64;
-
-    let input_cost = tiered_cost(
-        input_clamped,
-        pricing.input_cost_per_token,
-        &[
-            (
-                TIERED_PRICING_THRESHOLD_128K_TOKENS,
-                pricing.input_cost_per_token_above_128k_tokens,
-            ),
-            (
-                TIERED_PRICING_THRESHOLD_200K_TOKENS,
-                pricing.input_cost_per_token_above_200k_tokens,
-            ),
-            (
-                TIERED_PRICING_THRESHOLD_256K_TOKENS,
-                pricing.input_cost_per_token_above_256k_tokens,
-            ),
-            (
-                TIERED_PRICING_THRESHOLD_272K_TOKENS,
-                pricing.input_cost_per_token_above_272k_tokens,
-            ),
-        ],
-    );
-    let output_cost = tiered_cost(
-        output_clamped,
-        pricing.output_cost_per_token,
-        &[
-            (
-                TIERED_PRICING_THRESHOLD_128K_TOKENS,
-                pricing.output_cost_per_token_above_128k_tokens,
-            ),
-            (
-                TIERED_PRICING_THRESHOLD_200K_TOKENS,
-                pricing.output_cost_per_token_above_200k_tokens,
-            ),
-            (
-                TIERED_PRICING_THRESHOLD_256K_TOKENS,
-                pricing.output_cost_per_token_above_256k_tokens,
-            ),
-            (
-                TIERED_PRICING_THRESHOLD_272K_TOKENS,
-                pricing.output_cost_per_token_above_272k_tokens,
-            ),
-        ],
-    );
-    // Cache-read tiers stay limited to the 200k and 272k thresholds
-    // because upstream LiteLLM does not currently declare 128k or 256k
-    // cache-read pricing for any model. If upstream begins emitting
-    // those keys, also add matching fields to `ModelPricing`,
-    // `has_any_valid_above_tier_value`, and `has_meaningful_tier_support`;
-    // otherwise tier walks will silently undercost long-context cache reads
-    // on those models. `has_any_usable_pricing` and
-    // `quotes_zero_for_every_published_rate` need no entry here: they read
-    // `ModelPricing::all_rates`, whose exhaustive destructure fails to
-    // compile until the new field is added there.
-    let cache_read_cost = tiered_cost(
-        cache_read_clamped,
-        pricing.cache_read_input_token_cost,
-        &[
-            (
-                TIERED_PRICING_THRESHOLD_200K_TOKENS,
-                pricing.cache_read_input_token_cost_above_200k_tokens,
-            ),
-            (
-                TIERED_PRICING_THRESHOLD_272K_TOKENS,
-                pricing.cache_read_input_token_cost_above_272k_tokens,
-            ),
-        ],
-    );
-    let cache_write_cost = tiered_cost(
-        cache_write_clamped,
-        pricing.cache_creation_input_token_cost,
-        &[(
-            TIERED_PRICING_THRESHOLD_200K_TOKENS,
-            pricing.cache_creation_input_token_cost_above_200k_tokens,
-        )],
-    );
-
-    input_cost + output_cost + cache_read_cost + cache_write_cost
+    compute_basis_cost(
+        pricing,
+        &PricingBasis::from_usage(&TokenBreakdown {
+            input,
+            output,
+            cache_read,
+            cache_write,
+            reasoning,
+        }),
+    )
 }
 
 fn extract_model_family(model_id: &str) -> String {

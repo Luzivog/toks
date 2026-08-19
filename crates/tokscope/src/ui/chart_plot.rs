@@ -3,20 +3,17 @@ use gpui_component::{chart::AreaChart, tooltip::Tooltip, ActiveTheme};
 
 use super::{chart_tooltip::ProviderPoint, claude_accent, codex_accent, usage_point_tooltip};
 
-const USAGE_CHART_HEIGHT: f32 = 280.0;
 const USAGE_AXIS_GAP: f32 = 18.0;
 const USAGE_CHART_TOP_GAP: f32 = 10.0;
 
 /// Match gpui-component's AreaChart scale so the hover marker sits directly
 /// on the selected day's higher series.
 pub(super) fn usage_marker_top(value: f64, maximum: f64) -> f32 {
-    let plot_bottom = USAGE_CHART_HEIGHT - USAGE_AXIS_GAP;
-    let y = if maximum > 0.0 {
-        plot_bottom + (value / maximum) as f32 * (USAGE_CHART_TOP_GAP - plot_bottom)
+    if maximum > 0.0 {
+        (1.0 - (value / maximum) as f32).clamp(0.0, 1.0)
     } else {
-        plot_bottom
-    };
-    (y / USAGE_CHART_HEIGHT).clamp(0.0, 1.0)
+        1.0
+    }
 }
 
 /// Return the hit region and the point's x-position inside it. Regions meet
@@ -76,10 +73,10 @@ pub(super) fn provider_usage_chart(
                     .group(group.clone())
                     .id((id_prefix, index))
                     .absolute()
-                    .top_0()
+                    .top(px(USAGE_CHART_TOP_GAP))
+                    .bottom(px(USAGE_AXIS_GAP))
                     .left(relative(left))
                     .w(relative(width))
-                    .h_full()
                     .tooltip(move |window, cx| {
                         let point = point.clone();
                         Tooltip::element(move |_, cx| usage_point_tooltip(&point, cx))
@@ -109,7 +106,6 @@ pub(super) fn provider_usage_chart(
         .debug_selector(move || format!("{id_prefix}-chart"))
         .relative()
         .w_full()
-        .h(px(USAGE_CHART_HEIGHT))
         .min_w_0()
         .child(
             AreaChart::new(data)

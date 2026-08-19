@@ -11,7 +11,10 @@ use gpui_component::TitleBar;
 use tokscope::test_support::{initialize, WindowFrame};
 use tokscope::TokscopeApp;
 use tokscope_core::limits::{SnapshotFreshness, SnapshotStatus};
-use tokscope_core::{LimitSnapshot, Provider, ProviderAccount};
+use tokscope_core::{
+    accounts::{AccountIdentityKind, AccountSource, CredentialProfileKind},
+    LimitSnapshot, Provider, ProviderAccount,
+};
 
 #[gpui::test]
 fn email_privacy_overlay_preserves_account_header_layout(cx: &mut TestAppContext) {
@@ -27,7 +30,13 @@ fn email_privacy_overlay_preserves_account_header_layout(cx: &mut TestAppContext
                 provider: Provider::Codex,
                 account: ProviderAccount {
                     id: "privacy".into(),
+                    identity_kind: AccountIdentityKind::ProfileFallback,
                     email: Some("hello@example.test".into()),
+                    sources: vec![AccountSource {
+                        profile_id: "privacy-source".into(),
+                        kind: CredentialProfileKind::Managed,
+                        primary: true,
+                    }],
                 },
                 plan: Some("Pro".into()),
                 plan_multiplier: None,
@@ -66,6 +75,7 @@ fn email_privacy_overlay_preserves_account_header_layout(cx: &mut TestAppContext
     cx.run_until_parked();
 
     let email_before = bounds(cx, "account-email-codex-privacy");
+    let header_before = bounds(cx, "account-header-codex-privacy");
     let plan_before = bounds(cx, "account-plan-codex-privacy");
     let status_before = bounds(cx, "account-status-codex-privacy");
     assert!(cx
@@ -77,10 +87,11 @@ fn email_privacy_overlay_preserves_account_header_layout(cx: &mut TestAppContext
     cx.simulate_click(toggle, Modifiers::none());
     cx.run_until_parked();
 
-    assert!(cx
-        .debug_bounds("account-email-blur-codex-privacy")
-        .is_some());
-    assert_eq!(email_before, bounds(cx, "account-email-codex-privacy"));
+    let email_after = bounds(cx, "account-email-codex-privacy");
+    let blur = bounds(cx, "account-email-blur-codex-privacy");
+    assert_eq!(email_before, email_after);
+    assert_eq!(email_after, blur, "privacy haze must stay inside the email");
+    assert_eq!(header_before, bounds(cx, "account-header-codex-privacy"));
     assert_eq!(plan_before, bounds(cx, "account-plan-codex-privacy"));
     assert_eq!(status_before, bounds(cx, "account-status-codex-privacy"));
 }

@@ -19,6 +19,10 @@ tokscope-ingest = { path = "../tokscope-ingest" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # Same TLS backend as the ingestion engine, so the artifact is shared.
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls-vendored"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
+hmac = "0.12"
+getrandom = "0.3"
 
 [[bin]]
 name = "tokscope-dump"

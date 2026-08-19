@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::limits::{self, LimitIssue, LimitSnapshot, Provider, SnapshotStatus};
 
-use super::{account_email, discover_profiles, AccountProfile};
+use super::{
+    account_email, coalesce_snapshots, discover_profiles, filter_hidden_accounts, AccountProfile,
+};
 
 const MAX_PARALLEL_ACCOUNTS: usize = 4;
 
@@ -64,7 +66,7 @@ fn collect(mode: CollectionMode) -> Vec<LimitSnapshot> {
         .into_inner()
         .unwrap_or_else(|poison| poison.into_inner());
     results.sort_by_key(|(index, _)| *index);
-    results.into_iter().map(|(_, snapshot)| snapshot).collect()
+    filter_hidden_accounts(coalesce_snapshots(results))
 }
 
 fn collect_profile(profile: &AccountProfile, mode: CollectionMode) -> LimitSnapshot {

@@ -1,6 +1,10 @@
 //! Claude Code plan limits from its local cache and live usage response. Both
 //! shapes feed [`parse_utilization`].
 
+mod principal;
+
+pub(crate) use principal::read_principal_material;
+
 use super::{
     humanize_id, parse_rfc3339, read_claude_plan, LimitSnapshot, LimitWindow, PlanMultiplier,
     Provider,
@@ -86,17 +90,14 @@ pub fn parse_utilization(
         windows = windows_from_structural_scan(util);
     }
 
-    let mut extras = Vec::new();
-    if let Some(spend) = util.get("spend") {
-        if spend.get("enabled").and_then(Value::as_bool) == Some(true) {
-            extras.push(("spend".to_string(), spend.clone()));
-        }
-    }
-    if let Some(extra) = util.get("extra_usage") {
-        if extra.get("is_enabled").and_then(Value::as_bool) == Some(true) {
-            extras.push(("extra_usage".to_string(), extra.clone()));
-        }
-    }
+    let extras = [("spend", "enabled"), ("extra_usage", "is_enabled")]
+        .into_iter()
+        .filter_map(|(name, enabled)| {
+            let value = util.get(name)?;
+            (value.get(enabled).and_then(Value::as_bool) == Some(true))
+                .then(|| (name.to_string(), value.clone()))
+        })
+        .collect();
 
     LimitSnapshot {
         provider: Provider::Claude,

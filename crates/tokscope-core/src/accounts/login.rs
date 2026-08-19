@@ -2,26 +2,21 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
 
 use crate::limits::Provider;
 
 use super::{
     discover_profiles, now_millis, now_nanos, profiles_root, restrict_directory, write_metadata,
-    AddAccountStarted, ProfileMetadata, PROFILE_VERSION,
+    AddAccountStarted, CredentialProfileId, ProfileMetadata, PROFILE_VERSION,
 };
+
+mod lifecycle;
+pub use lifecycle::{cancel_login, login_outcome, LoginOutcome};
 
 /// Start the provider's official login command in an isolated terminal. Only
 /// non-secret profile metadata is persisted by Tokscope.
 pub fn begin_add_account(provider: Provider) -> Result<AddAccountStarted> {
-    let cli_name = match provider {
-        Provider::Claude => "claude",
-        Provider::Codex => "codex",
-    };
-    let cli = find_executable(cli_name)
-        .with_context(|| format!("{cli_name} is not installed or is not on PATH"))?;
-    let terminal = find_terminal().context("no supported terminal application was found")?;
-
+    let (terminal, cli) = login_command(provider)?;
     let provider_root = profiles_root()?.join(provider.slug());
     fs::create_dir_all(&provider_root)
         .with_context(|| format!("creating {} profile storage", provider.display_name()))?;
@@ -29,21 +24,17 @@ pub fn begin_add_account(provider: Provider) -> Result<AddAccountStarted> {
 
     let created_at_ms = now_millis()?;
     let id = format!("{:x}-{:x}", now_nanos()?, std::process::id());
+    let profile_id = CredentialProfileId::new(id.clone());
     let root = provider_root.join(&id);
     let home = root.join("home");
-    let config = match provider {
-        Provider::Claude => home.join(".claude"),
-        Provider::Codex => home.join(".codex"),
-    };
-
+    let config = provider_config(provider, &home);
     fs::create_dir_all(&config).context("creating isolated provider profile")?;
-    restrict_directory(&root)?;
-    restrict_directory(&home)?;
-    restrict_directory(&config)?;
-
+    for directory in [&root, &home, &config] {
+        restrict_directory(directory)?;
+    }
     let metadata = ProfileMetadata {
         version: PROFILE_VERSION,
-        id: id.clone(),
+        id,
         provider,
         created_at_ms,
     };
@@ -58,20 +49,44 @@ pub fn begin_add_account(provider: Provider) -> Result<AddAccountStarted> {
             return Err(error);
         }
     };
-    watch_login(child, root, config, provider);
-
+    lifecycle::track_add(child, provider, profile_id.clone(), config);
     Ok(AddAccountStarted {
         provider,
-        account_id: id,
+        account_id: profile_id,
     })
 }
 
-/// Reopen the provider-owned sign-in flow for one existing local profile.
-/// The profile is neither replaced nor removed, so its last-good usage and
-/// stable account identity remain intact throughout reauthentication.
-pub fn begin_reauthentication(provider: Provider, account_id: &str) -> Result<()> {
-    let profile = exact_profile(discover_profiles(), provider, account_id)
+/// Reopen sign-in for one exact credential profile. Completion is reported by
+/// [`login_outcome`], including a typed identity transition when reauth signs
+/// the profile into a different provider account.
+pub fn begin_reauthentication(provider: Provider, profile_id: &CredentialProfileId) -> Result<()> {
+    let profile = exact_profile(discover_profiles(), provider, profile_id)
         .context("account profile is no longer available")?;
+    let (terminal, cli) = login_command(provider)?;
+    let before = super::provider_principal_id(&profile);
+    let before_stamp = lifecycle::credential_stamp(provider, &profile.config_dir);
+    let child = spawn_login(
+        &terminal,
+        &cli,
+        provider,
+        &profile.home_dir,
+        &profile.config_dir,
+    )?;
+    lifecycle::track_reauthentication(child, profile, before, before_stamp);
+    Ok(())
+}
+
+pub(super) fn exact_profile(
+    profiles: Vec<super::AccountProfile>,
+    provider: Provider,
+    profile_id: &CredentialProfileId,
+) -> Option<super::AccountProfile> {
+    profiles
+        .into_iter()
+        .find(|profile| profile.provider == provider && profile.profile_id == *profile_id)
+}
+
+fn login_command(provider: Provider) -> Result<((PathBuf, TerminalKind), PathBuf)> {
     let cli_name = match provider {
         Provider::Claude => "claude",
         Provider::Codex => "codex",
@@ -79,27 +94,7 @@ pub fn begin_reauthentication(provider: Provider, account_id: &str) -> Result<()
     let cli = find_executable(cli_name)
         .with_context(|| format!("{cli_name} is not installed or is not on PATH"))?;
     let terminal = find_terminal().context("no supported terminal application was found")?;
-    let mut child = spawn_login(
-        &terminal,
-        &cli,
-        provider,
-        &profile.home_dir,
-        &profile.config_dir,
-    )?;
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
-}
-
-pub(super) fn exact_profile(
-    profiles: Vec<super::AccountProfile>,
-    provider: Provider,
-    account_id: &str,
-) -> Option<super::AccountProfile> {
-    profiles
-        .into_iter()
-        .find(|profile| profile.provider == provider && profile.account.id == account_id)
+    Ok((terminal, cli))
 }
 
 fn find_executable(name: &str) -> Option<PathBuf> {
@@ -137,16 +132,10 @@ fn spawn_login(
 ) -> Result<std::process::Child> {
     let mut command = Command::new(&terminal.0);
     match terminal.1 {
-        TerminalKind::Gnome => {
-            command.args(["--wait", "--"]);
-        }
-        TerminalKind::GnomeConsole => {
-            command.arg("--");
-        }
-        TerminalKind::Konsole | TerminalKind::XTerminal => {
-            command.arg("-e");
-        }
-    }
+        TerminalKind::Gnome => command.args(["--wait", "--"]),
+        TerminalKind::GnomeConsole => command.arg("--"),
+        TerminalKind::Konsole | TerminalKind::XTerminal => command.arg("-e"),
+    };
     command.arg(cli);
     match provider {
         Provider::Claude => {
@@ -165,30 +154,13 @@ fn spawn_login(
         .context("opening the provider sign-in terminal")
 }
 
-fn watch_login(
-    mut child: std::process::Child,
-    profile_root: PathBuf,
-    config: PathBuf,
-    provider: Provider,
-) {
-    std::thread::spawn(move || {
-        let _ = child.wait();
-        // Some terminal launchers detach from their command. Give the provider
-        // CLI time to finish writing credentials before treating the profile as
-        // an abandoned sign-in.
-        for _ in 0..300 {
-            if credentials_file(provider, &config).is_file() {
-                return;
-            }
-            std::thread::sleep(Duration::from_secs(1));
-        }
-        let _ = fs::remove_dir_all(profile_root);
-    });
-}
-
-fn credentials_file(provider: Provider, config: &Path) -> PathBuf {
+fn provider_config(provider: Provider, home: &Path) -> PathBuf {
     match provider {
-        Provider::Claude => config.join(".credentials.json"),
-        Provider::Codex => config.join("auth.json"),
+        Provider::Claude => home.join(".claude"),
+        Provider::Codex => home.join(".codex"),
     }
 }
+
+#[cfg(test)]
+#[path = "login/tests.rs"]
+mod tests;
