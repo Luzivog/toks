@@ -101,7 +101,7 @@ fn wide_pages_use_a_centered_readable_content_column(cx: &mut TestAppContext) {
     let left_gutter = content.left() - detail.left();
     let right_gutter = detail.right() - content.right();
 
-    assert_eq!(content.size.width, px(1500.));
+    assert_eq!(content.size.width, px(1280.));
     assert!((left_gutter - right_gutter).abs() <= px(1.));
     assert!(left_gutter > px(100.));
 }

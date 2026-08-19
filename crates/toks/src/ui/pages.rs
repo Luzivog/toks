@@ -10,7 +10,7 @@ use super::{
     usage_page_loading, usage_period_label,
 };
 
-const PAGE_CONTENT_MAX_WIDTH: f32 = 1500.0;
+const PAGE_CONTENT_MAX_WIDTH: f32 = 1280.0;
 
 pub(crate) fn detail(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> impl IntoElement {
     let page = app.page;
