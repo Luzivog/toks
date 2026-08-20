@@ -4,13 +4,17 @@ use toks_core::history::ModelUsage;
 
 use crate::{ModelSortColumn, Page, SortState, ToksApp};
 
-use super::{model_columns_header, model_usage_row, section_meta, section_title, sort_model_usage};
+use super::{
+    model_columns_header, model_usage_row, section_meta, section_title, sort_model_usage,
+    TableLayout,
+};
 
 pub(super) fn model_breakdown_card(
     mut models: Vec<ModelUsage>,
     range: &'static str,
     page: Page,
     sort: SortState<ModelSortColumn>,
+    layout: TableLayout,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
     sort_model_usage(&mut models, sort);
@@ -38,9 +42,9 @@ pub(super) fn model_breakdown_card(
         );
     }
 
-    card = card.child(model_columns_header(page, sort, cx));
+    card = card.child(model_columns_header(page, sort, layout, cx));
     for model in &models {
-        card = card.child(model_usage_row(model, page, cx));
+        card = card.child(model_usage_row(model, page, layout, sort.column, cx));
     }
     card
 }

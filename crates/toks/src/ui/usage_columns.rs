@@ -4,7 +4,7 @@ use crate::UsageSortColumn;
 
 use super::{fmt_cost_full, fmt_cost_per_million, fmt_tokens};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum UsageColumn {
     Turns,
     Messages,

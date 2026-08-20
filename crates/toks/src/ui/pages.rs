@@ -1,23 +1,32 @@
-use gpui::{div, prelude::*, px, App};
+use gpui::{div, prelude::*, px, App, Pixels};
 use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
 use toks_core::history::UsagePeriod;
 
 use crate::{Page, ToksApp};
 
 use super::{
-    account_limits_section, history_freshness_text, model_breakdown_card, overview_history_loading,
-    page_accent, period_model_usage, usage_block, usage_chart_card, usage_history_card,
-    usage_page_loading, usage_period_label,
+    account_limits_section, history_error_card, history_freshness_text, model_breakdown_card,
+    overview_history_loading, page_accent, period_model_usage, usage_block, usage_chart_card,
+    usage_history_card, usage_page_loading, usage_period_label, TableLayout,
+    PAGE_CONTENT_MAX_WIDTH,
 };
 
-const PAGE_CONTENT_MAX_WIDTH: f32 = 1280.0;
-
-pub(crate) fn detail(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> impl IntoElement {
+pub(crate) fn detail(
+    app: &ToksApp,
+    detail_width: Pixels,
+    cx: &mut gpui::Context<ToksApp>,
+) -> impl IntoElement {
     let page = app.page;
+    let layout = TableLayout::from_detail_width(detail_width);
     let body = match page {
-        Page::Overview => overview_page(app, cx),
-        Page::AllTime => super::all_time::all_time_page(app, cx),
-        _ => usage_page(app, page.usage_period().expect("usage page period"), cx),
+        Page::Overview => overview_page(app, layout, cx),
+        Page::AllTime => super::all_time::all_time_page(app, layout, cx),
+        _ => usage_page(
+            app,
+            page.usage_period().expect("usage page period"),
+            layout,
+            cx,
+        ),
     };
     div()
         .id("detail")
@@ -36,7 +45,11 @@ pub(crate) fn detail(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> impl Int
         )
 }
 
-pub(super) fn overview_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
+pub(super) fn overview_page(
+    app: &ToksApp,
+    layout: TableLayout,
+    cx: &mut gpui::Context<ToksApp>,
+) -> gpui::Div {
     let mut root = v_flex().p_6().gap_5();
 
     // Keep the Overview focused on time ranges and current plan state. Detailed
@@ -45,6 +58,7 @@ pub(super) fn overview_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
         root = root.child(usage_block(
             history,
             history_freshness_text(&app.history_refresh, app.now),
+            layout,
             cx,
         ));
     } else if let Some(error) = &app.history_error {
@@ -60,6 +74,7 @@ pub(super) fn overview_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
 pub(super) fn usage_page(
     app: &ToksApp,
     period: UsagePeriod,
+    layout: TableLayout,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
     let mut root = v_flex().p_6().gap_6();
@@ -89,6 +104,7 @@ pub(super) fn usage_page(
                 range,
                 app.page,
                 app.model_tables.sort(app.page),
+                layout,
                 cx,
             ))
             .child(usage_history_card(
@@ -97,6 +113,7 @@ pub(super) fn usage_page(
                 app.usage_tables.sort(period),
                 app.usage_tables.visible_limit(period),
                 history_freshness_text(&app.history_refresh, app.now),
+                layout,
                 cx,
             ));
     } else if let Some(error) = &app.history_error {
@@ -155,33 +172,5 @@ pub(super) fn header_impl(
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child(right),
-        )
-}
-
-pub(super) fn history_error_card(error: &str, cx: &App) -> gpui::Div {
-    v_flex()
-        .gap_2()
-        .p_4()
-        .rounded_xl()
-        .bg(cx.theme().secondary)
-        .border_1()
-        .border_color(cx.theme().danger.opacity(0.45))
-        .child(
-            h_flex()
-                .items_center()
-                .gap_2()
-                .child(div().size_2().rounded_full().bg(cx.theme().danger))
-                .child(
-                    div()
-                        .text_sm()
-                        .font_semibold()
-                        .child("Couldn't load usage history"),
-                ),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(error.to_string()),
         )
 }

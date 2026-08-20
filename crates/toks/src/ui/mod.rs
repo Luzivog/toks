@@ -15,6 +15,7 @@ mod chart_layout;
 mod chart_plot;
 mod chart_tooltip;
 mod format;
+mod history_error;
 mod history_freshness;
 mod limit_issue;
 mod limit_rows;
@@ -23,6 +24,7 @@ mod limit_section_error;
 mod limit_status;
 mod loading_chart;
 mod loading_content;
+mod model_columns;
 mod model_data;
 mod model_rows;
 mod models;
@@ -34,6 +36,7 @@ mod quota_row;
 mod section;
 mod sidebar;
 mod summary;
+mod table_layout;
 mod theme;
 mod usage_chart;
 mod usage_columns;
@@ -58,6 +61,7 @@ use format::{
     cost_per_million, fmt_age, fmt_as_of, fmt_cost_full, fmt_cost_per_million, fmt_reset,
     fmt_tokens,
 };
+use history_error::history_error_card;
 use history_freshness::history_freshness_text;
 use limit_issue::limit_issue_row;
 use limit_rows::account_limits_group;
@@ -68,6 +72,7 @@ use loading_chart::{
     loading_plot, loading_status, loading_summary_sidebar, overview_history_loading,
 };
 use loading_content::{account_limits_loading_content, usage_page_loading};
+use model_columns::ModelColumn;
 #[cfg(test)]
 use model_data::aggregate_model_usage;
 use model_data::{current_usage_date, period_model_usage, sort_model_usage};
@@ -82,6 +87,7 @@ use quota_row::quota_row;
 use quota_row::split_limit_label;
 use section::{section_meta, section_title};
 use summary::{usage_summary_sidebar, UsageSummary};
+use table_layout::{TableLayout, PAGE_CONTENT_MAX_WIDTH};
 use theme::{accent_for_provider, claude_accent, codex_accent, gauge_color};
 use usage_chart::{usage_chart_card, usage_chart_identity};
 use usage_columns::UsageColumn;
@@ -104,8 +110,12 @@ pub fn sidebar(app: &ToksApp, cx: &mut gpui::Context<ToksApp>, overlay: bool) ->
     sidebar::sidebar(app, cx, overlay)
 }
 
-pub fn detail(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> impl IntoElement {
-    pages::detail(app, cx)
+pub fn detail(
+    app: &ToksApp,
+    detail_width: gpui::Pixels,
+    cx: &mut gpui::Context<ToksApp>,
+) -> impl IntoElement {
+    pages::detail(app, detail_width, cx)
 }
 
 #[cfg(test)]

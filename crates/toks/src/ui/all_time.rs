@@ -9,17 +9,22 @@ use super::{
     all_time_data::{all_time_points, all_time_summary},
     chart_layout::summary_chart_row,
     chart_plot::provider_usage_chart,
-    history_freshness_text,
+    history_error_card, history_freshness_text,
     loading_chart::{loading_plot, loading_status, loading_summary_sidebar},
     model_data::aggregate_model_usage,
     models::model_breakdown_card,
-    pages::{history_error_card, section_header_large},
+    pages::section_header_large,
     section::section_title,
     summary::usage_summary_sidebar,
+    table_layout::TableLayout,
     theme::{claude_accent, codex_accent, page_accent},
 };
 
-pub(super) fn all_time_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
+pub(super) fn all_time_page(
+    app: &ToksApp,
+    layout: TableLayout,
+    cx: &mut gpui::Context<ToksApp>,
+) -> gpui::Div {
     let mut capture = app
         .history
         .as_ref()
@@ -55,6 +60,7 @@ pub(super) fn all_time_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
             "All history",
             Page::AllTime,
             app.model_tables.sort(Page::AllTime),
+            layout,
             cx,
         ))
 }

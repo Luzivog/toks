@@ -1,4 +1,4 @@
-use super::{sort_action, UsageColumn};
+use super::{sort_action, TableLayout, UsageColumn};
 use crate::{SortState, ToksApp, UsageSortColumn};
 use chrono::NaiveDate;
 use gpui::{div, prelude::*, px, App, SharedString};
@@ -7,6 +7,7 @@ use toks_core::history::UsagePeriod;
 pub(super) fn usage_columns_header(
     period: UsagePeriod,
     sort: SortState<UsageSortColumn>,
+    layout: TableLayout,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
     let period_label = match period {
@@ -24,20 +25,24 @@ pub(super) fn usage_columns_header(
                 .min_w(px(130.))
                 .child(usage_period_sort_header(period_label, period, sort, cx).justify_start()),
         );
-    for column in UsageColumn::ALL {
+    for column in layout.usage_columns(sort.column) {
         header = header.child(usage_sort_header(column, period, sort, cx));
     }
     header
 }
 
-pub(super) fn usage_static_columns_header(first: &'static str, cx: &App) -> gpui::Div {
+pub(super) fn usage_static_columns_header(
+    first: &'static str,
+    layout: TableLayout,
+    cx: &App,
+) -> gpui::Div {
     let mut header = h_flex()
         .gap_2()
         .min_w_0()
         .text_xs()
         .text_color(cx.theme().muted_foreground)
         .child(div().flex_1().min_w(px(130.)).child(first));
-    for column in UsageColumn::ALL {
+    for column in layout.usage_columns(None) {
         header = header.child(static_header(column));
     }
     header
@@ -113,6 +118,7 @@ fn usage_period_id(period: UsagePeriod) -> &'static str {
 
 fn static_header(column: UsageColumn) -> gpui::Div {
     div()
+        .debug_selector(move || format!("usage-static-header-{}", column.id()))
         .w(px(column.width()))
         .flex_shrink_0()
         .text_right()

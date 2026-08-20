@@ -8,7 +8,7 @@ use crate::{SortState, ToksApp, UsageSortColumn};
 use super::{
     current_usage_date, hourly_bucket_day, hourly_day_separator, section_meta, section_title,
     sort_usage_buckets, text_action, usage_bucket_is_current, usage_columns_header, usage_data_row,
-    usage_period_label, usage_range_label, visible_usage_buckets,
+    usage_period_label, usage_range_label, visible_usage_buckets, TableLayout,
 };
 
 pub(super) fn visible_usage_row_count(total: usize, visible_limit: usize) -> usize {
@@ -21,6 +21,7 @@ pub(super) fn usage_history_card(
     sort: SortState<UsageSortColumn>,
     visible_limit: usize,
     freshness: Option<String>,
+    layout: TableLayout,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
     let generated = Local
@@ -78,6 +79,8 @@ pub(super) fn usage_history_card(
                 period,
                 grouped_hourly,
                 highlighted,
+                layout,
+                sort.column,
                 cx,
             ));
         }
@@ -101,7 +104,7 @@ pub(super) fn usage_history_card(
                 )))
                 .child(section_meta(context, cx)),
         )
-        .child(usage_columns_header(period, sort, cx))
+        .child(usage_columns_header(period, sort, layout, cx))
         .child(body)
         .when(visible_count < row_count, |card| {
             let next = (row_count - visible_count).min(crate::USAGE_PAGE_SIZE);

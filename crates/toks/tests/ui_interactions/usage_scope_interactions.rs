@@ -8,8 +8,8 @@ use gpui::{
     VisualTestContext, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions,
 };
 use gpui_component::TitleBar;
-use toks::test_support::{initialize, WindowFrame};
-use toks::ToksApp;
+use toks::test_support::{initialize, set_page, WindowFrame};
+use toks::{Page, ToksApp};
 use toks_core::history::{HistorySnapshot, ModelUsage, SourceHistory, UsageBucket, UsageSeries};
 
 struct Harness {
@@ -18,13 +18,21 @@ struct Harness {
 
 impl Harness {
     fn open(cx: &mut TestAppContext, viewport: Size<Pixels>) -> Self {
+        Self::open_page(cx, Page::Overview, viewport)
+    }
+
+    fn open_page(cx: &mut TestAppContext, page: Page, viewport: Size<Pixels>) -> Self {
         initialize(cx);
         let now = Utc
             .with_ymd_and_hms(2026, 8, 18, 12, 0, 0)
             .single()
             .expect("valid fixture timestamp");
-        let app =
-            cx.new(|_| ToksApp::from_snapshots(Some(history(now.timestamp_millis())), vec![], now));
+        let app = cx.new(|_| {
+            let mut app =
+                ToksApp::from_snapshots(Some(history(now.timestamp_millis())), vec![], now);
+            set_page(&mut app, page);
+            app
+        });
         let content = app.clone();
         let window = cx.update(|cx| {
             cx.open_window(
@@ -51,6 +59,10 @@ impl Harness {
         self.cx
             .debug_bounds(selector)
             .unwrap_or_else(|| panic!("missing rendered selector: {selector}"))
+    }
+
+    fn has(&mut self, selector: &'static str) -> bool {
+        self.cx.debug_bounds(selector).is_some()
     }
 
     fn click(&mut self, selector: &'static str) {
@@ -91,6 +103,49 @@ fn overview_chart_and_current_rows_fit_a_narrow_window(cx: &mut TestAppContext) 
     assert!(current.contains(&month.center()));
     assert!(today.left() >= current.left() && today.right() <= current.right());
     assert!(month.left() >= current.left() && month.right() <= current.right());
+}
+
+#[gpui::test]
+fn overview_hides_low_priority_metrics_before_they_overflow(cx: &mut TestAppContext) {
+    let mut harness = Harness::open(cx, size(px(1288.), px(900.)));
+    let current = harness.bounds("overview-current-usage");
+    let cost = harness.bounds("overview-usage-today-cost");
+
+    assert!(!harness.has("overview-usage-today-turns"));
+    assert!(!harness.has("overview-usage-today-messages"));
+    assert!(harness.has("overview-usage-today-input"));
+    assert!(harness.has("overview-usage-today-cache-write"));
+    assert!(harness.has("overview-usage-today-cost-per-million"));
+    assert!(harness.has("overview-usage-today-total"));
+    assert!(current.contains(&cost.center()));
+    assert!(cost.right() <= current.right());
+}
+
+#[gpui::test]
+fn minimum_window_uses_the_same_columns_for_headers_and_rows(cx: &mut TestAppContext) {
+    let mut harness = Harness::open_page(cx, Page::Daily, size(px(940.), px(1200.)));
+
+    for column in ["turns", "messages", "reasoning"] {
+        let header: &'static str = Box::leak(format!("usage-sort-daily-{column}").into_boxed_str());
+        let cell: &'static str =
+            Box::leak(format!("usage-row-daily-2026-08-18-{column}").into_boxed_str());
+        assert!(!harness.has(header));
+        assert!(!harness.has(cell));
+    }
+    for column in ["input", "cache-write", "cost-per-million", "total", "cost"] {
+        let header: &'static str = Box::leak(format!("usage-sort-daily-{column}").into_boxed_str());
+        let cell: &'static str =
+            Box::leak(format!("usage-row-daily-2026-08-18-{column}").into_boxed_str());
+        assert!(harness.has(header));
+        assert!(harness.has(cell));
+    }
+
+    assert!(!harness.has("model-sort-daily-turns"));
+    assert!(harness.has("model-sort-daily-messages"));
+    assert!(harness.has("model-sort-daily-cost"));
+    assert!(
+        harness.bounds("model-sort-daily-cost").right() <= harness.bounds("page-content").right()
+    );
 }
 
 #[gpui::test]

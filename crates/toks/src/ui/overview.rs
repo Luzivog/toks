@@ -6,20 +6,22 @@ use toks_core::history::HistorySnapshot;
 use super::{
     claude_accent, codex_accent, current_usage_date, overview_metrics_card, provider_point,
     provider_usage_chart, section_title, source_bucket_values, summary_chart_row,
-    usage_summary_sidebar, ProviderPoint, UsageSummary,
+    usage_summary_sidebar, ProviderPoint, TableLayout, UsageSummary,
 };
 
 pub(super) fn usage_block(
     history: &HistorySnapshot,
     refresh_label: Option<String>,
+    layout: TableLayout,
     cx: &App,
 ) -> gpui::Div {
-    last_thirty_days_card(history, refresh_label, cx)
+    last_thirty_days_card(history, refresh_label, layout, cx)
 }
 
 fn last_thirty_days_card(
     history: &HistorySnapshot,
     refresh_label: Option<String>,
+    layout: TableLayout,
     cx: &App,
 ) -> gpui::Div {
     let data = overview_usage_points(history);
@@ -61,7 +63,7 @@ fn last_thirty_days_card(
             summary,
             provider_usage_chart(data, "overview-usage", cx),
         ))
-        .child(overview_metrics_card(history, cx))
+        .child(overview_metrics_card(history, layout, cx))
 }
 
 pub(super) fn overview_usage_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {

@@ -23,6 +23,12 @@ impl Render for ToksApp {
         if frame.active {
             window.request_animation_frame();
         }
+        let sidebar_width = if compact {
+            px(0.)
+        } else {
+            px(SIDEBAR_WIDTH * frame.panel)
+        };
+        let detail_width = window.viewport_size().width - sidebar_width;
 
         div()
             .flex()
@@ -59,7 +65,7 @@ impl Render for ToksApp {
                     .min_w_0()
                     .min_h_0()
                     .child(title_bar(self, window, cx))
-                    .child(ui::detail(self, cx)),
+                    .child(ui::detail(self, detail_width, cx)),
             )
             .when(
                 compact && (self.sidebar_open || frame.panel > 0.0 || frame.scrim > 0.0),

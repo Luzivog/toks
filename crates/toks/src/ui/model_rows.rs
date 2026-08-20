@@ -4,21 +4,12 @@ use toks_core::history::ModelUsage;
 
 use crate::{ModelSortColumn, Page, SortState, ToksApp};
 
-use super::{claude_accent, codex_accent, fmt_cost_full, fmt_tokens, sort_action};
-
-const INPUT_WIDTH: f32 = 72.;
-const CACHE_READ_WIDTH: f32 = 88.;
-const CACHE_WRITE_WIDTH: f32 = 90.;
-const OUTPUT_WIDTH: f32 = 72.;
-const REASONING_WIDTH: f32 = 82.;
-const MESSAGES_WIDTH: f32 = 78.;
-const TURNS_WIDTH: f32 = 56.;
-const TOTAL_WIDTH: f32 = 78.;
-const COST_WIDTH: f32 = 102.;
+use super::{claude_accent, codex_accent, sort_action, ModelColumn, TableLayout};
 
 pub(super) fn model_columns_header(
     page: Page,
     sort: SortState<ModelSortColumn>,
+    layout: TableLayout,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
     let mut header = h_flex()
@@ -34,27 +25,19 @@ pub(super) fn model_columns_header(
                 .text_color(cx.theme().muted_foreground)
                 .child("Model"),
         );
-    for (label, width, column) in [
-        ("Input", INPUT_WIDTH, ModelSortColumn::Input),
-        ("Cache read", CACHE_READ_WIDTH, ModelSortColumn::CacheRead),
-        (
-            "Cache write",
-            CACHE_WRITE_WIDTH,
-            ModelSortColumn::CacheWrite,
-        ),
-        ("Output", OUTPUT_WIDTH, ModelSortColumn::Output),
-        ("Reasoning", REASONING_WIDTH, ModelSortColumn::Reasoning),
-        ("Messages", MESSAGES_WIDTH, ModelSortColumn::Messages),
-        ("Turns", TURNS_WIDTH, ModelSortColumn::Turns),
-        ("Total", TOTAL_WIDTH, ModelSortColumn::Total),
-        ("Est. API cost", COST_WIDTH, ModelSortColumn::Cost),
-    ] {
-        header = header.child(model_sort_header(label, width, column, page, sort, cx));
+    for column in layout.model_columns(sort.column) {
+        header = header.child(model_sort_header(column, page, sort, cx));
     }
     header
 }
 
-pub(super) fn model_usage_row(model: &ModelUsage, page: Page, cx: &App) -> gpui::Div {
+pub(super) fn model_usage_row(
+    model: &ModelUsage,
+    page: Page,
+    layout: TableLayout,
+    active_sort: Option<ModelSortColumn>,
+    cx: &App,
+) -> gpui::Div {
     let provider = model.provider.to_lowercase();
     let selector = format!("model-row-{}-{}-{}", page_id(page), provider, model.model);
     let color = if provider.contains("anthropic") || provider.contains("claude") {
@@ -62,7 +45,7 @@ pub(super) fn model_usage_row(model: &ModelUsage, page: Page, cx: &App) -> gpui:
     } else {
         codex_accent()
     };
-    h_flex()
+    let mut row = h_flex()
         .debug_selector(move || selector)
         .gap_2()
         .py_2()
@@ -84,82 +67,42 @@ pub(super) fn model_usage_row(model: &ModelUsage, page: Page, cx: &App) -> gpui:
                         .font_medium()
                         .child(model.model.clone()),
                 ),
-        )
-        .child(number_cell(fmt_tokens(model.input), INPUT_WIDTH, false))
-        .child(number_cell(
-            fmt_tokens(model.cache_read),
-            CACHE_READ_WIDTH,
-            false,
-        ))
-        .child(number_cell(
-            fmt_tokens(model.cache_write),
-            CACHE_WRITE_WIDTH,
-            false,
-        ))
-        .child(number_cell(fmt_tokens(model.output), OUTPUT_WIDTH, false))
-        .child(number_cell(
-            fmt_tokens(model.reasoning),
-            REASONING_WIDTH,
-            false,
-        ))
-        .child(number_cell(
-            fmt_tokens(model.messages),
-            MESSAGES_WIDTH,
-            false,
-        ))
-        .child(number_cell(fmt_tokens(model.turns), TURNS_WIDTH, false))
-        .child(number_cell(fmt_tokens(model.tokens), TOTAL_WIDTH, true))
-        .child(number_cell(fmt_cost_full(model.cost), COST_WIDTH, true))
+        );
+    for column in layout.model_columns(active_sort) {
+        row = row.child(number_cell(column, column.value(model)));
+    }
+    row
 }
 
 fn model_sort_header(
-    label: &'static str,
-    width: f32,
-    column: ModelSortColumn,
+    column: ModelColumn,
     page: Page,
     sort: SortState<ModelSortColumn>,
     cx: &mut gpui::Context<ToksApp>,
 ) -> Button {
-    let active = sort.column == Some(column);
+    let sort_column = column.sort_column();
+    let active = sort.column == Some(sort_column);
     sort_action(
-        SharedString::from(format!(
-            "model-sort-{}-{}",
-            page_id(page),
-            model_sort_column_id(column)
-        )),
-        label,
-        width,
+        SharedString::from(format!("model-sort-{}-{}", page_id(page), column.id())),
+        column.label(),
+        column.width(),
         active,
         sort.direction,
         cx,
     )
     .on_click(cx.listener(move |app, _, _, cx| {
-        app.model_tables.toggle_sort(page, column);
+        app.model_tables.toggle_sort(page, sort_column);
         cx.notify();
     }))
 }
 
-fn model_sort_column_id(column: ModelSortColumn) -> &'static str {
-    match column {
-        ModelSortColumn::Input => "input",
-        ModelSortColumn::CacheRead => "cache-read",
-        ModelSortColumn::CacheWrite => "cache-write",
-        ModelSortColumn::Output => "output",
-        ModelSortColumn::Reasoning => "reasoning",
-        ModelSortColumn::Messages => "messages",
-        ModelSortColumn::Turns => "turns",
-        ModelSortColumn::Total => "total",
-        ModelSortColumn::Cost => "cost",
-    }
-}
-
-fn number_cell(value: String, width: f32, strong: bool) -> gpui::Div {
+fn number_cell(column: ModelColumn, value: String) -> gpui::Div {
     div()
-        .w(px(width))
+        .w(px(column.width()))
         .flex_shrink_0()
         .text_right()
         .text_xs()
-        .when(strong, |cell| cell.font_semibold())
+        .when(column.emphasized(), |cell| cell.font_semibold())
         .child(value)
 }
 
