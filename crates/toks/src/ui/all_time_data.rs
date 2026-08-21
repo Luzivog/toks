@@ -30,6 +30,7 @@ pub(super) fn all_time_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {
             week.format("%b %-d").to_string(),
             source_week_values(history.source("claude"), week),
             source_week_values(history.source("codex"), week),
+            source_week_values(history.source("opencode"), week),
         )
     })
     .collect()
@@ -44,7 +45,15 @@ pub(super) fn all_time_summary(history: &HistorySnapshot) -> UsageSummary {
     };
     let (claude_cost, claude_tokens) = totals("claude");
     let (codex_cost, codex_tokens) = totals("codex");
-    UsageSummary::exact(claude_cost, claude_tokens, codex_cost, codex_tokens)
+    let (opencode_cost, opencode_tokens) = totals("opencode");
+    UsageSummary::exact(
+        claude_cost,
+        claude_tokens,
+        codex_cost,
+        codex_tokens,
+        opencode_cost,
+        opencode_tokens,
+    )
 }
 
 fn source_week_values(source: Option<&SourceHistory>, week: NaiveDate) -> (f64, i64) {

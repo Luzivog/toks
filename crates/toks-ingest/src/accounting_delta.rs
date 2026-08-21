@@ -6,6 +6,9 @@ mod collector;
 mod fingerprint;
 mod identity;
 mod lock;
+mod opencode;
+#[cfg(test)]
+mod opencode_tests;
 mod store;
 mod types;
 

@@ -1,7 +1,10 @@
 use gpui::{div, prelude::*, px, App};
 use gpui_component::{h_flex, progress::Progress, v_flex, ActiveTheme, StyledExt};
 
-use super::{chart_tooltip::ProviderPoint, claude_accent, codex_accent, fmt_cost_full, fmt_tokens};
+use super::{
+    chart_tooltip::ProviderPoint, claude_accent, codex_accent, fmt_cost_full, fmt_tokens,
+    opencode_accent,
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct UsageSummary {
@@ -9,6 +12,8 @@ pub(super) struct UsageSummary {
     pub(super) claude_tokens: i64,
     pub(super) codex_cost: f64,
     pub(super) codex_tokens: i64,
+    pub(super) opencode_cost: f64,
+    pub(super) opencode_tokens: i64,
 }
 
 impl UsageSummary {
@@ -18,6 +23,10 @@ impl UsageSummary {
             summary.claude_tokens = summary.claude_tokens.saturating_add(point.claude_tokens);
             summary.codex_cost += point.codex;
             summary.codex_tokens = summary.codex_tokens.saturating_add(point.codex_tokens);
+            summary.opencode_cost += point.opencode;
+            summary.opencode_tokens = summary
+                .opencode_tokens
+                .saturating_add(point.opencode_tokens);
             summary
         })
     }
@@ -27,12 +36,16 @@ impl UsageSummary {
         claude_tokens: i64,
         codex_cost: f64,
         codex_tokens: i64,
+        opencode_cost: f64,
+        opencode_tokens: i64,
     ) -> Self {
         Self {
             claude_cost: claude_cost.max(0.0),
             claude_tokens: claude_tokens.max(0),
             codex_cost: codex_cost.max(0.0),
             codex_tokens: codex_tokens.max(0),
+            opencode_cost: opencode_cost.max(0.0),
+            opencode_tokens: opencode_tokens.max(0),
         }
     }
 }
@@ -47,13 +60,23 @@ pub(super) fn usage_summary_sidebar(
         claude_tokens,
         codex_cost,
         codex_tokens,
+        opencode_cost,
+        opencode_tokens,
     } = summary;
-    let total_cost = claude_cost + codex_cost;
-    let total_tokens = claude_tokens.saturating_add(codex_tokens);
+    let total_cost = claude_cost + codex_cost + opencode_cost;
+    let total_tokens = claude_tokens
+        .saturating_add(codex_tokens)
+        .saturating_add(opencode_tokens);
     let cost = fmt_cost_full(total_cost);
     let mut providers = vec![
         ("Codex", codex_accent(), codex_cost, codex_tokens),
         ("Claude Code", claude_accent(), claude_cost, claude_tokens),
+        (
+            "OpenCode",
+            opencode_accent(),
+            opencode_cost,
+            opencode_tokens,
+        ),
     ];
     providers.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 

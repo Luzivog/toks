@@ -82,6 +82,37 @@ fn claude_mirror_usage_joins_the_claude_projection() {
     assert_eq!(snapshot.sources[0].total_tokens, 16);
 }
 
+#[test]
+fn opencode_observations_form_their_own_source() {
+    let timestamp = Utc
+        .with_ymd_and_hms(2026, 8, 18, 12, 30, 0)
+        .single()
+        .unwrap();
+    let mut observation = message(timestamp.timestamp_millis());
+    observation.client = "opencode".into();
+    observation.model_id = "opencode-model".into();
+    let codex = message(timestamp.timestamp_millis());
+    let snapshot = materialize::snapshot(
+        ArchiveCapture {
+            messages: vec![observation, codex],
+            ..Default::default()
+        },
+        timestamp,
+        &BucketTimezone::from_pinned_name(Some("UTC")),
+        None,
+    );
+
+    assert_eq!(snapshot.sources.len(), 2);
+    let opencode = snapshot
+        .sources
+        .iter()
+        .find(|source| source.client == "opencode")
+        .unwrap();
+    assert_eq!(opencode.total_tokens, 16);
+    assert_eq!(opencode.total_cost, 2.5);
+    assert!(snapshot.usage.daily[0].tokens > 16);
+}
+
 fn message(timestamp: i64) -> UnifiedMessage {
     UnifiedMessage {
         client: "codex".into(),

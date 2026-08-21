@@ -8,8 +8,8 @@
 Linux · Native Rust · Local-first
 </div>
 
-A local-first Linux desktop app for tracking Claude Code and Codex token usage,
-estimated costs, models, and usage remaining.
+A local-first Linux desktop app for tracking Claude Code, Codex, and OpenCode
+token usage, estimated costs, models, and usage remaining.
 
 ![Toks overview showing usage trends and remaining usage limits](docs/images/overview.png)
 
@@ -54,9 +54,9 @@ required.
 
 ## How it works
 
-Toks reads local Codex and Claude Code history. Once captured, usage survives
-provider-log cleanup in a compact local archive. It only goes online to refresh
-plan limits and public pricing. Tokscale is not required.
+Toks reads local Codex, Claude Code, and OpenCode history. Once captured,
+usage survives provider-log cleanup in a compact local archive. It only goes
+online to refresh plan limits and public pricing. Tokscale is not required.
 
 Costs are API-rate estimates, not subscription spend.
 

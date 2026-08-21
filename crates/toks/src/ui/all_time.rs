@@ -17,7 +17,7 @@ use super::{
     section::section_title,
     summary::usage_summary_sidebar,
     table_layout::TableLayout,
-    theme::{claude_accent, codex_accent, page_accent},
+    theme::{claude_accent, codex_accent, opencode_accent, page_accent},
 };
 
 pub(super) fn all_time_page(
@@ -137,7 +137,8 @@ fn chart_heading(cx: &App) -> gpui::Div {
             h_flex()
                 .gap_3()
                 .child(legend("Codex", codex_accent(), cx))
-                .child(legend("Claude Code", claude_accent(), cx)),
+                .child(legend("Claude Code", claude_accent(), cx))
+                .child(legend("OpenCode", opencode_accent(), cx)),
         )
 }
 

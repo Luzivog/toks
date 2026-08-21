@@ -41,7 +41,7 @@ pub fn forget_range(start_ms: i64, end_ms: i64) -> anyhow::Result<usize> {
 }
 
 /// Provider clients included in the initial product surface.
-const CLIENTS: &[&str] = &["claude", "codex"];
+const CLIENTS: &[&str] = &["claude", "codex", "opencode"];
 /// Live-throughput window, in minutes.
 pub const MINUTES_SPAN: i64 = 60;
 /// Overview-history window, in days.

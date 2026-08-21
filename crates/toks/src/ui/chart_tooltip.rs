@@ -1,7 +1,7 @@
 use gpui::{div, prelude::*, px, App, Hsla, SharedString};
 use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
 
-use super::{claude_accent, codex_accent, fmt_cost_full, fmt_tokens};
+use super::{claude_accent, codex_accent, fmt_cost_full, fmt_tokens, opencode_accent};
 
 /// One aligned point in a cross-provider usage chart.
 #[derive(Clone)]
@@ -12,6 +12,8 @@ pub(super) struct ProviderPoint {
     pub(super) claude_tokens: i64,
     pub(super) codex: f64,
     pub(super) codex_tokens: i64,
+    pub(super) opencode: f64,
+    pub(super) opencode_tokens: i64,
 }
 
 pub(super) fn usage_tooltip_row(
@@ -60,19 +62,30 @@ pub(super) fn usage_tooltip_row(
         )
 }
 
-pub(super) fn provider_rows(point: &ProviderPoint) -> Vec<(&'static str, i64, f64)> {
+pub(super) fn provider_rows(point: &ProviderPoint) -> Vec<(&'static str, Hsla, i64, f64)> {
     let mut providers = vec![
-        ("Codex", point.codex_tokens, point.codex),
-        ("Claude Code", point.claude_tokens, point.claude),
+        ("Codex", codex_accent(), point.codex_tokens, point.codex),
+        (
+            "Claude Code",
+            claude_accent(),
+            point.claude_tokens,
+            point.claude,
+        ),
+        (
+            "OpenCode",
+            opencode_accent(),
+            point.opencode_tokens,
+            point.opencode,
+        ),
     ];
-    providers.retain(|(_, tokens, cost)| *tokens > 0 || *cost > 0.0);
-    providers.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    providers.retain(|&(_, _, tokens, cost)| tokens > 0 || cost > 0.0);
+    providers.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
     providers
 }
 
 pub(super) fn usage_point_tooltip(point: &ProviderPoint, cx: &App) -> gpui::Div {
-    let total_tokens = point.claude_tokens + point.codex_tokens;
-    let total_cost = point.claude + point.codex;
+    let total_tokens = point.claude_tokens + point.codex_tokens + point.opencode_tokens;
+    let total_cost = point.claude + point.codex + point.opencode;
 
     let mut tooltip = v_flex()
         .w(px(300.))
@@ -89,12 +102,7 @@ pub(super) fn usage_point_tooltip(point: &ProviderPoint, cx: &App) -> gpui::Div 
                 .child(div().w(px(82.)).text_right().child("Tokens"))
                 .child(div().w(px(78.)).text_right().child("Cost")),
         );
-    for (label, tokens, cost) in provider_rows(point) {
-        let color = if label == "Claude Code" {
-            claude_accent()
-        } else {
-            codex_accent()
-        };
+    for (label, color, tokens, cost) in provider_rows(point) {
         tooltip = tooltip.child(usage_tooltip_row(
             label,
             Some(color),

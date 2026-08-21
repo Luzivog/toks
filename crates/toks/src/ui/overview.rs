@@ -4,8 +4,8 @@ use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::HistorySnapshot;
 
 use super::{
-    claude_accent, codex_accent, current_usage_date, overview_metrics_card, provider_point,
-    provider_usage_chart, section_title, source_bucket_values, summary_chart_row,
+    claude_accent, codex_accent, current_usage_date, opencode_accent, overview_metrics_card,
+    provider_point, provider_usage_chart, section_title, source_bucket_values, summary_chart_row,
     usage_summary_sidebar, ProviderPoint, TableLayout, UsageSummary,
 };
 
@@ -56,7 +56,8 @@ fn last_thirty_days_card(
                     h_flex()
                         .gap_3()
                         .child(legend_chip("Codex", codex_accent(), cx))
-                        .child(legend_chip("Claude Code", claude_accent(), cx)),
+                        .child(legend_chip("Claude Code", claude_accent(), cx))
+                        .child(legend_chip("OpenCode", opencode_accent(), cx)),
                 ),
         )
         .child(summary_chart_row(
@@ -69,6 +70,7 @@ fn last_thirty_days_card(
 pub(super) fn overview_usage_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {
     let claude = history.source("claude");
     let codex = history.source("codex");
+    let opencode = history.source("opencode");
     let today = current_usage_date(history);
     (0..30)
         .map(|offset| {
@@ -79,6 +81,7 @@ pub(super) fn overview_usage_points(history: &HistorySnapshot) -> Vec<ProviderPo
                 date.format("%m-%d").to_string(),
                 source_bucket_values(claude, |usage| &usage.daily, &key),
                 source_bucket_values(codex, |usage| &usage.daily, &key),
+                source_bucket_values(opencode, |usage| &usage.daily, &key),
             )
         })
         .collect()

@@ -12,6 +12,10 @@ pub(crate) fn codex_accent() -> Hsla {
     gpui::rgb(0xe6e6e4).into()
 }
 
+pub(crate) fn opencode_accent() -> Hsla {
+    gpui::rgb(0x4d_a3_ff).into()
+}
+
 pub(crate) fn page_accent(page: Page, cx: &App) -> Hsla {
     match page {
         Page::Overview => cx.theme().muted_foreground,

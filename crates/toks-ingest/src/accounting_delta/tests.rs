@@ -7,7 +7,7 @@ use tempfile::TempDir;
 
 use super::{AccountingDeltaCollector, AccountingDeltaOptions};
 
-fn options(home: &Path) -> AccountingDeltaOptions {
+pub(super) fn options(home: &Path) -> AccountingDeltaOptions {
     AccountingDeltaOptions {
         home_dir: Some(home.to_string_lossy().into_owned()),
         use_env_roots: false,
@@ -70,7 +70,7 @@ fn model_less_token_line_with_padding(padding_bytes: usize) -> String {
     line
 }
 
-fn write_initial(home: &Path) -> PathBuf {
+pub(super) fn write_initial(home: &Path) -> PathBuf {
     let path = codex_path(home);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(
@@ -85,7 +85,7 @@ fn write_initial(home: &Path) -> PathBuf {
     path
 }
 
-fn setup() -> (TempDir, TempDir, AccountingDeltaCollector) {
+pub(super) fn setup() -> (TempDir, TempDir, AccountingDeltaCollector) {
     let home = TempDir::new().unwrap();
     let state = TempDir::new().unwrap();
     let collector = AccountingDeltaCollector::open_at(state.path()).unwrap();

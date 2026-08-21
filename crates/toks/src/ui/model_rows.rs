@@ -4,7 +4,7 @@ use toks_core::history::ModelUsage;
 
 use crate::{ModelSortColumn, Page, SortState, ToksApp};
 
-use super::{claude_accent, codex_accent, sort_action, ModelColumn, TableLayout};
+use super::{claude_accent, codex_accent, opencode_accent, sort_action, ModelColumn, TableLayout};
 
 pub(super) fn model_columns_header(
     page: Page,
@@ -42,6 +42,14 @@ pub(super) fn model_usage_row(
     let selector = format!("model-row-{}-{}-{}", page_id(page), provider, model.model);
     let color = if provider.contains("anthropic") || provider.contains("claude") {
         claude_accent()
+    } else if provider.contains("opencode")
+        || provider.contains("google")
+        || provider.contains("gemini")
+        || provider.contains("zen")
+        || provider.contains("xai")
+        || provider.contains("grok")
+    {
+        opencode_accent()
     } else {
         codex_accent()
     };

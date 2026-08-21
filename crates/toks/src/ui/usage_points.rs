@@ -23,6 +23,7 @@ pub(super) fn provider_point(
     label: String,
     claude: (f64, i64),
     codex: (f64, i64),
+    opencode: (f64, i64),
 ) -> ProviderPoint {
     ProviderPoint {
         heading,
@@ -31,6 +32,8 @@ pub(super) fn provider_point(
         claude_tokens: claude.1,
         codex: codex.0,
         codex_tokens: codex.1,
+        opencode: opencode.0,
+        opencode_tokens: opencode.1,
     }
 }
 
@@ -40,6 +43,7 @@ pub(super) fn usage_chart_points(
 ) -> Vec<ProviderPoint> {
     let claude = history.source("claude");
     let codex = history.source("codex");
+    let opencode = history.source("opencode");
     let generated_minute = history.generated_at_ms.div_euclid(60_000);
 
     match period {
@@ -63,6 +67,7 @@ pub(super) fn usage_chart_points(
                     local.format("%H:%M").to_string(),
                     values(claude),
                     values(codex),
+                    values(opencode),
                 )
             })
             .collect(),
@@ -87,6 +92,7 @@ pub(super) fn usage_chart_points(
                         format!("{hour:02}:00"),
                         source_bucket_values(claude, |usage| &usage.hourly, &key),
                         source_bucket_values(codex, |usage| &usage.hourly, &key),
+                        source_bucket_values(opencode, |usage| &usage.hourly, &key),
                     )
                 })
                 .collect()
@@ -104,6 +110,7 @@ pub(super) fn usage_chart_points(
                         date.format("%-d").to_string(),
                         source_bucket_values(claude, |usage| &usage.daily, &key),
                         source_bucket_values(codex, |usage| &usage.daily, &key),
+                        source_bucket_values(opencode, |usage| &usage.daily, &key),
                     )
                 })
                 .collect()

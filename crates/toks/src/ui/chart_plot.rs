@@ -1,10 +1,28 @@
 use gpui::{div, prelude::*, px, relative, App, SharedString};
 use gpui_component::{chart::AreaChart, tooltip::Tooltip, ActiveTheme};
 
-use super::{chart_tooltip::ProviderPoint, claude_accent, codex_accent, usage_point_tooltip};
+use super::{
+    chart_tooltip::ProviderPoint, claude_accent, codex_accent, opencode_accent, usage_point_tooltip,
+};
 
 const USAGE_AXIS_GAP: f32 = 18.0;
 const USAGE_CHART_TOP_GAP: f32 = 10.0;
+
+fn top_provider_series(point: &ProviderPoint) -> (f64, gpui::Hsla) {
+    let candidates = [
+        (point.claude_tokens.max(0) as f64, claude_accent()),
+        (point.codex_tokens.max(0) as f64, codex_accent()),
+        (point.opencode_tokens.max(0) as f64, opencode_accent()),
+    ];
+    candidates
+        .into_iter()
+        .max_by(|left, right| {
+            left.0
+                .partial_cmp(&right.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or_default()
+}
 
 /// Match gpui-component's AreaChart scale so the hover marker sits directly
 /// on the selected day's higher series.
@@ -36,7 +54,13 @@ pub(super) fn usage_hover_geometry(index: usize, count: usize) -> (f32, f32, f32
 
 pub(super) fn usage_chart_maximum(data: &[ProviderPoint]) -> f64 {
     data.iter()
-        .flat_map(|point| [point.claude_tokens, point.codex_tokens])
+        .flat_map(|point| {
+            [
+                point.claude_tokens,
+                point.codex_tokens,
+                point.opencode_tokens,
+            ]
+        })
         .map(|value| value.max(0) as f64)
         .fold(0.0_f64, f64::max)
 }
@@ -55,17 +79,15 @@ pub(super) fn provider_usage_chart(
         .filter_map(|(index, point)| {
             if point.claude <= 0.0
                 && point.codex <= 0.0
+                && point.opencode <= 0.0
                 && point.claude_tokens <= 0
                 && point.codex_tokens <= 0
+                && point.opencode_tokens <= 0
             {
                 return None;
             }
             let (left, width, marker_x) = usage_hover_geometry(index, point_count);
-            let (marker_value, marker_color) = if point.claude_tokens > point.codex_tokens {
-                (point.claude_tokens.max(0) as f64, claude_accent())
-            } else {
-                (point.codex_tokens.max(0) as f64, codex_accent())
-            };
+            let (marker_value, marker_color) = top_provider_series(&point);
             let marker_y = usage_marker_top(marker_value, maximum);
             let group: SharedString = format!("{id_prefix}-point-{index}").into();
             Some(
@@ -117,6 +139,10 @@ pub(super) fn provider_usage_chart(
                 .y(|point: &ProviderPoint| point.codex_tokens.max(0) as f64)
                 .stroke(codex_accent())
                 .fill(codex_accent().opacity(0.12))
+                .linear()
+                .y(|point: &ProviderPoint| point.opencode_tokens.max(0) as f64)
+                .stroke(opencode_accent())
+                .fill(opencode_accent().opacity(0.12))
                 .linear()
                 .tick_margin(7),
         )

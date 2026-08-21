@@ -10,6 +10,7 @@ pub(crate) fn source_key(key: &[u8], kind: SourceKind, path: &Path) -> SourceKey
     mac.update(match kind {
         SourceKind::Codex => b"codex",
         SourceKind::Claude => b"claude",
+        SourceKind::OpenCode => b"opencode",
     });
     mac.update(&[0]);
     mac.update(source_domain(kind, path).to_string_lossy().as_bytes());
@@ -22,6 +23,7 @@ fn source_domain(kind: SourceKind, path: &Path) -> PathBuf {
     let markers: &[&str] = match kind {
         SourceKind::Codex => &["sessions", "archived_sessions"],
         SourceKind::Claude => &["projects", "transcripts"],
+        SourceKind::OpenCode => &["opencode"],
     };
     path.ancestors()
         .find(|ancestor| {

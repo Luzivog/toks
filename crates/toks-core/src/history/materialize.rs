@@ -61,6 +61,7 @@ fn canonical_client(client: &str) -> Option<&'static str> {
     match client {
         "claude" => Some("claude"),
         "codex" => Some("codex"),
+        "opencode" => Some("opencode"),
         client if client.starts_with("cc-mirror/") => Some("claude"),
         _ => None,
     }

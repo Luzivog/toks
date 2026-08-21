@@ -12,6 +12,8 @@ mod action;
 mod all_time;
 mod all_time_data;
 mod banked_reset_badge;
+#[cfg(test)]
+mod chart_data_tests;
 mod chart_layout;
 mod chart_plot;
 mod chart_tooltip;
@@ -90,7 +92,7 @@ use quota_row::split_limit_label;
 use section::{section_meta, section_title};
 use summary::{usage_summary_sidebar, UsageSummary};
 use table_layout::{TableLayout, PAGE_CONTENT_MAX_WIDTH};
-use theme::{accent_for_provider, claude_accent, codex_accent, gauge_color};
+use theme::{accent_for_provider, claude_accent, codex_accent, gauge_color, opencode_accent};
 use usage_chart::{usage_chart_card, usage_chart_identity};
 use usage_columns::UsageColumn;
 use usage_metric_row::{usage_data_row, usage_metric_row};

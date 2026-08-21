@@ -99,6 +99,7 @@ pub(crate) struct SourceCandidate {
 pub(crate) enum SourceKind {
     Codex,
     Claude,
+    OpenCode,
 }
 
 pub(crate) struct CollectContext<'a> {

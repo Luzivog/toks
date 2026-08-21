@@ -85,6 +85,7 @@ impl AccountingDeltaCollector {
                     &context,
                 )?,
                 SourceKind::Claude => super::claude::process(&source, previous, &context)?,
+                SourceKind::OpenCode => super::opencode::process(&source, previous, &context)?,
             };
             still_pending += usize::from(processed.remains_pending);
             if let Some(delta) = processed.delta {
@@ -120,7 +121,11 @@ impl AccountingDeltaCollector {
         home: &Path,
         options: &AccountingDeltaOptions,
     ) -> Result<Vec<SourceCandidate>, String> {
-        let clients = vec!["codex".to_string(), "claude".to_string()];
+        let clients = vec![
+            "codex".to_string(),
+            "claude".to_string(),
+            "opencode".to_string(),
+        ];
         let scan = scanner::scan_all_clients_with_scanner_settings(
             home.to_string_lossy().as_ref(),
             &clients,
@@ -130,6 +135,7 @@ impl AccountingDeltaCollector {
         let mut by_key = HashMap::new();
         self.add_candidates(&mut by_key, SourceKind::Codex, scan.get(ClientId::Codex))?;
         self.add_candidates(&mut by_key, SourceKind::Claude, scan.get(ClientId::Claude))?;
+        self.add_candidates(&mut by_key, SourceKind::OpenCode, &scan.opencode_dbs)?;
         let mut candidates: Vec<_> = by_key.into_values().collect();
         candidates.sort_by(|left, right| {
             right
@@ -185,5 +191,6 @@ fn parser_version(kind: SourceKind) -> u32 {
     match kind {
         SourceKind::Codex => super::codex::parser_version(),
         SourceKind::Claude => super::claude::parser_version(),
+        SourceKind::OpenCode => super::opencode::parser_version(),
     }
 }

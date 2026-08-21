@@ -3,7 +3,7 @@ use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::{HistorySnapshot, UsagePeriod};
 
 use super::{
-    claude_accent, codex_accent, legend_chip, provider_usage_chart, section_title,
+    claude_accent, codex_accent, legend_chip, opencode_accent, provider_usage_chart, section_title,
     summary_chart_row, usage_chart_points, usage_summary_sidebar, UsageSummary,
 };
 
@@ -39,7 +39,8 @@ pub(super) fn usage_chart_card(
                     h_flex()
                         .gap_3()
                         .child(legend_chip("Codex", codex_accent(), cx))
-                        .child(legend_chip("Claude Code", claude_accent(), cx)),
+                        .child(legend_chip("Claude Code", claude_accent(), cx))
+                        .child(legend_chip("OpenCode", opencode_accent(), cx)),
                 ),
         )
         .child(summary_chart_row(
