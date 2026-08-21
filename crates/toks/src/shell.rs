@@ -1,12 +1,50 @@
 use std::time::Instant;
 
-use gpui::{div, prelude::*, px, Context, Render, Window};
+use gpui::{
+    canvas, div, prelude::*, px, Context, DispatchPhase, MouseButton, MouseDownEvent,
+    NavigationDirection, Render, Window,
+};
 use gpui_component::ActiveTheme;
 
 use crate::{app::sidebar_open_for_layout, title_bar::title_bar, ui, ToksApp};
 
 const SIDEBAR_OVERLAY_BREAKPOINT: f32 = 1100.0;
 const SIDEBAR_WIDTH: f32 = 250.0;
+
+fn shift_page(app: &mut ToksApp, delta: isize, cx: &mut Context<ToksApp>) {
+    app.page = app.page.shifted(delta);
+    if app.compact_layout == Some(true) {
+        app.sidebar_open = false;
+    }
+    cx.notify();
+}
+
+/// Browser-style back/forward mouse buttons walk sidebar tabs. A window-level
+/// listener keeps working over occluding layers such as the compact sidebar
+/// scrim.
+fn navigate_button_listener(handle: gpui::WeakEntity<ToksApp>) -> impl IntoElement {
+    canvas(
+        |_, _, _| {},
+        move |_, _, window, _| {
+            let handle = handle.clone();
+            window.on_mouse_event(move |event: &MouseDownEvent, phase, _window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                let Some(app) = handle.upgrade() else {
+                    return;
+                };
+                app.update(cx, |app, cx| match event.button {
+                    MouseButton::Navigate(NavigationDirection::Back) => shift_page(app, -1, cx),
+                    MouseButton::Navigate(NavigationDirection::Forward) => shift_page(app, 1, cx),
+                    _ => {}
+                });
+            });
+        },
+    )
+    .absolute()
+    .size_full()
+}
 
 impl Render for ToksApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -30,6 +68,7 @@ impl Render for ToksApp {
         };
         let detail_width = window.viewport_size().width - sidebar_width;
 
+        let navigate_buttons = navigate_button_listener(cx.entity().downgrade());
         div()
             .flex()
             .flex_row()
@@ -37,6 +76,7 @@ impl Render for ToksApp {
             .size_full()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
+            .child(navigate_buttons)
             .when(!compact, |shell| {
                 shell.child(
                     div()

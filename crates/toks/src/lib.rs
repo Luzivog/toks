@@ -73,6 +73,10 @@ pub mod test_support {
         app.page = page;
     }
 
+    pub fn current_page(app: &ToksApp) -> Page {
+        app.page
+    }
+
     pub fn sidebar_open(app: &ToksApp) -> bool {
         app.sidebar_open
     }

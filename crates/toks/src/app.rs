@@ -27,7 +27,7 @@ pub(super) fn sidebar_open_for_layout(
         !compact_layout
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Overview,
     Hourly,
@@ -37,6 +37,15 @@ pub enum Page {
 }
 
 impl Page {
+    /// Sidebar display order.
+    pub const ALL: [Page; 5] = [
+        Page::Overview,
+        Page::Hourly,
+        Page::Daily,
+        Page::Monthly,
+        Page::AllTime,
+    ];
+
     pub fn usage_period(&self) -> Option<UsagePeriod> {
         match self {
             Page::Overview => None,
@@ -45,6 +54,14 @@ impl Page {
             Page::Monthly => Some(UsagePeriod::Monthly),
             Page::AllTime => None,
         }
+    }
+
+    /// The neighbor `delta` steps away in sidebar order, clamped to the ends
+    /// instead of wrapping around.
+    pub fn shifted(self, delta: isize) -> Page {
+        let index = Page::ALL.iter().position(|page| *page == self).unwrap_or(0) as isize;
+        let next = (index + delta).clamp(0, Page::ALL.len() as isize - 1);
+        Page::ALL[next as usize]
     }
 }
 
