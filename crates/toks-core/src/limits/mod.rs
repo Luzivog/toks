@@ -119,6 +119,9 @@ pub struct LimitSnapshot {
     /// Provider-reported allowance multiplier. Never inferred from `plan`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_multiplier: Option<PlanMultiplier>,
+    /// Redeemable Codex credits that reset both standard usage windows.
+    #[serde(default)]
+    pub banked_resets: u64,
     pub windows: Vec<LimitWindow>,
     /// Non-window facts worth surfacing (credits, spend, extra usage…).
     pub extras: Vec<(String, serde_json::Value)>,
@@ -143,6 +146,7 @@ impl LimitSnapshot {
             account,
             plan: None,
             plan_multiplier: None,
+            banked_resets: 0,
             windows: Vec::new(),
             extras: Vec::new(),
             fetched_at: None,

@@ -40,6 +40,7 @@ fn email_privacy_overlay_preserves_account_header_layout(cx: &mut TestAppContext
                 },
                 plan: Some("Pro".into()),
                 plan_multiplier: None,
+                banked_resets: 0,
                 windows: Vec::new(),
                 extras: Vec::new(),
                 fetched_at: Some(now),

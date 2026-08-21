@@ -23,6 +23,7 @@ fn snapshot(provider: Provider, id: &str, email: &str) -> LimitSnapshot {
         },
         plan: None,
         plan_multiplier: None,
+        banked_resets: 0,
         windows: Vec::new(),
         extras: Vec::new(),
         fetched_at: None,

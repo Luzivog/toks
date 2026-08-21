@@ -113,6 +113,7 @@ fn failed_snapshot(
         },
         plan: Some("Max".into()),
         plan_multiplier: None,
+        banked_resets: 0,
         windows: vec![LimitWindow {
             id: format!("weekly-{id}"),
             label: "Weekly".into(),

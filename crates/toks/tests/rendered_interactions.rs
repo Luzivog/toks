@@ -456,7 +456,6 @@ fn bucket(key: String, value: i64, models: Vec<ModelUsage>) -> UsageBucket {
         ..Default::default()
     }
 }
-
 fn limit_snapshot(provider: Provider, id: &str) -> LimitSnapshot {
     let now = Utc
         .with_ymd_and_hms(2026, 8, 18, 12, 0, 0)
@@ -476,6 +475,7 @@ fn limit_snapshot(provider: Provider, id: &str) -> LimitSnapshot {
         },
         plan: None,
         plan_multiplier: None,
+        banked_resets: 0,
         windows: vec![LimitWindow {
             id: "weekly".into(),
             label: "Weekly — GPT-5.3-Codex-Spark".into(),

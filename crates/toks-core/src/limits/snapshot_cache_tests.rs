@@ -37,6 +37,7 @@ fn cache_replacement_round_trips_without_leaving_temporary_files() {
         account: profile.account.clone(),
         plan: None,
         plan_multiplier: Some(PlanMultiplier::Five),
+        banked_resets: 0,
         windows: Vec::new(),
         extras: Vec::new(),
         fetched_at: None,
@@ -68,6 +69,7 @@ fn persisted_snapshot_excludes_identity_raw_payloads_and_transient_failures() {
         account: profile.account.clone(),
         plan: Some("pro".into()),
         plan_multiplier: Some(super::PlanMultiplier::Twenty),
+        banked_resets: 4,
         windows: vec![LimitWindow {
             id: "weekly".into(),
             label: "Weekly".into(),
@@ -94,7 +96,13 @@ fn persisted_snapshot_excludes_identity_raw_payloads_and_transient_failures() {
     assert!(stored.extras.is_empty());
     assert_eq!(stored.account.id.as_str(), "stable-local-id");
     assert_eq!(stored.plan_multiplier, Some(PlanMultiplier::Twenty));
+    assert_eq!(stored.banked_resets, 4);
     assert_eq!(stored.windows[0].percent_used, 42.0);
+
+    let directory = tempfile::tempdir().unwrap();
+    let restored = round_trip_for_test(&directory.path().join("snapshot.json"), stored).unwrap();
+    assert_eq!(restored.banked_resets, 4);
+    assert!(restored.extras.is_empty());
 }
 
 #[test]
@@ -133,7 +141,7 @@ fn removed_managed_profile_cannot_recreate_its_limit_cache() {
 }
 
 #[test]
-fn v1_and_v2_cache_envelopes_without_multiplier_remain_readable() {
+fn v1_and_v2_cache_envelopes_without_new_typed_fields_remain_readable() {
     let snapshot = serde_json::json!({
         "provider": "codex",
         "account": {"id": "legacy", "email": null},
@@ -154,5 +162,6 @@ fn v1_and_v2_cache_envelopes_without_multiplier_remain_readable() {
         let (decoded_version, decoded) = decode_envelope_for_test(&raw).unwrap();
         assert_eq!(decoded_version, version);
         assert_eq!(decoded.plan_multiplier, None);
+        assert_eq!(decoded.banked_resets, 0);
     }
 }

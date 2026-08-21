@@ -2,6 +2,8 @@
 
 #[path = "ui_interactions/account_removal_interactions.rs"]
 mod account_removal_interactions;
+#[path = "ui_interactions/banked_reset_interaction.rs"]
+mod banked_reset_interaction;
 #[path = "ui_interactions/email_privacy_interaction.rs"]
 mod email_privacy_interaction;
 #[path = "ui_interactions/reauth_interactions.rs"]

@@ -11,6 +11,7 @@ mod account_menu;
 mod action;
 mod all_time;
 mod all_time_data;
+mod banked_reset_badge;
 mod chart_layout;
 mod chart_plot;
 mod chart_tooltip;
@@ -50,6 +51,7 @@ use account_drag::account_drop_target;
 use action::{action_button, sort_action, text_action};
 #[cfg(test)]
 use all_time_data::{all_time_points, all_time_summary};
+use banked_reset_badge::banked_reset_badge;
 use chart_layout::summary_chart_row;
 use chart_plot::provider_usage_chart;
 #[cfg(test)]

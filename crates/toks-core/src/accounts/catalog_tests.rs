@@ -29,6 +29,7 @@ fn snapshot(
         },
         plan: Some("pro".into()),
         plan_multiplier: None,
+        banked_resets: 0,
         windows: vec![LimitWindow {
             id: "weekly".into(),
             label: "Weekly".into(),

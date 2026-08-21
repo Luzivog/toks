@@ -128,6 +128,25 @@ fn codex_prolite_is_the_five_times_pro_product() {
     let snapshot = codex::parse(&response, None, "test".into());
     assert_eq!(snapshot.plan.as_deref(), Some("prolite"));
     assert_eq!(snapshot.plan_multiplier, Some(PlanMultiplier::Five));
+    assert_eq!(snapshot.banked_resets, 0);
+}
+
+#[test]
+fn codex_banked_resets_are_typed_instead_of_preserved_as_extras() {
+    let response = serde_json::json!({
+        "rate_limit_reset_credits": {
+            "available_count": 3,
+            "future_private_field": "not-for-extras"
+        }
+    });
+
+    let snapshot = codex::parse(&response, None, "test".into());
+
+    assert_eq!(snapshot.banked_resets, 3);
+    assert!(!snapshot
+        .extras
+        .iter()
+        .any(|(key, _)| key == "rate_limit_reset_credits"));
 }
 
 #[test]
@@ -181,6 +200,7 @@ fn codex_wham_usage_response_shape() {
     let snap = codex::parse(&resp, None, "test".into());
     assert_eq!(snap.account.email.as_deref(), Some("user@example.com"));
     assert_eq!(snap.plan.as_deref(), Some("pro"));
+    assert_eq!(snap.banked_resets, 0);
     assert_eq!(snap.windows.len(), 2);
 
     let general = snap.windows.iter().find(|w| w.scope.is_none()).unwrap();

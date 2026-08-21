@@ -44,6 +44,10 @@ pub fn parse(
         .as_deref()
         .and_then(PlanMultiplier::from_codex_plan_type)
         .or_else(|| PlanMultiplier::from_explicit_metadata(rate_limits));
+    let banked_resets = rate_limits
+        .pointer("/rate_limit_reset_credits/available_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
 
     LimitSnapshot {
         provider: Provider::Codex,
@@ -57,6 +61,7 @@ pub fn parse(
         },
         plan,
         plan_multiplier,
+        banked_resets,
         windows,
         extras,
         fetched_at,
@@ -165,17 +170,12 @@ fn is_boring_extra(key: &str, v: &Value) -> bool {
         | "account_id"
         | "user_id"
         | "rate_limit_upsell"
-        | "rate_limit_reached_type" => true,
+        | "rate_limit_reached_type"
+        | "rate_limit_reset_credits" => true,
         "credits" => {
             // Only interesting when the account actually has credits.
             v.pointer("/has_credits").and_then(Value::as_bool) != Some(true)
                 && v.pointer("/unlimited").and_then(Value::as_bool) != Some(true)
-        }
-        "rate_limit_reset_credits" => {
-            v.pointer("/available_count")
-                .and_then(Value::as_i64)
-                .unwrap_or(0)
-                == 0
         }
         "spend_control" => v.pointer("/reached").and_then(Value::as_bool) != Some(true),
         _ => false,

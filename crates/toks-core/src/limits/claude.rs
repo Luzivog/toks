@@ -104,6 +104,7 @@ pub fn parse_utilization(
         account: crate::accounts::ProviderAccount::unidentified_for(Provider::Claude),
         plan: None,
         plan_multiplier: PlanMultiplier::from_explicit_metadata(util),
+        banked_resets: 0,
         windows,
         extras,
         fetched_at,

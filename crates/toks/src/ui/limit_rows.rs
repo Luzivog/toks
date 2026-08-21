@@ -12,7 +12,7 @@ use super::{
     account_drag::reorder_handle,
     account_email::account_email,
     account_menu::{account_menu, AccountRemovalHandler, AccountRemovalState, AccountRemovalView},
-    limit_header_status, limit_issue_row, pending_limit_row,
+    banked_reset_badge, limit_header_status, limit_issue_row, pending_limit_row,
     plan_badge::plan_badge_label,
     quota_row,
 };
@@ -118,6 +118,9 @@ pub(super) fn account_limits_group(
                                             .text_color(accent.opacity(0.82))
                                             .child(plan_badge_label(plan, s.plan_multiplier)),
                                     )
+                                })
+                                .when_some(banked_reset_badge(s, accent), |row, badge| {
+                                    row.child(badge)
                                 }),
                         ),
                 )

@@ -120,6 +120,7 @@ fn unavailable_snapshot(
         account: profile.account.clone(),
         plan: details.name,
         plan_multiplier: details.multiplier,
+        banked_resets: 0,
         windows: Vec::new(),
         extras: Vec::new(),
         fetched_at: None,
