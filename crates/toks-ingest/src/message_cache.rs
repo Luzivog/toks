@@ -19,11 +19,9 @@ mod legacy_wire;
 use legacy_wire::{LegacyCachedSourceEntryV4, LegacyUnifiedMessageV5, FORMAT_V4};
 #[cfg(test)]
 mod legacy_wire_tests;
+pub(crate) use accounting_seed::{load_codex_accounting_seed, CodexAccountingSeed};
 #[cfg(test)]
-pub(crate) use accounting_seed::{
-    load_codex_accounting_seed, reset_shard_read_count, shard_read_count,
-};
-pub(crate) use accounting_seed::{load_codex_accounting_seeds, CodexAccountingSeed};
+pub(crate) use accounting_seed::{reset_shard_read_count, shard_read_count};
 
 // CACHE_FORMAT_VERSION changes only when the serialized storage layout or a
 // cross-client type such as UnifiedMessage changes incompatibly. Parser-only
@@ -965,7 +963,10 @@ pub(crate) fn parser_version(client: ClientId) -> u32 {
         // identities and fork-replay aliases, and Codex incremental state
         // retains identity occurrence counters. Existing Codex shards must
         // reparse to seed all three.
-        ClientId::Codex => 7,
+        // v7->v8: compact the occurrence tracker wire shape. Existing v7
+        // bincode shards are stale because bincode cannot migrate an untagged
+        // map representation safely; JSON accounting checkpoints migrate.
+        ClientId::Codex => 8,
         // v4->v5: jcode's assistant-message timestamp is now back-calculated
         // to the turn start (timestamp - tool_duration_ms) instead of using
         // the recorded (end-anchored) timestamp directly. Follow-up to #890.
@@ -2553,8 +2554,8 @@ mod tests {
     }
 
     #[test]
-    fn test_codex_durable_identity_parser_version_invalidates_v6_entries() {
-        assert_eq!(parser_version(ClientId::Codex), 7);
+    fn test_codex_compact_identity_parser_version_invalidates_v7_entries() {
+        assert_eq!(parser_version(ClientId::Codex), 8);
         assert_eq!(parser_version(ClientId::Claude), 2);
     }
 

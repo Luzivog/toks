@@ -4,6 +4,7 @@
 
 #[cfg(test)]
 mod identity_tests;
+mod processed_hashes;
 
 use super::utils::{
     extract_i64, extract_string, file_modified_timestamp_ms, parse_timestamp_value,
@@ -14,6 +15,7 @@ use super::{
     UnifiedMessage,
 };
 use crate::{pricing, provider_identity, TokenBreakdown};
+use processed_hashes::ClaudeProcessedHashes;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -483,7 +485,7 @@ pub fn parse_claude_file_with_cache_and_home(
         Err(_) => return Vec::new(),
     };
 
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
     let mut messages: Vec<UnifiedMessage> = Vec::with_capacity(64);
     let mut provider_confidences: Vec<u8> = Vec::with_capacity(64);
     // Maps dedup_key to the index in `messages` of the first occurrence.
@@ -491,7 +493,7 @@ pub fn parse_claude_file_with_cache_and_home(
     // response streams in; later entries often carry more complete token counts.
     // We merge duplicates using per-field max to always keep the highest value seen
     // for each token type, ensuring we capture the most complete record.
-    let mut processed_hashes: HashMap<String, usize> = HashMap::new();
+    let mut processed_hashes = ClaudeProcessedHashes::default();
     let mut headless_state = ClaudeHeadlessState::default();
     let mut buffer = Vec::with_capacity(4096);
     // Tracks whether the previous entry was a user message,
@@ -509,21 +511,23 @@ pub fn parse_claude_file_with_cache_and_home(
     let mut sidechain_agent: Option<String> = None;
     let mut sidechain_detected = false;
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
+    loop {
+        buffer.clear();
+        match reader.read_until(b'\n', &mut buffer) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
 
-        let trimmed = line.trim();
+        let trimmed = buffer.trim_ascii();
         if trimmed.is_empty() {
             continue;
         }
 
         let mut handled = false;
-        buffer.clear();
-        buffer.extend_from_slice(trimmed.as_bytes());
-        if let Ok(entry) = simd_json::from_slice::<ClaudeEntry>(&mut buffer) {
+        // Deserialize from the reusable buffer. `lines()` plus simd-json's
+        // input buffer held two full copies of large tool results.
+        if let Ok(entry) = serde_json::from_slice::<ClaudeEntry>(trimmed) {
             // Detect sidechain on the first parseable entry (any type).
             // All lines in a subagent file carry isSidechain: true.
             if !sidechain_detected {
@@ -566,13 +570,15 @@ pub fn parse_claude_file_with_cache_and_home(
                     pending_request_start_timestamp_ms = Some(timestamp_ms);
                 }
 
-                if entry.entry_type == "user" && is_human_turn(trimmed) {
+                if entry.entry_type == "user"
+                    && std::str::from_utf8(trimmed).is_ok_and(is_human_turn)
+                {
                     pending_turn_start = true;
                 }
 
                 if let Some(tool_message) = tool_result_message {
                     if let Some(ref dedup_key) = tool_message.dedup_key {
-                        if let Some(&existing_idx) = processed_hashes.get(dedup_key) {
+                        if let Some(existing_idx) = processed_hashes.get(dedup_key, &messages) {
                             merge_claude_tool_result_duplicate(
                                 &mut messages[existing_idx],
                                 tool_message.tokens.input,
@@ -580,7 +586,7 @@ pub fn parse_claude_file_with_cache_and_home(
                             );
                             continue;
                         }
-                        processed_hashes.insert(dedup_key.clone(), messages.len());
+                        processed_hashes.insert(dedup_key, messages.len());
                     }
                     let provider_confidence =
                         stored_claude_provider_confidence(&tool_message.provider_id);
@@ -634,7 +640,7 @@ pub fn parse_claude_file_with_cache_and_home(
                 let pending_hash = match (&message.id, &entry.request_id) {
                     (Some(msg_id), Some(req_id)) => {
                         let hash = format!("{}:{}", msg_id, req_id);
-                        if let Some(&existing_idx) = processed_hashes.get(&hash) {
+                        if let Some(existing_idx) = processed_hashes.get(&hash, &messages) {
                             merge_claude_duplicate(
                                 &mut messages[existing_idx],
                                 &usage,
@@ -653,7 +659,7 @@ pub fn parse_claude_file_with_cache_and_home(
                     }
                     (Some(msg_id), None) => {
                         let hash = format!("message:{}", msg_id);
-                        if let Some(&existing_idx) = processed_hashes.get(&hash) {
+                        if let Some(existing_idx) = processed_hashes.get(&hash, &messages) {
                             merge_claude_duplicate(
                                 &mut messages[existing_idx],
                                 &usage,
@@ -699,9 +705,10 @@ pub fn parse_claude_file_with_cache_and_home(
                     .as_ref()
                     .cloned()
                     .map(DurableIdentity::claude_provider_response);
-                let dedup_key = pending_hash.inspect(|hash| {
-                    processed_hashes.insert(hash.clone(), messages.len());
-                });
+                let dedup_key = pending_hash;
+                if let Some(hash) = dedup_key.as_deref() {
+                    processed_hashes.insert(hash, messages.len());
+                }
 
                 let mut unified = UnifiedMessage::new_with_dedup(
                     client_id.clone(),
@@ -991,10 +998,10 @@ struct ClaudeToolResultContext<'a> {
 }
 
 fn extract_claude_tool_result_message(
-    line: &str,
+    line: &[u8],
     context: ClaudeToolResultContext<'_>,
 ) -> Option<UnifiedMessage> {
-    let value: Value = serde_json::from_str(line).ok()?;
+    let value: Value = serde_json::from_slice(line).ok()?;
     let usage = extract_claude_tool_result_usage(&value, context.allow_char_estimate)?;
 
     let explicit_model = extract_claude_model(&value).or_else(|| {
@@ -1330,15 +1337,14 @@ fn parse_claude_headless_json(
 }
 
 fn process_claude_headless_line(
-    line: &str,
+    line: &[u8],
     session_id: &str,
     state: &mut ClaudeHeadlessState,
     fallback_timestamp: i64,
     client_id: &str,
     default_provider_hint: Option<&str>,
 ) -> Option<UnifiedMessage> {
-    let mut bytes = line.as_bytes().to_vec();
-    let value: Value = simd_json::from_slice(&mut bytes).ok()?;
+    let value: Value = serde_json::from_slice(line).ok()?;
 
     let event_type = value.get("type").and_then(|val| val.as_str()).unwrap_or("");
     let mut completed_message: Option<UnifiedMessage> = None;
@@ -2382,7 +2388,7 @@ mod tests {
         };
         let raw = r#"{"type":"user","timestamp":"2026-05-30T01:00:00.000Z","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":"XXXXXXXXXXXXXXXX"}]}}"#;
 
-        assert!(extract_claude_tool_result_message(raw, context).is_none());
+        assert!(extract_claude_tool_result_message(raw.as_bytes(), context).is_none());
     }
 
     #[test]

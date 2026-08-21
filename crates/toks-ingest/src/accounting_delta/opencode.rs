@@ -1,8 +1,8 @@
 use super::fingerprint::{hash_range, metadata, prefix_samples, revision};
 use super::store::StoredCheckpoint;
-use super::types::{
-    CollectContext, ProcessedSource, SourceCandidate, SourceCheckpoint, SourceDelta, SourceKind,
-};
+#[cfg(test)]
+use super::types::SourceCheckpoint;
+use super::types::{CollectContext, ProcessedSource, SourceCandidate, SourceDelta, SourceKind};
 
 pub(crate) fn parser_version() -> u32 {
     crate::message_cache::parser_version(crate::ClientId::OpenCode)
@@ -13,7 +13,7 @@ pub(crate) fn parser_version() -> u32 {
 /// archive deduplicates them by identity.
 pub(crate) fn process(
     source: &SourceCandidate,
-    previous: Option<&StoredCheckpoint>,
+    _previous: Option<&StoredCheckpoint>,
     context: &CollectContext<'_>,
 ) -> Result<ProcessedSource, String> {
     let before = metadata(&source.path)?;
@@ -48,9 +48,10 @@ pub(crate) fn process(
             source_key: source.key.clone(),
             revision: source_revision,
             observations,
+            #[cfg(test)]
             checkpoint: SourceCheckpoint {
                 parser_version,
-                previous_offset: previous.map_or(0, |checkpoint| checkpoint.committed_offset),
+                previous_offset: _previous.map_or(0, |checkpoint| checkpoint.committed_offset),
                 committed_offset: after.size,
                 source_size: after.size,
             },

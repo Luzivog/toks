@@ -14,8 +14,8 @@ mod types;
 
 pub use collector::AccountingDeltaCollector;
 pub use types::{
-    AccountingBacklog, AccountingDelta, AccountingDeltaOptions, SourceCheckpoint, SourceDelta,
-    SourceKey, SourceRevision,
+    AccountingAdvance, AccountingAdvanceError, AccountingBacklog, AccountingDeltaOptions,
+    AccountingSource, SourceKey, SourceRevision,
 };
 
 /// Stable error value returned when another process owns the checkpoint writer.
@@ -23,3 +23,5 @@ pub const COLLECTOR_BUSY_ERROR: &str = "accounting checkpoint writer is busy";
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod version_tests;

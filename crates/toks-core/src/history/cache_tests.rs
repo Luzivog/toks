@@ -2,7 +2,7 @@ use std::fs;
 
 use serde_json::json;
 
-use super::cache::{load_at, store_at_for_test};
+use super::cache::{load_at, store_at_for_test, store_at_with_limit_for_test};
 use super::{HistorySnapshot, SourceHistory, UsageBucket, UsageSeries};
 
 fn snapshot(tokens: i64) -> HistorySnapshot {
@@ -83,6 +83,18 @@ fn invalid_replacement_preserves_the_last_good_snapshot() {
     invalid.usage.daily[0].input = -1;
     assert!(store_at_for_test(&path, &invalid).is_err());
     assert_eq!(load_at(&path).unwrap().usage.daily[0].tokens, 42);
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[test]
+fn oversized_replacement_preserves_the_last_good_snapshot() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("snapshot.json");
+    store_at_for_test(&path, &snapshot(42)).unwrap();
+    let original = fs::read(&path).unwrap();
+
+    assert!(store_at_with_limit_for_test(&path, &snapshot(84), 64).is_err());
+    assert_eq!(fs::read(&path).unwrap(), original);
     assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 

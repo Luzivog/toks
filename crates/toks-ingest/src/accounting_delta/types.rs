@@ -53,6 +53,7 @@ impl SourceRevision {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SourceCheckpoint {
     pub parser_version: u32,
@@ -66,10 +67,49 @@ pub struct SourceDelta {
     pub source_key: SourceKey,
     pub revision: SourceRevision,
     pub observations: Vec<UnifiedMessage>,
+    #[cfg(test)]
     pub checkpoint: SourceCheckpoint,
     pub backfill_complete: bool,
     pub(crate) proposed: super::store::StoredCheckpoint,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct AccountingSource<'a> {
+    pub source_key: &'a SourceKey,
+    pub revision: &'a SourceRevision,
+    pub observations: &'a [UnifiedMessage],
+    pub backfill_complete: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccountingAdvance {
+    pub backlog: AccountingBacklog,
+    pub archived_sources: usize,
+}
+
+#[derive(Debug)]
+pub enum AccountingAdvanceError<E> {
+    Ingest(String),
+    Archive(E),
+    CheckpointAfterArchive(String),
+}
+
+impl<E: std::fmt::Display> std::fmt::Display for AccountingAdvanceError<E> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ingest(error) => write!(formatter, "accounting ingest: {error}"),
+            Self::Archive(error) => write!(formatter, "archiving accounting source: {error}"),
+            Self::CheckpointAfterArchive(error) => {
+                write!(
+                    formatter,
+                    "checkpointing archived accounting source: {error}"
+                )
+            }
+        }
+    }
+}
+
+impl<E> std::error::Error for AccountingAdvanceError<E> where E: std::error::Error + 'static {}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AccountingBacklog {
@@ -81,6 +121,7 @@ pub struct AccountingBacklog {
     pub scan_progress: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Default)]
 pub struct AccountingDelta {
     pub sources: Vec<SourceDelta>,

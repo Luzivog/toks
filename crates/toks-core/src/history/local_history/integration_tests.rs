@@ -44,71 +44,42 @@ impl RealBackend {
 
     fn projection_batch(
         &self,
-        delta: &toks_ingest::accounting_delta::AccountingDelta,
+        builder: super::projected::ProjectionBuilder<'_>,
+        projection: archive::ArchiveProjection,
+        backlog: toks_ingest::accounting_delta::AccountingBacklog,
+        made_progress: bool,
     ) -> Result<RefreshBatch> {
-        let archive_deltas: Vec<_> = delta
-            .sources
-            .iter()
-            .map(|source| archive::SourceDelta {
-                source_key: source.source_key.as_str(),
-                revision: source.revision.as_str(),
-                observations: &source.observations,
-                backfill_complete: source.backfill_complete,
-            })
-            .collect();
-        let projection = if archive_deltas.is_empty() {
-            archive::advance_projection_at_for_test(&self.archive)?
-        } else {
-            Some(
-                archive::apply_sources_at_for_test(
-                    &self.archive,
-                    &archive_deltas,
-                    1_776_210_000_000,
-                )?
-                .projection,
-            )
-        }
-        .ok_or_else(|| anyhow!("missing test archive projection"))?;
-        let pending_sources = delta
-            .backlog
+        let pending_sources = backlog
             .pending_sources
             .max(projection.pending_sources)
             .saturating_add(projection.projection_pending);
         Ok(RefreshBatch {
-            snapshot: super::projected::snapshot(
-                projection,
-                Utc.with_ymd_and_hms(2026, 8, 19, 4, 30, 0)
-                    .single()
-                    .unwrap(),
-                &BucketTimezone::from_pinned_name(Some("UTC")),
-                None,
-            ),
+            snapshot: builder.finish(projection),
             pending_sources,
-            made_progress: !delta.sources.is_empty(),
+            made_progress,
         })
     }
 }
 
 impl HistoryBackend for RealBackend {
     fn hydrate_archive(&self) -> Result<Option<RefreshBatch>> {
-        let Some(projection) = archive::load_projection_at_for_test(&self.archive)? else {
+        let Some(metadata) = archive::load_projection_metadata_at_for_test(&self.archive)? else {
             return Ok(None);
         };
-        if !projection.projection_complete {
+        if !metadata.projection_complete {
             return Ok(None);
         }
+        let timezone = BucketTimezone::from_pinned_name(Some("UTC"));
+        let mut builder = super::projected::ProjectionBuilder::new(test_now(), &timezone, None);
+        let projection = archive::stream_projection_at_for_test(&self.archive, |row| {
+            builder.add(row);
+        })?
+        .ok_or_else(|| anyhow!("missing test archive projection"))?;
         let pending_sources = projection
             .pending_sources
             .saturating_add(projection.projection_pending);
         Ok(Some(RefreshBatch {
-            snapshot: super::projected::snapshot(
-                projection,
-                Utc.with_ymd_and_hms(2026, 8, 19, 4, 30, 0)
-                    .single()
-                    .unwrap(),
-                &BucketTimezone::from_pinned_name(Some("UTC")),
-                None,
-            ),
+            snapshot: builder.finish(projection),
             pending_sources,
             made_progress: false,
         }))
@@ -120,18 +91,56 @@ impl HistoryBackend for RealBackend {
 
     fn refresh(&self) -> Result<RefreshBatch> {
         let mut collector = self.collector.lock().unwrap();
-        let delta = collector
-            .collect(self.options.clone(), None)
-            .map_err(|error| anyhow!(error))?;
-        let batch = self.projection_batch(&delta)?;
-        collector.commit(&delta).map_err(|error| anyhow!(error))?;
-        Ok(batch)
+        let timezone = BucketTimezone::from_pinned_name(Some("UTC"));
+        let mut builder = super::projected::ProjectionBuilder::new(test_now(), &timezone, None);
+        let mut writer: Option<archive::ArchiveWriter> = None;
+        let advance = collector
+            .advance(self.options.clone(), None, |source| {
+                let writer = match writer.as_mut() {
+                    Some(writer) => writer,
+                    None => writer.insert(archive::ArchiveWriter::open_at(
+                        &self.archive,
+                        1_776_210_000_000,
+                    )?),
+                };
+                writer
+                    .apply(archive::SourceDelta {
+                        source_key: source.source_key.as_str(),
+                        revision: source.revision.as_str(),
+                        observations: source.observations,
+                        backfill_complete: source.backfill_complete,
+                    })
+                    .map(|_| ())
+            })
+            .map_err(|error| anyhow!(error.to_string()))?;
+        let (projection, archive_changed) = if let Some(writer) = writer {
+            let applied = writer.finish(|row| builder.add(row))?;
+            (applied.projection, applied.changed)
+        } else {
+            (
+                archive::advance_projection_at_for_test(&self.archive, |row| builder.add(row))?
+                    .ok_or_else(|| anyhow!("missing test archive projection"))?,
+                false,
+            )
+        };
+        self.projection_batch(
+            builder,
+            projection,
+            advance.backlog,
+            advance.archived_sources > 0 || archive_changed,
+        )
     }
 
     fn store_last_good(&self, snapshot: &HistorySnapshot) -> Result<()> {
         fs::write(&self.fallback, serde_json::to_vec(snapshot)?)?;
         Ok(())
     }
+}
+
+fn test_now() -> chrono::DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 8, 19, 4, 30, 0)
+        .single()
+        .unwrap()
 }
 
 #[test]

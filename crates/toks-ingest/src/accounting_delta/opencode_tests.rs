@@ -39,7 +39,9 @@ fn opencode_database_is_collected_as_its_own_source() {
     super::tests::write_initial(home.path());
     write_opencode_db(home.path());
 
-    let delta = collector.collect(options(home.path()), None).unwrap();
+    let delta = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(delta.sources.len(), 2);
     let opencode = delta
         .sources
@@ -55,7 +57,8 @@ fn opencode_database_is_collected_as_its_own_source() {
     assert_eq!(observation.tokens.input, 10);
     assert!(opencode.backfill_complete);
 
-    collector.commit(&delta).unwrap();
-    let unchanged = collector.collect(options(home.path()), None).unwrap();
+    let unchanged = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert!(unchanged.sources.is_empty());
 }

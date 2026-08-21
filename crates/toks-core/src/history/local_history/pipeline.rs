@@ -31,68 +31,79 @@ pub(super) fn refresh(collector: &mut AccountingDeltaCollector) -> Result<Refres
         use_env_roots: true,
         scanner_settings,
     };
-    let delta = collector
-        .collect(options, pricing.as_deref())
-        .map_err(|error| anyhow!("collecting incremental usage: {error}"))?;
     let observed_at_ms = Utc::now().timestamp_millis();
-    let archive_deltas: Vec<_> = delta
-        .sources
-        .iter()
-        .map(|source| archive::SourceDelta {
-            source_key: source.source_key.as_str(),
-            revision: source.revision.as_str(),
-            observations: &source.observations,
-            backfill_complete: source.backfill_complete,
+    let now = Utc::now();
+    let mut projection_builder =
+        super::projected::ProjectionBuilder::new(now, &timezone, pricing.as_deref());
+    let mut writer: Option<archive::ArchiveWriter> = None;
+    let advance = collector
+        .advance(options, pricing.as_deref(), |source| {
+            let writer = match writer.as_mut() {
+                Some(writer) => writer,
+                None => writer.insert(archive::ArchiveWriter::open_default(observed_at_ms)?),
+            };
+            writer
+                .apply(archive::SourceDelta {
+                    source_key: source.source_key.as_str(),
+                    revision: source.revision.as_str(),
+                    observations: source.observations,
+                    backfill_complete: source.backfill_complete,
+                })
+                .map(|_| ())
         })
-        .collect();
-    let projection = if archive_deltas.is_empty() {
-        archive::refresh_projection_default(observed_at_ms)?
+        .map_err(|error| anyhow!(error.to_string()))?;
+    let (projection, archive_changed) = if let Some(writer) = writer {
+        let applied = writer.finish(|row| projection_builder.add(row))?;
+        (Some(applied.projection), applied.changed)
     } else {
-        Some(archive::apply_sources_default(&archive_deltas, observed_at_ms)?.projection)
+        (
+            archive::refresh_projection_default(observed_at_ms, |row| {
+                projection_builder.add(row);
+            })?,
+            false,
+        )
     };
-    // Archive commit always precedes source-checkpoint acknowledgement. A
-    // crash between them safely replays the idempotent archive delta.
-    collector
-        .commit(&delta)
-        .map_err(|error| anyhow!("committing usage source checkpoints: {error}"))?;
     let projection = match projection {
         Some(projection) => projection,
-        None => return fallback_or_empty(delta.backlog.pending_sources),
+        None => return fallback_or_empty(advance.backlog.pending_sources),
     };
-    let pending_sources = delta
+    let pending_sources = advance
         .backlog
         .pending_sources
         .max(projection.pending_sources)
         .saturating_add(projection_backlog(&projection));
-    let snapshot =
-        super::projected::snapshot(projection, Utc::now(), &timezone, pricing.as_deref());
+    let snapshot = projection_builder.finish(projection);
     Ok(RefreshBatch {
         snapshot,
         pending_sources,
         // Moving the fair-scan cursor is not durable accounting progress. If
         // every selected source is still incomplete, back off before polling
         // again instead of spinning across the same live files.
-        made_progress: !archive_deltas.is_empty(),
+        made_progress: advance.archived_sources > 0 || archive_changed,
     })
 }
 
 pub(super) fn hydrate_archive() -> Result<Option<RefreshBatch>> {
-    let Some(projection) = archive::load_default()? else {
+    let Some(metadata) = archive::load_metadata_default()? else {
         return Ok(None);
     };
     // A newly created compact projection can be empty while the legacy v2
     // archive is still migrating. Keep the last-good snapshot on startup;
     // bounded refresh steps advance migration and publish recent committed data.
-    if !projection.projection_complete {
+    if !metadata.projection_complete {
         return Ok(None);
     }
-    let pending_sources = projection
-        .pending_sources
-        .saturating_add(projection_backlog(&projection));
     let settings = toks_ingest::scanner::ScannerSettings::default();
     let timezone = BucketTimezone::from_scanner_settings(&settings);
     let pricing = PricingService::load_cached_any_age();
-    let snapshot = super::projected::snapshot(projection, Utc::now(), &timezone, pricing.as_ref());
+    let mut builder =
+        super::projected::ProjectionBuilder::new(Utc::now(), &timezone, pricing.as_ref());
+    let projection = archive::load_default(|row| builder.add(row))?
+        .ok_or_else(|| anyhow!("usage archive disappeared during hydration"))?;
+    let pending_sources = projection
+        .pending_sources
+        .saturating_add(projection_backlog(&projection));
+    let snapshot = builder.finish(projection);
     super::super::validation::validate(&snapshot)?;
     Ok(Some(RefreshBatch {
         snapshot,
@@ -116,7 +127,7 @@ fn fallback_or_empty(pending_sources: usize) -> Result<RefreshBatch> {
 fn migrate_projection_before_ingest(
     settings: &toks_ingest::scanner::ScannerSettings,
 ) -> Result<Option<RefreshBatch>> {
-    let Some(before) = archive::load_default()? else {
+    let Some(before) = archive::load_metadata_default()? else {
         return Ok(None);
     };
     if before.projection_complete {
@@ -124,7 +135,14 @@ fn migrate_projection_before_ingest(
     }
     let before_pending = before.projection_pending;
     let observed_at_ms = Utc::now().timestamp_millis();
-    let Some(projection) = archive::refresh_projection_default(observed_at_ms)? else {
+    let timezone = BucketTimezone::from_scanner_settings(settings);
+    let pricing = PricingService::load_cached_any_age();
+    let mut builder =
+        super::projected::ProjectionBuilder::new(Utc::now(), &timezone, pricing.as_ref());
+    let Some(projection) = archive::refresh_projection_default(observed_at_ms, |row| {
+        builder.add(row);
+    })?
+    else {
         return Ok(None);
     };
     let made_progress =
@@ -135,10 +153,8 @@ fn migrate_projection_before_ingest(
         .pending_sources
         .saturating_add(projection_backlog(&projection))
         .max(usize::from(projection.projection_complete));
-    let timezone = BucketTimezone::from_scanner_settings(settings);
-    let pricing = PricingService::load_cached_any_age();
     Ok(Some(RefreshBatch {
-        snapshot: super::projected::snapshot(projection, Utc::now(), &timezone, pricing.as_ref()),
+        snapshot: builder.finish(projection),
         pending_sources,
         made_progress,
     }))

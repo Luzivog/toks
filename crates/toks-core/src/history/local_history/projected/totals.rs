@@ -50,18 +50,6 @@ impl Values {
             .saturating_add(self.cache_write)
             .saturating_add(self.reasoning)
     }
-
-    fn add_usage(&mut self, usage: &ModelUsage) {
-        self.input = self.input.saturating_add(usage.input);
-        self.output = self.output.saturating_add(usage.output);
-        self.cache_read = self.cache_read.saturating_add(usage.cache_read);
-        self.cache_write = self.cache_write.saturating_add(usage.cache_write);
-        self.reasoning = self.reasoning.saturating_add(usage.reasoning);
-        self.messages = self.messages.saturating_add(usage.messages);
-        self.turns = self.turns.saturating_add(usage.turns);
-        self.cost += usage.cost;
-        self.coverage.add_assign(usage.cost_coverage);
-    }
 }
 
 #[derive(Clone, Default)]
@@ -81,24 +69,6 @@ impl Totals {
             .entry((row.model.clone(), row.provider.clone()))
             .or_default()
             .add(row, cost, covered);
-    }
-
-    pub(super) fn add_bucket(&mut self, bucket: &UsageBucket) {
-        self.values.input = self.values.input.saturating_add(bucket.input);
-        self.values.output = self.values.output.saturating_add(bucket.output);
-        self.values.cache_read = self.values.cache_read.saturating_add(bucket.cache_read);
-        self.values.cache_write = self.values.cache_write.saturating_add(bucket.cache_write);
-        self.values.reasoning = self.values.reasoning.saturating_add(bucket.reasoning);
-        self.values.messages = self.values.messages.saturating_add(bucket.messages);
-        self.values.turns = self.values.turns.saturating_add(bucket.turns);
-        self.values.cost += bucket.cost;
-        self.values.coverage.add_assign(bucket.cost_coverage);
-        for model in &bucket.models {
-            self.models
-                .entry((model.model.clone(), model.provider.clone()))
-                .or_default()
-                .add_usage(model);
-        }
     }
 
     pub(super) fn tokens(&self) -> i64 {

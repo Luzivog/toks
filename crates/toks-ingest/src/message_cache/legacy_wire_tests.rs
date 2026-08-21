@@ -237,16 +237,15 @@ fn prior_v5_prefix_and_suffix_cold_reparse_keep_current_identities() {
     };
     let mut collector =
         crate::accounting_delta::AccountingDeltaCollector::open_at(checkpoint.path()).unwrap();
-    let first = collector.collect(options.clone(), None).unwrap();
+    let first = collector.advance_for_test(options.clone(), None).unwrap();
     assert_eq!(first.sources[0].observations.len(), 2);
     assert!(first.sources[0]
         .observations
         .iter()
         .all(|message| message.durable_identity.is_none()));
     assert!(!first.sources[0].backfill_complete);
-    collector.commit(&first).unwrap();
 
-    let upgraded = collector.collect(options.clone(), None).unwrap();
+    let upgraded = collector.advance_for_test(options.clone(), None).unwrap();
     assert_eq!(upgraded.sources[0].observations.len(), 2);
     let revision = upgraded.sources[0].revision.clone();
     let identities: Vec<_> = upgraded.sources[0]
@@ -256,23 +255,18 @@ fn prior_v5_prefix_and_suffix_cold_reparse_keep_current_identities() {
         .collect();
     assert!(identities.iter().all(Option::is_some));
     assert_ne!(identities[0], identities[1]);
-    collector.commit(&upgraded).unwrap();
     drop(collector);
 
-    let state_path = checkpoint.path().join("accounting-checkpoints-v1.json");
-    let mut state: serde_json::Value =
-        serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
-    state["sources"]
-        .as_object_mut()
-        .unwrap()
-        .values_mut()
-        .next()
-        .unwrap()["parser_version"] = serde_json::json!(0);
-    fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
+    let state_path = checkpoint.path().join("accounting-checkpoints-v2.sqlite");
+    let connection = rusqlite::Connection::open(state_path).unwrap();
+    connection
+        .execute("UPDATE sources SET parser_version = 0", [])
+        .unwrap();
+    drop(connection);
 
     let mut reopened =
         crate::accounting_delta::AccountingDeltaCollector::open_at(checkpoint.path()).unwrap();
-    let reparsed = reopened.collect(options, None).unwrap();
+    let reparsed = reopened.advance_for_test(options, None).unwrap();
     assert_eq!(reparsed.sources[0].revision, revision);
     let reparsed_identities: Vec<_> = reparsed.sources[0]
         .observations
@@ -340,28 +334,25 @@ fn legacy_frontier_publishes_a_multichunk_suffix_before_strong_replay() {
     };
     let mut collector =
         crate::accounting_delta::AccountingDeltaCollector::open_at(checkpoint.path()).unwrap();
-    let first = collector.collect(options.clone(), None).unwrap();
+    let first = collector.advance_for_test(options.clone(), None).unwrap();
     assert_eq!(first.sources[0].observations.len(), 2);
     assert!(first.sources[0]
         .observations
         .iter()
         .all(|message| message.durable_identity.is_none()));
-    collector.commit(&first).unwrap();
-    let second = collector.collect(options.clone(), None).unwrap();
+    let second = collector.advance_for_test(options.clone(), None).unwrap();
     assert_eq!(second.sources[0].observations.len(), 1);
     let second_timestamp = second.sources[0].observations[0].timestamp;
-    collector.commit(&second).unwrap();
-    let tail = collector.collect(options.clone(), None).unwrap();
+    let tail = collector.advance_for_test(options.clone(), None).unwrap();
     assert_eq!(tail.sources[0].observations.len(), 1);
     assert!(tail.sources[0].observations[0].timestamp > second_timestamp);
     assert!(tail.sources[0].observations[0].durable_identity.is_none());
     assert!(!tail.sources[0].backfill_complete);
-    collector.commit(&tail).unwrap();
 
     let mut strong_observations = 0;
     let mut replay_complete = false;
     for _ in 0..4 {
-        let replay = collector.collect(options.clone(), None).unwrap();
+        let replay = collector.advance_for_test(options.clone(), None).unwrap();
         assert_eq!(replay.sources.len(), 1);
         assert!(replay.sources[0]
             .observations
@@ -369,19 +360,22 @@ fn legacy_frontier_publishes_a_multichunk_suffix_before_strong_replay() {
             .all(|message| message.durable_identity.is_some()));
         strong_observations += replay.sources[0].observations.len();
         replay_complete = replay.sources[0].backfill_complete;
-        collector.commit(&replay).unwrap();
         if replay_complete {
             break;
         }
     }
     assert!(replay_complete);
     assert_eq!(strong_observations, 4);
-    assert!(collector.collect(options, None).unwrap().sources.is_empty());
+    assert!(collector
+        .advance_for_test(options, None)
+        .unwrap()
+        .sources
+        .is_empty());
 }
 
 #[test]
 #[serial_test::serial]
-fn accounting_batch_reads_a_shared_cache_shard_once() {
+fn accounting_sources_release_shared_cache_shard_between_sources() {
     let config = tempfile::TempDir::new().unwrap();
     let home = tempfile::TempDir::new().unwrap();
     let checkpoint = tempfile::TempDir::new().unwrap();
@@ -429,7 +423,7 @@ fn accounting_batch_reads_a_shared_cache_shard_once() {
     let mut collector =
         crate::accounting_delta::AccountingDeltaCollector::open_at(checkpoint.path()).unwrap();
     let delta = collector
-        .collect(
+        .advance_for_test(
             crate::accounting_delta::AccountingDeltaOptions {
                 home_dir: Some(home.path().to_string_lossy().into_owned()),
                 use_env_roots: false,
@@ -439,5 +433,5 @@ fn accounting_batch_reads_a_shared_cache_shard_once() {
         )
         .unwrap();
     assert_eq!(delta.sources.len(), 2);
-    assert_eq!(shard_read_count(), 1);
+    assert_eq!(shard_read_count(), 2);
 }

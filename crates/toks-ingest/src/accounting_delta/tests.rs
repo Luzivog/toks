@@ -93,22 +93,29 @@ pub(super) fn setup() -> (TempDir, TempDir, AccountingDeltaCollector) {
 }
 
 #[test]
-fn collect_does_not_advance_and_committed_unchanged_source_emits_zero() {
+fn archive_failure_replays_and_successful_advance_emits_zero_next_time() {
     let (home, _state, mut collector) = setup();
     write_initial(home.path());
+    let error = collector
+        .advance(options(home.path()), None, |source| {
+            assert_eq!(source.observations.len(), 1);
+            Err("simulated archive failure")
+        })
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        super::AccountingAdvanceError::Archive("simulated archive failure")
+    ));
 
-    let first = collector.collect(options(home.path()), None).unwrap();
-    assert_eq!(first.sources.len(), 1);
-    assert_eq!(first.sources[0].observations.len(), 1);
-    let replay = collector.collect(options(home.path()), None).unwrap();
-    assert_eq!(
-        replay.sources.len(),
-        1,
-        "collect is intentionally read-only"
-    );
+    let replay = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
+    assert_eq!(replay.sources.len(), 1);
+    assert_eq!(replay.sources[0].observations.len(), 1);
 
-    collector.commit(&first).unwrap();
-    let unchanged = collector.collect(options(home.path()), None).unwrap();
+    let unchanged = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert!(unchanged.sources.is_empty());
     assert_eq!(unchanged.backlog.changed_sources, 0);
 }
@@ -117,9 +124,10 @@ fn collect_does_not_advance_and_committed_unchanged_source_emits_zero() {
 fn codex_append_emits_only_the_suffix() {
     let (home, _state, mut collector) = setup();
     let path = write_initial(home.path());
-    let first = collector.collect(options(home.path()), None).unwrap();
+    let first = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     let initial_offset = first.sources[0].checkpoint.committed_offset;
-    collector.commit(&first).unwrap();
 
     OpenOptions::new()
         .append(true)
@@ -127,7 +135,9 @@ fn codex_append_emits_only_the_suffix() {
         .unwrap()
         .write_all(token_line("2026-08-19T00:00:03Z", 16, 3, 6).as_bytes())
         .unwrap();
-    let appended = collector.collect(options(home.path()), None).unwrap();
+    let appended = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
 
     assert_eq!(appended.sources.len(), 1);
     assert_eq!(appended.sources[0].observations.len(), 1);
@@ -142,21 +152,26 @@ fn codex_append_emits_only_the_suffix() {
 fn incomplete_final_line_waits_for_a_complete_boundary() {
     let (home, _state, mut collector) = setup();
     let path = write_initial(home.path());
-    let first = collector.collect(options(home.path()), None).unwrap();
-    collector.commit(&first).unwrap();
+    collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     let line = token_line("2026-08-19T00:00:03Z", 16, 3, 6);
     let split = line.len() / 2;
     let mut file = OpenOptions::new().append(true).open(&path).unwrap();
     file.write_all(&line.as_bytes()[..split]).unwrap();
     file.flush().unwrap();
 
-    let incomplete = collector.collect(options(home.path()), None).unwrap();
+    let incomplete = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert!(incomplete.sources.is_empty());
     assert_eq!(incomplete.backlog.pending_sources, 0);
 
     file.write_all(&line.as_bytes()[split..]).unwrap();
     file.flush().unwrap();
-    let completed = collector.collect(options(home.path()), None).unwrap();
+    let completed = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(completed.sources[0].observations.len(), 1);
     assert!(completed.sources[0].backfill_complete);
 }
@@ -187,9 +202,10 @@ fn bounded_range_does_not_consume_a_concurrent_append() {
 fn truncate_and_rewrite_reparses_only_that_source_from_zero() {
     let (home, _state, mut collector) = setup();
     let path = write_initial(home.path());
-    let first = collector.collect(options(home.path()), None).unwrap();
+    let first = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     let old_offset = first.sources[0].checkpoint.committed_offset;
-    collector.commit(&first).unwrap();
 
     fs::write(
         &path,
@@ -201,7 +217,9 @@ fn truncate_and_rewrite_reparses_only_that_source_from_zero() {
         ),
     )
     .unwrap();
-    let rewritten = collector.collect(options(home.path()), None).unwrap();
+    let rewritten = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
 
     assert_eq!(rewritten.sources.len(), 1);
     assert_eq!(rewritten.sources[0].observations.len(), 2);
@@ -216,24 +234,22 @@ fn truncate_and_rewrite_reparses_only_that_source_from_zero() {
 fn parser_version_change_invalidates_only_the_source_checkpoint() {
     let (home, state, mut collector) = setup();
     write_initial(home.path());
-    let first = collector.collect(options(home.path()), None).unwrap();
-    collector.commit(&first).unwrap();
+    collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     drop(collector);
 
-    let state_path = state.path().join("accounting-checkpoints-v1.json");
-    let mut json: serde_json::Value =
-        serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
-    let source = json["sources"]
-        .as_object_mut()
-        .unwrap()
-        .values_mut()
-        .next()
+    let state_path = state.path().join("accounting-checkpoints-v2.sqlite");
+    let connection = rusqlite::Connection::open(state_path).unwrap();
+    connection
+        .execute("UPDATE sources SET parser_version = 0", [])
         .unwrap();
-    source["parser_version"] = serde_json::json!(0);
-    fs::write(&state_path, serde_json::to_vec(&json).unwrap()).unwrap();
+    drop(connection);
 
     let mut reopened = AccountingDeltaCollector::open_at(state.path()).unwrap();
-    let reparsed = reopened.collect(options(home.path()), None).unwrap();
+    let reparsed = reopened
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(reparsed.sources.len(), 1);
     assert_eq!(reparsed.sources[0].observations.len(), 1);
 }
@@ -255,13 +271,19 @@ fn codex_live_to_archive_move_keeps_the_same_source_key() {
 fn durable_checkpoint_contains_no_source_path() {
     let (home, state, mut collector) = setup();
     write_initial(home.path());
-    let first = collector.collect(options(home.path()), None).unwrap();
-    collector.commit(&first).unwrap();
-    let state_text =
-        fs::read_to_string(state.path().join("accounting-checkpoints-v1.json")).unwrap();
-    assert!(!state_text.contains(home.path().to_string_lossy().as_ref()));
-    assert!(!state_text.contains("session-a.jsonl"));
-    assert!(!state_text.contains("/repo"));
+    collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
+    let state_bytes = fs::read(state.path().join("accounting-checkpoints-v2.sqlite")).unwrap();
+    for private_text in [
+        home.path().to_string_lossy().as_bytes(),
+        b"session-a.jsonl".as_slice(),
+        b"/repo".as_slice(),
+    ] {
+        assert!(!state_bytes
+            .windows(private_text.len())
+            .any(|window| window == private_text));
+    }
 }
 
 #[test]
@@ -281,7 +303,9 @@ fn empty_checkpoint_is_bounded_and_reports_the_remaining_backlog() {
         .unwrap();
     }
 
-    let first = collector.collect(options(home.path()), None).unwrap();
+    let first = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(first.backlog.discovered_sources, 33);
     assert_eq!(first.backlog.changed_sources, 33);
     assert_eq!(first.sources.len(), 32);
@@ -295,7 +319,9 @@ fn empty_checkpoint_is_bounded_and_reports_the_remaining_backlog() {
 
     drop(collector);
     let mut reopened = AccountingDeltaCollector::open_at(state.path()).unwrap();
-    let second = reopened.collect(options(home.path()), None).unwrap();
+    let second = reopened
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert!(second
         .sources
         .iter()
@@ -324,14 +350,15 @@ fn codex_semantic_context_beyond_a_four_megabyte_record_makes_progress() {
     )
     .unwrap();
 
-    let delta = collector.collect(options(home.path()), None).unwrap();
+    let delta = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(delta.sources.len(), 1);
     assert_eq!(delta.sources[0].observations.len(), 1);
     assert_eq!(delta.sources[0].observations[0].model_id, "gpt-5.4");
     assert!(delta.sources[0].backfill_complete);
-    collector.commit(&delta).unwrap();
     assert!(collector
-        .collect(options(home.path()), None)
+        .advance_for_test(options(home.path()), None)
         .unwrap()
         .sources
         .is_empty());
@@ -341,21 +368,23 @@ fn codex_semantic_context_beyond_a_four_megabyte_record_makes_progress() {
 fn malformed_codex_line_is_skipped_without_wedging_the_valid_suffix() {
     let (home, _state, mut collector) = setup();
     let path = write_initial(home.path());
-    let first = collector.collect(options(home.path()), None).unwrap();
-    collector.commit(&first).unwrap();
+    collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     let mut file = OpenOptions::new().append(true).open(path).unwrap();
     file.write_all(b"not-json\n").unwrap();
     file.write_all(token_line("2026-08-19T00:00:03Z", 16, 3, 6).as_bytes())
         .unwrap();
     file.flush().unwrap();
 
-    let appended = collector.collect(options(home.path()), None).unwrap();
+    let appended = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(appended.sources.len(), 1);
     assert_eq!(appended.sources[0].observations.len(), 1);
     assert_eq!(appended.sources[0].observations[0].tokens.input, 6);
-    collector.commit(&appended).unwrap();
     assert!(collector
-        .collect(options(home.path()), None)
+        .advance_for_test(options(home.path()), None)
         .unwrap()
         .sources
         .is_empty());
@@ -368,13 +397,14 @@ fn permanently_malformed_codex_source_advances_once() {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, "not-json\n").unwrap();
 
-    let malformed = collector.collect(options(home.path()), None).unwrap();
+    let malformed = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(malformed.sources.len(), 1);
     assert!(malformed.sources[0].observations.is_empty());
     assert!(malformed.sources[0].backfill_complete);
-    collector.commit(&malformed).unwrap();
     assert!(collector
-        .collect(options(home.path()), None)
+        .advance_for_test(options(home.path()), None)
         .unwrap()
         .sources
         .is_empty());
@@ -401,14 +431,15 @@ fn source_message_cache_seed_is_archived_then_suffix_is_exact_once() {
         .unwrap();
 
     let mut collector = AccountingDeltaCollector::open_at(state.path()).unwrap();
-    let seeded = collector.collect(options(home.path()), None).unwrap();
+    let seeded = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(seeded.sources.len(), 1);
     assert_eq!(seeded.sources[0].observations.len(), 2);
     assert_eq!(seeded.sources[0].observations[0].tokens.input, 10);
     assert_eq!(seeded.sources[0].observations[1].tokens.input, 6);
-    collector.commit(&seeded).unwrap();
     assert!(collector
-        .collect(options(home.path()), None)
+        .advance_for_test(options(home.path()), None)
         .unwrap()
         .sources
         .is_empty());
@@ -432,8 +463,9 @@ fn checkpoint_writer_lock_is_nonblocking_and_released_on_drop() {
 fn bounded_samples_detect_same_size_same_mtime_rewrite() {
     let (home, _state, mut collector) = setup();
     let path = write_initial(home.path());
-    let first = collector.collect(options(home.path()), None).unwrap();
-    collector.commit(&first).unwrap();
+    collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     let original_modified = fs::metadata(&path).unwrap().modified().unwrap();
     let replacement = format!(
         "{}{}",
@@ -445,8 +477,9 @@ fn bounded_samples_detect_same_size_same_mtime_rewrite() {
     let file = OpenOptions::new().write(true).open(&path).unwrap();
     file.set_times(std::fs::FileTimes::new().set_modified(original_modified))
         .unwrap();
-
-    let rewritten = collector.collect(options(home.path()), None).unwrap();
+    let rewritten = collector
+        .advance_for_test(options(home.path()), None)
+        .unwrap();
     assert_eq!(rewritten.sources.len(), 1);
     assert!(rewritten.sources[0]
         .observations

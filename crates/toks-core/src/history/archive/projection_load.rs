@@ -4,10 +4,12 @@ use rusqlite::{Connection, Row};
 use super::projection_migration;
 use super::{checkpoint, ArchiveProjection, ArchiveRollup, RollupPeriod};
 
-/// Loads only all-time and active-minute rows. Hour/day/month UI periods can
-/// be derived from minute rows in the user's bucket timezone without reading
-/// or allocating one value per archived event.
-pub(super) fn load(connection: &Connection) -> Result<ArchiveProjection> {
+/// Visits compact rollups one at a time. The caller can derive timezone-aware
+/// UI buckets without retaining one value per lifetime minute.
+pub(super) fn stream(
+    connection: &Connection,
+    mut visit: impl FnMut(&ArchiveRollup),
+) -> Result<ArchiveProjection> {
     let mut statement = connection.prepare(
         "SELECT period, bucket_start_ms, client, provider, model,
          cost_source, long_context, input_tokens, output_tokens, cache_read_tokens,
@@ -20,9 +22,16 @@ pub(super) fn load(connection: &Connection) -> Result<ArchiveProjection> {
          FROM usage_rollups WHERE period IN (0, 1)
          ORDER BY period, bucket_start_ms, client, provider, model, cost_source",
     )?;
-    let rollups = statement
-        .query_map([], bucket_from_row)?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        visit(&bucket_from_row(row)?);
+    }
+    drop(rows);
+    drop(statement);
+    metadata(connection)
+}
+
+pub(super) fn metadata(connection: &Connection) -> Result<ArchiveProjection> {
     let (captured_since_ms, captured_through_ms) = connection
         .query_row(
             "SELECT captured_since_ms, captured_through_ms FROM archive_state WHERE singleton=1",
@@ -42,7 +51,8 @@ pub(super) fn load(connection: &Connection) -> Result<ArchiveProjection> {
         projection_migration::pending_count(connection)?
     };
     Ok(ArchiveProjection {
-        rollups,
+        #[cfg(test)]
+        rollups: Vec::new(),
         captured_since_ms,
         captured_through_ms,
         pending_sources: checkpoint::pending_count(connection)?,
@@ -52,6 +62,14 @@ pub(super) fn load(connection: &Connection) -> Result<ArchiveProjection> {
         weak_events,
         conflicts,
     })
+}
+
+#[cfg(test)]
+pub(super) fn load(connection: &Connection) -> Result<ArchiveProjection> {
+    let mut rollups = Vec::new();
+    let mut projection = stream(connection, |row| rollups.push(row.clone()))?;
+    projection.rollups = rollups;
+    Ok(projection)
 }
 
 fn bucket_from_row(row: &Row<'_>) -> rusqlite::Result<ArchiveRollup> {

@@ -3,31 +3,46 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::{
-    apply_sources_at, load_projection_at, projection_load, projection_migration, schema,
-    ArchiveApply, ArchiveProjection, SourceDelta,
+    load, projection_load, projection_migration, schema, ArchiveProjection, ArchiveRollup,
 };
 
-pub(in crate::history) fn apply_sources_at_for_test(
-    path: &Path,
-    deltas: &[SourceDelta<'_>],
-    observed_at_ms: i64,
-) -> Result<ArchiveApply> {
-    apply_sources_at(path, deltas, observed_at_ms)
-}
-
-pub(in crate::history) fn load_projection_at_for_test(
+pub(in crate::history) fn load_projection_metadata_at_for_test(
     path: &Path,
 ) -> Result<Option<ArchiveProjection>> {
-    load_projection_at(path)
+    let Some(connection) = open_at(path)? else {
+        return Ok(None);
+    };
+    projection_load::metadata(&connection).map(Some)
 }
 
 pub(in crate::history) fn advance_projection_at_for_test(
     path: &Path,
+    visit: impl FnMut(&ArchiveRollup),
 ) -> Result<Option<ArchiveProjection>> {
+    let Some(mut connection) = open_at(path)? else {
+        return Ok(None);
+    };
+    projection_migration::advance(&mut connection)?;
+    projection_load::stream(&connection, visit).map(Some)
+}
+
+pub(in crate::history) fn stream_projection_at_for_test(
+    path: &Path,
+    visit: impl FnMut(&ArchiveRollup),
+) -> Result<Option<ArchiveProjection>> {
+    let Some(connection) = open_at(path)? else {
+        return Ok(None);
+    };
+    projection_load::stream(&connection, visit).map(Some)
+}
+
+fn open_at(path: &Path) -> Result<Option<rusqlite::Connection>> {
     if !path.exists() {
         return Ok(None);
     }
-    let mut connection = schema::open(path)?;
-    projection_migration::advance(&mut connection)?;
-    projection_load::load(&connection).map(Some)
+    let connection = schema::open(path)?;
+    if !load::initialized(&connection)? {
+        return Ok(None);
+    }
+    Ok(Some(connection))
 }

@@ -1,7 +1,7 @@
 //! Crash-safe persistence for the last successful aggregate history snapshot.
 
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,11 +15,37 @@ const CACHE_VERSION: u8 = 1;
 const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CacheEnvelope {
     version: u8,
     snapshot: HistorySnapshot,
+}
+
+#[derive(Serialize)]
+struct CacheEnvelopeRef<'a> {
+    version: u8,
+    snapshot: &'a HistorySnapshot,
+}
+
+struct BoundedWriter<W> {
+    inner: W,
+    remaining: u64,
+}
+
+impl<W: Write> Write for BoundedWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() as u64 > self.remaining {
+            return Err(io::Error::other("history snapshot exceeds size limit"));
+        }
+        let written = self.inner.write(bytes)?;
+        self.remaining -= written as u64;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
 }
 
 pub(super) fn load() -> Option<HistorySnapshot> {
@@ -85,6 +111,10 @@ fn load_from(path: &Path) -> Result<HistorySnapshot> {
 }
 
 fn store_at(path: &Path, snapshot: &HistorySnapshot) -> Result<()> {
+    store_at_with_limit(path, snapshot, MAX_CACHE_BYTES)
+}
+
+fn store_at_with_limit(path: &Path, snapshot: &HistorySnapshot, limit: u64) -> Result<()> {
     super::validation::validate(snapshot)?;
     let parent = path.parent().context("cache path has no parent")?;
     fs::create_dir_all(parent)?;
@@ -98,16 +128,20 @@ fn store_at(path: &Path, snapshot: &HistorySnapshot) -> Result<()> {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
         }
-        let mut file = options.open(&temporary)?;
+        let file = options.open(&temporary)?;
+        let mut writer = BoundedWriter {
+            inner: file,
+            remaining: limit,
+        };
         serde_json::to_writer(
-            &mut file,
-            &CacheEnvelope {
+            &mut writer,
+            &CacheEnvelopeRef {
                 version: CACHE_VERSION,
-                snapshot: snapshot.clone(),
+                snapshot,
             },
         )?;
-        file.flush()?;
-        file.sync_all()?;
+        writer.flush()?;
+        writer.inner.sync_all()?;
         fs::rename(&temporary, path)?;
         fs::File::open(parent)?.sync_all()?;
         Ok(())
@@ -144,4 +178,13 @@ pub(super) fn load_at(path: &Path) -> Option<HistorySnapshot> {
 #[cfg(test)]
 pub(super) fn store_at_for_test(path: &Path, snapshot: &HistorySnapshot) -> Result<()> {
     store_at(path, snapshot)
+}
+
+#[cfg(test)]
+pub(super) fn store_at_with_limit_for_test(
+    path: &Path,
+    snapshot: &HistorySnapshot,
+    limit: u64,
+) -> Result<()> {
+    store_at_with_limit(path, snapshot, limit)
 }

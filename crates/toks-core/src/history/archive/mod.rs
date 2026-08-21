@@ -1,7 +1,6 @@
 //! Durable, privacy-preserving accounting facts derived from provider logs.
 //!
 //! Provider transcripts are inputs; missing transcripts never delete accepted facts.
-
 mod aliases;
 mod batch;
 mod candidate;
@@ -17,25 +16,30 @@ mod projection;
 mod projection_load;
 mod projection_migration;
 mod projection_types;
+mod reader;
 mod resolve;
 mod schema;
 mod store;
 #[cfg(test)]
 mod test_support;
-
+mod writer;
+use anyhow::{Context, Result};
+pub(super) use projection_types::{ArchiveProjection, ArchiveRollup, RollupPeriod};
+pub(super) use reader::{
+    load_default, load_metadata_default, refresh_default as refresh_projection_default,
+};
 #[cfg(test)]
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::path::Path;
-
-use anyhow::{Context, Result};
-use toks_ingest::sessions::UnifiedMessage;
-
-pub(super) use projection_types::{ArchiveProjection, ArchiveRollup, RollupPeriod};
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(super) use test_support::{
-    advance_projection_at_for_test, apply_sources_at_for_test, load_projection_at_for_test,
+    advance_projection_at_for_test, load_projection_metadata_at_for_test,
+    stream_projection_at_for_test,
 };
+use toks_ingest::sessions::UnifiedMessage;
+pub(super) use writer::ArchiveWriter;
 
 #[cfg(test)]
 #[derive(Debug, Default)]
@@ -59,74 +63,12 @@ pub(super) struct SourceDelta<'a> {
 
 pub(super) struct ArchiveApply {
     pub projection: ArchiveProjection,
-}
-
-pub(super) fn apply_sources_default(
-    deltas: &[SourceDelta<'_>],
-    observed_at_ms: i64,
-) -> Result<ArchiveApply> {
-    let path = paths::default_path().context("no local data directory for usage archive")?;
-    apply_sources_at(&path, deltas, observed_at_ms)
-}
-
-pub(super) fn load_default() -> Result<Option<ArchiveProjection>> {
-    let Some(path) = paths::default_path() else {
-        return Ok(None);
-    };
-    load_projection_at(&path)
-}
-
-pub(super) fn refresh_projection_default(observed_at_ms: i64) -> Result<Option<ArchiveProjection>> {
-    let Some(path) = paths::default_path() else {
-        return Ok(None);
-    };
-    if !path.exists() {
-        return Ok(None);
-    }
-    let mut connection = schema::open(&path)?;
-    if !load::initialized(&connection)? {
-        return Ok(None);
-    }
-    projection_migration::advance(&mut connection)?;
-    let mut projection = projection_load::load(&connection)?;
-    projection.captured_through_ms = Some(
-        projection
-            .captured_through_ms
-            .unwrap_or(observed_at_ms)
-            .max(observed_at_ms),
-    );
-    Ok(Some(projection))
+    pub changed: bool,
 }
 
 pub(super) fn forget_range_default(start_ms: i64, end_ms: i64) -> Result<usize> {
     let path = paths::default_path().context("no local data directory for usage archive")?;
     forgotten::forget_range(&path, start_ms, end_ms)
-}
-
-fn apply_sources_at(
-    path: &Path,
-    deltas: &[SourceDelta<'_>],
-    observed_at_ms: i64,
-) -> Result<ArchiveApply> {
-    let mut connection = schema::open(path)?;
-    for delta in deltas {
-        checkpoint::apply(&mut connection, *delta, observed_at_ms)?;
-    }
-    projection_migration::advance(&mut connection)?;
-    Ok(ArchiveApply {
-        projection: projection_load::load(&connection)?,
-    })
-}
-
-fn load_projection_at(path: &Path) -> Result<Option<ArchiveProjection>> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let connection = schema::open(path)?;
-    if !load::initialized(&connection)? {
-        return Ok(None);
-    }
-    projection_load::load(&connection).map(Some)
 }
 
 #[cfg(test)]
@@ -195,3 +137,5 @@ mod performance_tests;
 mod projection_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod writer_tests;

@@ -62,7 +62,7 @@ fn same_fact_events_at_one_timestamp_receive_distinct_identities() {
 }
 
 #[test]
-fn occurrence_survives_incremental_parse() {
+fn occurrence_survives_serialized_incremental_parse() {
     let prefix = r#"{"type":"session_meta","payload":{"id":"logical-session"}}
 {"timestamp":"2026-01-01T00:00:00Z","type":"turn_context","payload":{"model":"gpt-5.6"}}
 {"timestamp":"2026-01-01T00:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":1},"last_token_usage":{"input_tokens":10,"output_tokens":1}}}}
@@ -77,12 +77,14 @@ fn occurrence_survives_incremental_parse() {
         0,
         CodexParseState::default(),
     );
+    let restarted_state =
+        serde_json::from_slice(&serde_json::to_vec(&first.state).unwrap()).unwrap();
     let second = parse_codex_reader(
         Cursor::new(suffix.as_bytes()),
         "copy-a",
         0,
         prefix.len() as u64,
-        first.state,
+        restarted_state,
     );
     assert_eq!(
         full[1].durable_identity,

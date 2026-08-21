@@ -37,6 +37,7 @@ pub(in crate::history) struct ArchiveRollup {
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::history) struct ArchiveProjection {
+    #[cfg(test)]
     pub rollups: Vec<ArchiveRollup>,
     pub captured_since_ms: Option<i64>,
     pub captured_through_ms: Option<i64>,

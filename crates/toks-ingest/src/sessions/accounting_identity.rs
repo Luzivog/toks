@@ -1,6 +1,8 @@
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+mod tracker_wire;
+
 /// Parser-owned identity for one durable usage fact.
 ///
 /// Unlike `dedup_key`, this identity never includes mutable attribution or
@@ -74,12 +76,19 @@ pub(crate) fn codex_fork_replay_alias(dedup_key: &str) -> AccountingAlias {
     }
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct TimestampOccurrence(Box<str>, u64);
+
+type TimestampOccurrences = BTreeMap<Box<str>, Vec<TimestampOccurrence>>;
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub(crate) struct CodexIdentityTracker {
     #[serde(default)]
     token_count_sequence: u64,
+    /// Each lineage is stored once, and its timestamps are kept sorted. The
+    /// previous wire format repeated the encoded lineage in every map key.
     #[serde(default)]
-    timestamp_occurrences: BTreeMap<String, u64>,
+    timestamp_occurrences: TimestampOccurrences,
 }
 
 impl CodexIdentityTracker {
@@ -96,10 +105,7 @@ impl CodexIdentityTracker {
             |parent| encode_parts(&[parent, logical_session_id]),
         );
         if let Some(timestamp) = raw_timestamp.filter(|value| !value.is_empty()) {
-            let key = encode_parts(&[&lineage, timestamp]);
-            let occurrence = self.timestamp_occurrences.entry(key).or_insert(0);
-            let current = *occurrence;
-            *occurrence = occurrence.saturating_add(1);
+            let current = self.next_timestamp_occurrence(&lineage, timestamp);
             return DurableIdentity {
                 scheme: DurableIdentityScheme::CodexSessionTimestampOccurrence,
                 version: 1,
@@ -112,6 +118,27 @@ impl CodexIdentityTracker {
             version: 1,
             value: encode_parts(&[&lineage, &sequence.to_string()]),
             strength: IdentityStrength::SessionStable,
+        }
+    }
+
+    fn next_timestamp_occurrence(&mut self, lineage: &str, timestamp: &str) -> u64 {
+        let entries = if let Some(entries) = self.timestamp_occurrences.get_mut(lineage) {
+            entries
+        } else {
+            self.timestamp_occurrences
+                .entry(lineage.into())
+                .or_default()
+        };
+        match entries.binary_search_by(|entry| entry.0.as_ref().cmp(timestamp)) {
+            Ok(index) => {
+                let current = entries[index].1;
+                entries[index].1 = current.saturating_add(1);
+                current
+            }
+            Err(index) => {
+                entries.insert(index, TimestampOccurrence(timestamp.into(), 1));
+                0
+            }
         }
     }
 }

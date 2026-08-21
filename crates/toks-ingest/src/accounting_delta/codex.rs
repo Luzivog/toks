@@ -1,16 +1,18 @@
-use crate::sessions::codex::{parse_codex_file_range, CodexParseState};
+use crate::sessions::codex::CodexParseState;
 
 use super::fingerprint::{
-    complete_codex_boundary, hash_range, metadata, prefix_samples, revision, samples_match,
-    CODEX_CHUNK_BYTES,
+    complete_codex_boundary, metadata, prefix_samples, revision, samples_match,
 };
 use super::store::StoredCheckpoint;
-use super::types::{
-    CollectContext, ProcessedSource, SourceCandidate, SourceCheckpoint, SourceDelta, SourceKind,
-};
+#[cfg(test)]
+use super::types::SourceCheckpoint;
+use super::types::{CollectContext, ProcessedSource, SourceCandidate, SourceDelta, SourceKind};
+
+mod chunk;
+mod version;
 
 pub(crate) fn parser_version() -> u32 {
-    crate::message_cache::parser_version(crate::ClientId::Codex)
+    version::current()
 }
 
 pub(crate) fn process(
@@ -22,7 +24,7 @@ pub(crate) fn process(
     let current_parser = parser_version();
     let legacy_checkpoint = previous.is_some_and(|checkpoint| {
         checkpoint.kind == SourceKind::Codex
-            && checkpoint.parser_version.saturating_add(1) == current_parser
+            && checkpoint.parser_version == version::LEGACY_IDENTITY
             && checkpoint.committed_offset < source.size
             && samples_match(&source.path, &checkpoint.prefix_samples)
     });
@@ -30,7 +32,9 @@ pub(crate) fn process(
         legacy_checkpoint || seed.as_ref().is_some_and(|seed| seed.legacy_identity_state);
     let can_append = previous.is_some_and(|checkpoint| {
         checkpoint.kind == SourceKind::Codex
-            && (checkpoint.parser_version == current_parser || legacy_checkpoint)
+            && (checkpoint.parser_version == current_parser
+                || checkpoint.parser_version == version::JSON_WIRE_COMPATIBLE
+                || legacy_checkpoint)
             && checkpoint.committed_offset <= source.size
             && samples_match(&source.path, &checkpoint.prefix_samples)
     });
@@ -45,7 +49,7 @@ pub(crate) fn process(
     } else {
         (0, CodexParseState::default())
     };
-    let chunk = parse_semantic_chunk(source, start, state)?;
+    let chunk = chunk::parse(source, start, state)?;
     if chunk.is_none() && seed.is_none() {
         return Ok(ProcessedSource {
             delta: None,
@@ -54,13 +58,14 @@ pub(crate) fn process(
             remains_pending: false,
         });
     }
+    let mut seed = seed;
     let mut observations = seed
-        .as_ref()
-        .map(|seed| seed.messages.clone())
+        .as_mut()
+        .map(|seed| std::mem::take(&mut seed.messages))
         .unwrap_or_default();
     let mut fallback_indices = seed
-        .as_ref()
-        .map(|seed| seed.fallback_timestamp_indices.clone())
+        .as_mut()
+        .map(|seed| std::mem::take(&mut seed.fallback_timestamp_indices))
         .unwrap_or_default();
     let (boundary, checkpoint_state, content_hash) = if let Some(chunk) = chunk {
         let base = observations.len();
@@ -95,20 +100,18 @@ pub(crate) fn process(
         crate::apply_pricing_if_available(message, context.pricing);
         crate::apply_headless_agent(message, true);
         if legacy_identity_state {
-            // A v6 frontier predates the occurrence tracker. Keep these
-            // observations source-scoped/weak until the forced current-parser
+            // Keep pre-tracker observations weak until the current-parser
             // replay upgrades them; never mint unstable typed identities.
             message.durable_identity = None;
         }
     }
     let mut checkpoint_state = checkpoint_state;
-    // Workspace keys are raw local paths. They are presentation metadata, not
-    // accounting state, so never put them in the durable checkpoint.
+    // Workspace paths are presentation metadata, not accounting state.
     checkpoint_state.session_workspace_key = None;
     checkpoint_state.session_workspace_label = None;
     let parser_version = current_parser;
     let checkpoint_parser_version = if legacy_identity_state {
-        parser_version.saturating_sub(1)
+        version::LEGACY_IDENTITY
     } else {
         parser_version
     };
@@ -122,6 +125,7 @@ pub(crate) fn process(
         prefix_samples: prefix_samples(&source.path, boundary)?,
         codex_state: Some(checkpoint_state),
     };
+    #[cfg(test)]
     let previous_offset = previous.map_or(0, |checkpoint| checkpoint.committed_offset);
     let offset_bytes = start.to_le_bytes();
     let boundary_bytes = boundary.to_le_bytes();
@@ -140,6 +144,7 @@ pub(crate) fn process(
             source_key: source.key.clone(),
             revision: source_revision,
             observations,
+            #[cfg(test)]
             checkpoint: SourceCheckpoint {
                 parser_version: checkpoint_parser_version,
                 previous_offset,
@@ -153,46 +158,6 @@ pub(crate) fn process(
     })
 }
 
-struct SemanticChunk {
-    boundary: u64,
-    parsed: crate::sessions::codex::ParsedCodexFile,
-    content_hash: [u8; 32],
-}
-
-fn parse_semantic_chunk(
-    source: &SourceCandidate,
-    start: u64,
-    state: CodexParseState,
-) -> Result<Option<SemanticChunk>, String> {
-    let Some(mut boundary) =
-        complete_codex_boundary(&source.path, start, source.size, CODEX_CHUNK_BYTES)?
-    else {
-        return Ok(None);
-    };
-    let semantic_limit = boundary.saturating_add(CODEX_CHUNK_BYTES);
-    loop {
-        let before = hash_range(&source.path, start, boundary)?;
-        let parsed = parse_codex_file_range(&source.path, start, boundary, state.clone());
-        let after = hash_range(&source.path, start, boundary)?;
-        if before != after || parsed.consumed_offset != boundary {
-            return Ok(None);
-        }
-        if parsed.unresolved_model_events && boundary < semantic_limit {
-            if let Some(next) = complete_codex_boundary(&source.path, boundary, source.size, 1)? {
-                boundary = next;
-                continue;
-            }
-        }
-        if !parsed.parse_succeeded {
-            tracing::warn!("malformed Codex JSONL record skipped during accounting ingest");
-        }
-        if parsed.unresolved_model_events {
-            tracing::warn!("Codex usage without model context was retained as unknown");
-        }
-        return Ok(Some(SemanticChunk {
-            boundary,
-            parsed,
-            content_hash: after,
-        }));
-    }
+pub(crate) fn checkpoint_version_is_current(version: u32) -> bool {
+    version::is_current(version)
 }

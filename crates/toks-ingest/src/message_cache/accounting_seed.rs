@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use bincode::Options;
 
@@ -28,94 +27,47 @@ thread_local! {
     static SHARD_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Load only the shard that can contain `path`; never deserialize every Codex
-/// shard just to seed one accounting frontier.
-#[cfg(test)]
 pub(crate) fn load_codex_accounting_seed(path: &Path) -> Option<CodexAccountingSeed> {
-    load_codex_accounting_seeds(std::iter::once(path)).remove(path)
-}
-
-/// Load one bounded collector batch while opening each involved shard once.
-pub(crate) fn load_codex_accounting_seeds<'a>(
-    paths: impl Iterator<Item = &'a Path>,
-) -> HashMap<PathBuf, CodexAccountingSeed> {
     let identity = CacheIdentity::for_client(ClientId::Codex);
-    let mut requests = HashMap::new();
-    for path in paths {
-        let key = CacheKey::new(identity, path);
-        requests
-            .entry(key.shard())
-            .or_insert_with(Vec::new)
-            .push((path.to_path_buf(), key));
-    }
-    if requests.is_empty() {
-        return HashMap::new();
-    }
-    let Some(shard_root) = cache_shard_dir() else {
-        return HashMap::new();
-    };
+    let key = CacheKey::new(identity, path);
+    let shard_root = cache_shard_dir()?;
     if ensure_cache_dir(&shard_root).is_err() {
-        return HashMap::new();
+        return None;
     }
-    let Some(lock_path) = cache_lock_path() else {
-        return HashMap::new();
-    };
-    let Ok(lock) = OpenOptions::new()
+    let lock = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(lock_path)
-    else {
-        return HashMap::new();
-    };
+        .open(cache_lock_path()?)
+        .ok()?;
     if fs2::FileExt::try_lock_shared(&lock).is_err() {
-        return HashMap::new();
+        return None;
     }
-    let mut seeds = HashMap::new();
-    for (shard_key, requested) in requests {
-        #[cfg(test)]
-        SHARD_READS.with(|reads| reads.set(reads.get() + 1));
-        let Some((entries, legacy_identity_state)) =
-            read_seed_shard(&shard_path(&shard_root, &shard_key), identity)
-        else {
-            continue;
-        };
-        let expected_parser = identity
-            .parser_version
-            .saturating_sub(u32::from(legacy_identity_state));
-        let mut by_key: HashMap<_, _> = entries
-            .into_iter()
-            .filter(|entry| {
-                entry.parser_namespace == identity.namespace
-                    && entry.parser_version == expected_parser
-            })
-            .map(|entry| (CacheKey::from_entry(&entry), entry))
-            .collect();
-        for (path, key) in requested {
-            let Some(entry) = by_key.remove(&key) else {
-                continue;
-            };
-            let Some(incremental) = entry.codex_incremental.as_ref() else {
-                continue;
-            };
-            if !codex_prefix_matches(&path, incremental) {
-                continue;
-            }
-            seeds.insert(
-                path,
-                CodexAccountingSeed {
-                    messages: entry.messages,
-                    fallback_timestamp_indices: entry.fallback_timestamp_indices,
-                    state: incremental.state.clone(),
-                    consumed_offset: incremental.consumed_offset,
-                    prefix_hash: incremental.prefix_hash,
-                    legacy_identity_state,
-                },
-            );
-        }
+    #[cfg(test)]
+    SHARD_READS.with(|reads| reads.set(reads.get() + 1));
+    let (entries, legacy_identity_state) =
+        read_seed_shard(&shard_path(&shard_root, &key.shard()), identity)?;
+    let expected_parser = identity
+        .parser_version
+        .saturating_sub(u32::from(legacy_identity_state));
+    let entry = entries.into_iter().find(|entry| {
+        entry.parser_namespace == identity.namespace
+            && entry.parser_version == expected_parser
+            && CacheKey::from_entry(entry) == key
+    })?;
+    let incremental = entry.codex_incremental.as_ref()?;
+    if !codex_prefix_matches(path, incremental) {
+        return None;
     }
-    seeds
+    Some(CodexAccountingSeed {
+        messages: entry.messages,
+        fallback_timestamp_indices: entry.fallback_timestamp_indices,
+        state: incremental.state.clone(),
+        consumed_offset: incremental.consumed_offset,
+        prefix_hash: incremental.prefix_hash,
+        legacy_identity_state,
+    })
 }
 
 fn read_seed_shard(path: &Path, identity: CacheIdentity) -> Option<(Vec<CachedSourceEntry>, bool)> {
