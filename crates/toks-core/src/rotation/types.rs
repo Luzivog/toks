@@ -46,6 +46,9 @@ pub enum RotationEventKind {
         account_id: AccountId,
         until: UnixMillis,
     },
+    Draining {
+        account_id: AccountId,
+    },
     AuthNeeded {
         account_id: AccountId,
     },

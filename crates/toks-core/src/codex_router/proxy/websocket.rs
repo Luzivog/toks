@@ -19,7 +19,7 @@ pub(super) async fn forward(
     headers: HeaderMap,
 ) -> Response<Body> {
     let initial_thread = thread_id_from_headers(&headers);
-    match connect::upstream(&state, &uri, &headers).await {
+    match connect::upstream(&state, &uri, &headers, initial_thread.as_ref()).await {
         Ok(Some(connected)) => {
             let protocol = connect::selected_protocol(&connected.headers);
             let account = connected.credential.account_id;

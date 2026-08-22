@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
@@ -9,15 +8,18 @@ use crate::rotation::{
     UnixMillis, WaitingThread,
 };
 
+use super::catalogue::Catalogue;
 use super::types::{CredentialFailure, RouteCredential, SharedCredentials};
 
-const REPROBE_AFTER_MILLIS: i64 = 60_000;
+mod quota;
+mod selection;
 
 pub(super) struct Engine {
     credentials: SharedCredentials,
     settings: RotationSettingsStore,
     runtime_store: RotationRuntimeStore,
     runtime: Mutex<RotationRuntime>,
+    catalogue: Catalogue,
 }
 
 impl Engine {
@@ -32,9 +34,19 @@ impl Engine {
         settings: RotationSettingsStore,
         runtime_store: RotationRuntimeStore,
     ) -> Result<Arc<Self>> {
+        Self::with_catalogue(credentials, settings, runtime_store, Catalogue::discover())
+    }
+
+    pub fn with_catalogue(
+        credentials: SharedCredentials,
+        settings: RotationSettingsStore,
+        runtime_store: RotationRuntimeStore,
+        catalogue: Catalogue,
+    ) -> Result<Arc<Self>> {
         let mut runtime = runtime_store.load()?;
         let now = now();
         runtime.reconcile(&credentials.account_ids(), now);
+        runtime.reset_connections();
         runtime.heartbeat(now);
         runtime_store.save(&runtime)?;
         Ok(Arc::new(Self {
@@ -42,20 +54,8 @@ impl Engine {
             settings,
             runtime_store,
             runtime: Mutex::new(runtime),
+            catalogue,
         }))
-    }
-
-    pub async fn select(&self, skipped: &BTreeSet<AccountId>) -> Result<Option<RouteCredential>> {
-        loop {
-            let Some(account) = self.eligible_account_except(skipped)? else {
-                return Ok(None);
-            };
-            match self.credentials.credential(&account).await {
-                Ok(credential) => return Ok(Some(credential)),
-                Err(CredentialFailure::NeedsSignIn) => self.auth_failed(&account)?,
-                Err(CredentialFailure::Temporary(error)) => return Err(error),
-            }
-        }
     }
 
     pub async fn refresh(&self, account: &AccountId) -> Result<Option<RouteCredential>> {
@@ -67,41 +67,6 @@ impl Engine {
             }
             Err(CredentialFailure::Temporary(error)) => Err(error),
         }
-    }
-
-    pub fn eligible_account(&self) -> Result<Option<AccountId>> {
-        self.eligible_account_except(&BTreeSet::new())
-    }
-
-    fn eligible_account_except(&self, skipped: &BTreeSet<AccountId>) -> Result<Option<AccountId>> {
-        let mut settings = self.settings.load()?;
-        let discovered = self.credentials.account_ids();
-        // The UI owns persisted settings. Reconcile only this in-memory view so
-        // a newly enrolled account can route before the next UI poll.
-        settings.reconcile(&discovered);
-        let runtime = self.runtime.lock().expect("router runtime poisoned");
-        if !settings.enabled() {
-            return Ok(None);
-        }
-        Ok(settings
-            .preferred()
-            .into_iter()
-            .chain(settings.priority())
-            .find(|account| {
-                discovered.contains(account)
-                    && !settings.excluded().contains(account)
-                    && !skipped.contains(account)
-                    && runtime.is_available(account, now())
-            })
-            .cloned())
-    }
-
-    pub fn block(&self, account: &AccountId, reset: Option<UnixMillis>) -> Result<()> {
-        let at = now();
-        let until = reset
-            .or_else(|| earliest_known_reset(account, at))
-            .unwrap_or_else(|| UnixMillis::new(at.get() + REPROBE_AFTER_MILLIS));
-        self.mutate(|runtime| runtime.block(account, until, at))
     }
 
     pub fn waiting(&self, thread: &ThreadId) -> Result<()> {
@@ -133,12 +98,12 @@ impl Engine {
         self.mutate(|runtime| runtime.connection_closed(account))
     }
 
-    pub fn heartbeat(&self) -> Result<()> {
-        let mut runtime = self.runtime.lock().expect("router runtime poisoned");
-        let at = now();
-        runtime.reconcile(&self.credentials.account_ids(), at);
-        runtime.heartbeat(at);
-        self.runtime_store.save(&runtime)
+    pub fn attach(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        self.mutate(|runtime| runtime.thread_attached(account, thread))
+    }
+
+    pub fn detach(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        self.mutate(|runtime| runtime.thread_detached(account, thread))
     }
 
     pub fn waiting_threads(&self) -> Vec<WaitingThread> {
@@ -175,17 +140,6 @@ impl Engine {
         }
         Ok(())
     }
-}
-
-fn earliest_known_reset(account: &AccountId, at: UnixMillis) -> Option<UnixMillis> {
-    crate::limits::hydrate_all()
-        .into_iter()
-        .filter(|snapshot| snapshot.account.id == *account)
-        .flat_map(|snapshot| snapshot.windows)
-        .filter_map(|window| window.resets_at)
-        .map(|reset| UnixMillis::new(reset.timestamp_millis()))
-        .filter(|reset| *reset > at)
-        .min()
 }
 
 pub(super) fn now() -> UnixMillis {

@@ -16,6 +16,7 @@ mod suppression;
 mod types;
 
 pub use catalog::{AccountBinding, AccountTransition};
+pub(crate) use collection::collect_provider_limits;
 pub use collection::{collect_limits, hydrate_limits};
 pub use lifecycle::{
     remove_account, AccountRemovalPlan, AccountRemovalResult, ManagedProfileRemoval,

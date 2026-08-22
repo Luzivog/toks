@@ -12,6 +12,7 @@ use toks_core::{
 use crate::ToksApp;
 
 mod io;
+mod state;
 use io::{change_settings, load_rotation, run_service_action, LoadedRotation};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +30,7 @@ pub(crate) enum SettingsAction {
     ClearPreference,
     Cancel(ThreadId),
     MoveWaiting(ThreadId, usize),
+    FastWhenDraining(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -39,23 +41,6 @@ pub(crate) struct RotationUiState {
     pub error: Option<String>,
     pub busy: Option<&'static str>,
     generation: u64,
-}
-
-impl Default for RotationUiState {
-    fn default() -> Self {
-        Self {
-            settings: RotationSettings::default(),
-            runtime: RotationRuntime::default(),
-            install: RouterInstallStatus {
-                configured: false,
-                service_installed: false,
-                service_active: false,
-            },
-            error: None,
-            busy: None,
-            generation: 0,
-        }
-    }
 }
 
 pub(super) fn spawn(cx: &mut Context<ToksApp>) {

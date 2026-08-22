@@ -88,9 +88,9 @@ use models::model_breakdown_card;
 use overview::overview_usage_points;
 use overview::{legend_chip, usage_block};
 use overview_metrics::overview_metrics_card;
-use quota_row::quota_row;
 #[cfg(test)]
 use quota_row::split_limit_label;
+use quota_row::{quota_progress, quota_row};
 use section::{section_meta, section_title};
 use summary::{usage_summary_sidebar, UsageSummary};
 use table_layout::{TableLayout, PAGE_CONTENT_MAX_WIDTH};

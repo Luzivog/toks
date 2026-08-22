@@ -6,6 +6,7 @@ use crate::accounts::AccountId;
 
 use super::{RotationEvent, RotationEventKind, ThreadId, UnixMillis};
 
+mod account;
 mod mutations;
 
 pub(super) const RUNTIME_VERSION: u8 = 1;
@@ -24,22 +25,43 @@ pub enum RouterHealth {
 #[serde(rename_all = "camelCase")]
 pub struct AccountRuntime {
     blocked_until: Option<UnixMillis>,
+    #[serde(default)]
+    block_confirmed: bool,
+    #[serde(default)]
+    block_reset_known: bool,
+    #[serde(default)]
+    quota_exhaustion: Option<QuotaExhaustionState>,
+    #[serde(default)]
+    grandfathered_threads: BTreeSet<ThreadId>,
     needs_sign_in: bool,
     active_streams: u32,
 }
 
-impl AccountRuntime {
-    pub fn blocked_until(&self) -> Option<UnixMillis> {
-        self.blocked_until
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QuotaExhaustionState {
+    until: UnixMillis,
+    reset_known: bool,
+}
 
-    pub fn needs_sign_in(&self) -> bool {
-        self.needs_sign_in
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AttachedThread {
+    account: AccountId,
+    connections: u32,
+}
 
-    pub fn active_streams(&self) -> u32 {
-        self.active_streams
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountAvailability {
+    Available,
+    Draining {
+        until: UnixMillis,
+        reset_known: bool,
+    },
+    Blocked {
+        until: UnixMillis,
+        reset_known: bool,
+    },
+    NeedsSignIn,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +78,8 @@ pub struct RotationRuntime {
     health: RouterHealth,
     heartbeat_at: Option<UnixMillis>,
     accounts: BTreeMap<AccountId, AccountRuntime>,
+    #[serde(skip)]
+    attached_threads: BTreeMap<ThreadId, AttachedThread>,
     waiting_threads: Vec<WaitingThread>,
     events: VecDeque<RotationEvent>,
 }
@@ -67,6 +91,7 @@ impl Default for RotationRuntime {
             health: RouterHealth::Unknown,
             heartbeat_at: None,
             accounts: BTreeMap::new(),
+            attached_threads: BTreeMap::new(),
             waiting_threads: Vec::new(),
             events: VecDeque::new(),
         }
@@ -95,9 +120,22 @@ impl RotationRuntime {
     }
 
     pub fn is_available(&self, account: &AccountId, now: UnixMillis) -> bool {
-        self.accounts.get(account).is_none_or(|state| {
-            !state.needs_sign_in && state.blocked_until.is_none_or(|until| until <= now)
-        })
+        self.accounts
+            .get(account)
+            .is_none_or(|state| state.availability(now) == AccountAvailability::Available)
+    }
+
+    pub fn can_drain(&self, account: &AccountId, thread: &ThreadId, now: UnixMillis) -> bool {
+        self.accounts
+            .get(account)
+            .is_some_and(|state| state.can_drain(thread, now))
+    }
+
+    pub fn draining_account(&self, thread: &ThreadId, now: UnixMillis) -> Option<AccountId> {
+        self.accounts
+            .iter()
+            .find(|(_, state)| state.can_drain(thread, now))
+            .map(|(account, _)| account.clone())
     }
 
     /// Drop vanished accounts, create state for new accounts, and clear
@@ -110,6 +148,8 @@ impl RotationRuntime {
             let state = self.accounts.entry(account.clone()).or_default();
             if state.blocked_until.is_some_and(|until| until <= now) {
                 state.blocked_until = None;
+                state.block_confirmed = false;
+                state.block_reset_known = false;
             }
         }
         self.accounts != before
@@ -124,6 +164,12 @@ impl RotationRuntime {
         let mut seen = BTreeSet::new();
         self.waiting_threads
             .retain(|waiting| seen.insert(waiting.thread_id.clone()));
+        for state in self.accounts.values_mut() {
+            if state.quota_exhaustion.is_none() {
+                state.grandfathered_threads.clear();
+            }
+        }
+        self.attached_threads.clear();
         self.events.truncate(EVENT_LIMIT);
     }
 

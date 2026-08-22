@@ -1,5 +1,6 @@
 //! Authenticated loopback proxy for local Codex model traffic.
 
+mod catalogue;
 mod engine;
 mod headers;
 mod http;
@@ -132,7 +133,15 @@ async fn heartbeat(runtime: RouterRuntimeHandle) {
     let mut interval = tokio::time::interval(Duration::from_secs(5));
     loop {
         interval.tick().await;
-        let _ = runtime.engine.heartbeat();
+        let snapshots = tokio::task::spawn_blocking(|| {
+            crate::accounts::collect_provider_limits(crate::limits::Provider::Codex)
+        })
+        .await;
+        if let Ok(snapshots) = snapshots {
+            let _ = runtime
+                .engine
+                .apply_snapshots(&snapshots, chrono::Utc::now());
+        }
     }
 }
 

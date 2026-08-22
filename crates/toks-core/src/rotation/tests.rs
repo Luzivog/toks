@@ -1,10 +1,10 @@
-use std::fs;
+use std::{collections::BTreeMap, fs};
 
 use crate::accounts::AccountId;
 
 use super::{
-    RotationEventKind, RotationRuntime, RotationRuntimeStore, RotationSettings,
-    RotationSettingsStore, RouterHealth, ThreadId, UnixMillis,
+    AccountAvailability, RotationEventKind, RotationRuntime, RotationRuntimeStore,
+    RotationSettings, RotationSettingsStore, RouterHealth, ThreadId, UnixMillis,
 };
 
 fn account(id: &str) -> AccountId {
@@ -48,14 +48,14 @@ fn selection_honors_preference_and_skips_only_currently_unavailable_accounts() {
 
     let mut runtime = RotationRuntime::default();
     runtime.reconcile(&discovered, UnixMillis::new(0));
-    runtime.block(&c, UnixMillis::new(20), UnixMillis::new(1));
+    runtime.block(&c, UnixMillis::new(20), true, UnixMillis::new(1));
     runtime.auth_failed(&a, UnixMillis::new(2));
 
     assert_eq!(
         settings.select_account(&runtime, &discovered, UnixMillis::new(10)),
         Some(b.clone())
     );
-    runtime.block(&b, UnixMillis::new(20), UnixMillis::new(3));
+    runtime.block(&b, UnixMillis::new(20), true, UnixMillis::new(3));
     assert_eq!(
         settings.select_account(&runtime, &discovered, UnixMillis::new(10)),
         None
@@ -104,8 +104,8 @@ fn runtime_tracks_streams_waiting_and_metadata_events_idempotently() {
     runtime.heartbeat(UnixMillis::new(1));
     runtime.connection_opened(&a, &thread, UnixMillis::new(2));
     runtime.rotated(&thread, &a, &b, UnixMillis::new(3));
-    assert!(runtime.block(&a, UnixMillis::new(50), UnixMillis::new(4)));
-    assert!(!runtime.block(&a, UnixMillis::new(50), UnixMillis::new(4)));
+    assert!(runtime.block(&a, UnixMillis::new(50), true, UnixMillis::new(4)));
+    assert!(!runtime.block(&a, UnixMillis::new(50), true, UnixMillis::new(4)));
     assert!(runtime.auth_failed(&b, UnixMillis::new(5)));
     assert!(!runtime.auth_failed(&b, UnixMillis::new(5)));
     assert!(runtime.waiting(&thread, UnixMillis::new(6)));
@@ -128,6 +128,102 @@ fn runtime_tracks_streams_waiting_and_metadata_events_idempotently() {
     for forbidden in ["prompt", "response", "tokens", "authorization"] {
         assert!(!json.contains(forbidden));
     }
+}
+
+#[test]
+fn only_threads_attached_before_exhaustion_can_drain_until_a_hard_block() {
+    let account = account("a");
+    let existing = ThreadId::new("existing");
+    let new_thread = ThreadId::new("new");
+    let mut runtime = RotationRuntime::default();
+    runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
+    runtime.thread_attached(&account, &existing);
+    runtime.replace_quota_exhaustion(
+        &BTreeMap::from([(account.clone(), Some(UnixMillis::new(100)))]),
+        UnixMillis::new(10),
+    );
+
+    assert_eq!(
+        runtime.accounts()[&account].availability(UnixMillis::new(20)),
+        AccountAvailability::Draining {
+            until: UnixMillis::new(100),
+            reset_known: true,
+        }
+    );
+    assert!(runtime.can_drain(&account, &existing, UnixMillis::new(20)));
+    assert!(!runtime.can_drain(&account, &new_thread, UnixMillis::new(20)));
+
+    runtime.block(&account, UnixMillis::new(100), true, UnixMillis::new(21));
+    runtime.replace_quota_exhaustion(
+        &BTreeMap::from([(account.clone(), Some(UnixMillis::new(100)))]),
+        UnixMillis::new(22),
+    );
+    assert_eq!(
+        runtime.accounts()[&account].availability(UnixMillis::new(23)),
+        AccountAvailability::Blocked {
+            until: UnixMillis::new(100),
+            reset_known: true,
+        }
+    );
+    assert!(!runtime.can_drain(&account, &existing, UnixMillis::new(23)));
+}
+
+#[test]
+fn overlapping_connections_keep_a_thread_attached_until_the_last_one_closes() {
+    let account = account("a");
+    let thread = ThreadId::new("thread");
+    let mut runtime = RotationRuntime::default();
+    runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
+    runtime.thread_attached(&account, &thread);
+    runtime.thread_attached(&account, &thread);
+    runtime.thread_detached(&account, &thread);
+    runtime.replace_quota_exhaustion(
+        &BTreeMap::from([(account.clone(), Some(UnixMillis::new(100)))]),
+        UnixMillis::new(10),
+    );
+
+    assert!(runtime.can_drain(&account, &thread, UnixMillis::new(20)));
+    runtime.thread_detached(&account, &thread);
+    runtime.replace_quota_exhaustion(&BTreeMap::new(), UnixMillis::new(21));
+    runtime.replace_quota_exhaustion(
+        &BTreeMap::from([(account.clone(), Some(UnixMillis::new(100)))]),
+        UnixMillis::new(22),
+    );
+    assert!(!runtime.can_drain(&account, &thread, UnixMillis::new(23)));
+}
+
+#[test]
+fn unknown_reset_drain_has_a_real_reprobe_gap_instead_of_sliding_forever() {
+    let account = account("a");
+    let thread = ThreadId::new("thread");
+    let exhausted = BTreeMap::from([(account.clone(), None)]);
+    let mut runtime = RotationRuntime::default();
+    runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
+    runtime.thread_attached(&account, &thread);
+
+    runtime.replace_quota_exhaustion(&exhausted, UnixMillis::new(0));
+    runtime.thread_detached(&account, &thread);
+    assert!(matches!(
+        runtime.accounts()[&account].availability(UnixMillis::new(59_999)),
+        AccountAvailability::Draining {
+            reset_known: false,
+            ..
+        }
+    ));
+    runtime.replace_quota_exhaustion(&exhausted, UnixMillis::new(60_000));
+    assert_eq!(
+        runtime.accounts()[&account].availability(UnixMillis::new(60_000)),
+        AccountAvailability::Available
+    );
+    runtime.replace_quota_exhaustion(&exhausted, UnixMillis::new(65_000));
+    assert!(matches!(
+        runtime.accounts()[&account].availability(UnixMillis::new(65_000)),
+        AccountAvailability::Draining {
+            reset_known: false,
+            ..
+        }
+    ));
+    assert!(!runtime.can_drain(&account, &thread, UnixMillis::new(65_000)));
 }
 
 #[test]
@@ -199,4 +295,25 @@ fn stores_reject_unknown_document_versions() {
     .unwrap();
 
     assert!(store.load().unwrap_err().to_string().contains("version 99"));
+}
+
+/// Settings written before `fastWhenDraining` existed must keep loading, and
+/// must opt in to draining at the Fast tier rather than silently staying off.
+#[test]
+fn fast_when_draining_defaults_on_for_settings_written_without_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = RotationSettingsStore::for_data_dir(directory.path());
+    fs::create_dir_all(store.path().parent().unwrap()).unwrap();
+    fs::write(
+        store.path(),
+        br#"{"version":1,"enabled":true,"priority":[],"excluded":[],"preferred":null,"cancelledThreads":[],"waitingPriority":[]}"#,
+    )
+    .unwrap();
+
+    let mut settings = store.load().unwrap();
+    assert!(settings.fast_when_draining());
+
+    assert!(settings.set_fast_when_draining(false));
+    store.save(&settings).unwrap();
+    assert!(!store.load().unwrap().fast_when_draining());
 }

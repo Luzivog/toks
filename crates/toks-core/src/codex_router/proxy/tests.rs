@@ -17,9 +17,11 @@ use crate::rotation::{RotationRuntimeStore, RotationSettings, RotationSettingsSt
 
 use super::engine::Engine;
 use super::headers::upstream_headers;
-use super::protocol::{usage_block, RETRY_FRAME};
+use super::protocol::{usage_block, websocket_usage_block, RETRY_FRAME};
 use super::types::{CredentialFailure, CredentialSource, RouteCredential, SharedCredentials};
 use super::{app, InboundTokens, ProxyState, RouterRuntimeHandle, Upstream};
+
+mod fast_drain;
 
 struct FakeCredentials {
     ids: Vec<AccountId>,
@@ -118,10 +120,22 @@ impl Harness {
         settings.set_enabled(true);
         settings_store.save(&settings).unwrap();
         let source: SharedCredentials = credentials.clone();
-        let engine = Engine::with_stores(
+        // A fixed stand-in for the CLI's `models_cache.json` so tier decisions
+        // never depend on the developer's own Codex install.
+        let catalogue_path = directory.path().join("models_cache.json");
+        std::fs::write(
+            &catalogue_path,
+            r#"{"models":[
+                {"slug":"gpt-5.6-sol","service_tiers":[{"id":"priority","name":"Fast"}]},
+                {"slug":"gpt-5.3-codex-spark","service_tiers":[]}
+            ]}"#,
+        )
+        .unwrap();
+        let engine = Engine::with_catalogue(
             source.clone(),
             settings_store,
             RotationRuntimeStore::for_data_dir(directory.path()),
+            super::catalogue::Catalogue::at(Some(catalogue_path)),
         )
         .unwrap();
         Self {
@@ -161,12 +175,34 @@ fn engine_routes_fresh_accounts_without_mutating_ui_settings() {
 }
 
 #[test]
-fn usage_blocks_require_both_exact_status_and_type() {
-    let exact = json!({"error":{"type":"usage_limit_reached","resets_at":2_000_000_000}});
-    assert!(usage_block(429, exact.to_string().as_bytes()).is_some());
-    assert!(usage_block(500, exact.to_string().as_bytes()).is_none());
+fn usage_blocks_match_structured_and_message_frames() {
+    // Structured legacy/synthetic shape: still gated on 429 for HTTP.
+    let structured = json!({"error":{"type":"usage_limit_reached","resets_at":2_000_000_000}});
+    assert!(usage_block(429, structured.to_string().as_bytes()).is_some());
+    assert!(usage_block(500, structured.to_string().as_bytes()).is_none());
+    assert!(websocket_usage_block(&structured.to_string()).is_some());
+
+    // Real upstream frames: no `status`, no `error.type`, message-based.
+    let error_frame = json!({
+        "type":"error",
+        "message":"You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Jul 20th, 2026 7:53 AM."
+    });
+    assert!(websocket_usage_block(&error_frame.to_string()).is_some());
+    let turn_failed = json!({
+        "type":"turn.failed",
+        "error":{"message":"You've hit your usage limit. Add credits to continue, or try again at Aug 29, 2026, 6:59 AM."}
+    });
+    assert!(websocket_usage_block(&turn_failed.to_string()).is_some());
+
+    // A retryable rate limit without the usage marker is left alone.
     let other = json!({"error":{"type":"rate_limit_reached"}});
     assert!(usage_block(429, other.to_string().as_bytes()).is_none());
+    // A reconnect notice is an error frame but not a usage limit.
+    let reconnect = json!({"type":"error","message":"Reconnecting... 2/5 (401 Unauthorized)"});
+    assert!(websocket_usage_block(&reconnect.to_string()).is_none());
+    // Normal streamed model text that merely mentions a usage limit is not a block.
+    let visible = json!({"type":"response.output_text.delta","delta":"your usage limit is 100"});
+    assert!(websocket_usage_block(&visible.to_string()).is_none());
 }
 
 #[test]
@@ -295,7 +331,7 @@ async fn websocket_reconnects_before_output_and_preserves_partial_output() {
     let delta = socket.next().await.unwrap().unwrap().into_text().unwrap();
     let error = socket.next().await.unwrap().unwrap().into_text().unwrap();
     assert!(delta.contains("response.output_text.delta"));
-    assert!(error.contains("usage_limit_reached"));
+    assert!(error.contains("usage limit"));
     assert_ne!(error, RETRY_FRAME);
     assert_eq!(
         partial_harness.runtime.waiting_threads()[0]
@@ -395,8 +431,9 @@ fn response_create(thread: &str) -> tokio_tungstenite::tungstenite::Message {
 }
 
 fn usage_error() -> String {
-    json!({"type":"error","status":429,"error":{
-        "type":"usage_limit_reached","resets_at":2_000_000_000
+    // The real upstream shape: no `status`/`error.type`, reset only in prose.
+    json!({"type":"turn.failed","error":{
+        "message":"You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Jul 20th, 2026 7:53 AM."
     }})
     .to_string()
 }

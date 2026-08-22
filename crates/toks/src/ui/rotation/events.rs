@@ -1,5 +1,5 @@
-use gpui::{div, prelude::*, px};
-use gpui_component::{h_flex, v_flex, ActiveTheme};
+use gpui::{div, prelude::*, SharedString};
+use gpui_component::{h_flex, tooltip::Tooltip, ActiveTheme};
 use toks_core::rotation::{RotationEvent, RotationEventKind};
 
 use crate::ToksApp;
@@ -8,53 +8,59 @@ use super::{card, empty_row, format::account_label};
 
 pub(super) fn events_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
     let events = app.rotation.runtime.events();
-    let mut panel = card("Recent activity", format!("{} / 100", events.len()), cx);
+    let meta = if events.len() > 10 {
+        "Latest 10".to_string()
+    } else {
+        events.len().to_string()
+    };
+    let mut panel = card("Recent activity", meta, cx);
     if events.is_empty() {
         return panel.child(empty_row("No routing activity yet.", cx));
     }
-    panel = panel.child(
-        div()
-            .px_4()
-            .py_2()
-            .border_t_1()
-            .border_color(cx.theme().border)
-            .text_xs()
-            .text_color(cx.theme().muted_foreground)
-            .child("Metadata only. Toks does not keep prompts or responses here."),
-    );
-    for event in events {
+    for event in events.iter().take(10) {
         panel = panel.child(event_row(app, event, cx));
     }
     panel
 }
 
 fn event_row(app: &ToksApp, event: &RotationEvent, cx: &gpui::App) -> gpui::Div {
+    let time_selector = format!("rotation-event-time-{}", event.at.get());
+    let tooltip_selector = format!("rotation-event-time-tooltip-{}", event.at.get());
+    let exact = super::format::exact_time(event.at);
     h_flex()
-        .min_h(px(38.))
         .gap_3()
+        .items_center()
         .px_4()
         .py_2()
         .border_t_1()
         .border_color(cx.theme().border)
         .child(
             div()
-                .w(px(72.))
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_sm()
+                .child(event_text(app, event)),
+        )
+        .child(
+            div()
+                .id(SharedString::from(time_selector.clone()))
+                .debug_selector(move || time_selector.clone())
                 .flex_shrink_0()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(super::format::age(app.now, event.at)),
-        )
-        .child(
-            v_flex()
-                .min_w_0()
-                .gap_0p5()
-                .child(div().text_sm().truncate().child(event_text(app, event)))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(super::format::exact_time(event.at)),
-                ),
+                .child(super::format::age(app.now, event.at))
+                .tooltip(move |window, cx| {
+                    let exact = exact.clone();
+                    let selector = tooltip_selector.clone();
+                    Tooltip::element(move |_, _| {
+                        let selector = selector.clone();
+                        div()
+                            .debug_selector(move || selector.clone())
+                            .child(exact.clone())
+                    })
+                    .build(window, cx)
+                }),
         )
 }
 
@@ -78,11 +84,15 @@ fn event_text(app: &ToksApp, event: &RotationEvent) -> String {
             account_label(app, from),
             account_label(app, to)
         ),
-        RotationEventKind::Blocked { account_id, until } => format!(
-            "{} blocked until {}",
-            account_label(app, account_id),
-            super::format::exact_time(*until)
-        ),
+        RotationEventKind::Blocked { account_id, .. } => {
+            format!("{} blocked", account_label(app, account_id))
+        }
+        RotationEventKind::Draining { account_id } => {
+            format!(
+                "{} reached 0% and is draining",
+                account_label(app, account_id)
+            )
+        }
         RotationEventKind::AuthNeeded { account_id } => {
             format!("{} needs sign-in", account_label(app, account_id))
         }

@@ -20,6 +20,15 @@ pub struct RotationSettings {
     preferred: Option<AccountId>,
     cancelled_threads: BTreeSet<ThreadId>,
     waiting_priority: Vec<ThreadId>,
+    /// Serve threads already attached to a draining (0% remaining) account at
+    /// the Fast service tier so the remaining work finishes quickly. Defaults to
+    /// on, and defaults in for settings written before the field existed.
+    #[serde(default = "enabled_by_default")]
+    fast_when_draining: bool,
+}
+
+fn enabled_by_default() -> bool {
+    true
 }
 
 impl Default for RotationSettings {
@@ -32,6 +41,7 @@ impl Default for RotationSettings {
             preferred: None,
             cancelled_threads: BTreeSet::new(),
             waiting_priority: Vec::new(),
+            fast_when_draining: enabled_by_default(),
         }
     }
 }
@@ -51,6 +61,14 @@ impl RotationSettings {
 
     pub fn preferred(&self) -> Option<&AccountId> {
         self.preferred.as_ref()
+    }
+
+    pub fn fast_when_draining(&self) -> bool {
+        self.fast_when_draining
+    }
+
+    pub fn set_fast_when_draining(&mut self, fast: bool) -> bool {
+        std::mem::replace(&mut self.fast_when_draining, fast) != fast
     }
 
     pub fn set_enabled(&mut self, enabled: bool) -> bool {

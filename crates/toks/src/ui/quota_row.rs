@@ -111,7 +111,7 @@ pub(super) fn quota_row(
         )
 }
 
-fn quota_progress(remaining: f64, color: Hsla, cx: &App) -> gpui::Div {
+pub(super) fn quota_progress(remaining: f64, color: Hsla, cx: &App) -> gpui::Div {
     div()
         .relative()
         .w_full()

@@ -62,9 +62,22 @@ pub(super) fn fmt_reset(now: DateTime<Utc>, at: Option<DateTime<Utc>>) -> String
 }
 
 pub(super) fn fmt_exact_local(at: DateTime<Utc>) -> String {
-    at.with_timezone(&Local)
-        .format("%b %-d, %Y, %-I:%M %p %Z (%:z)")
-        .to_string()
+    let local = at.with_timezone(&Local);
+    let zone = local.format("%Z").to_string();
+    let offset = local.format("%:z").to_string();
+    format!(
+        "{} {}",
+        local.format("%b %-d, %Y, %-I:%M %p"),
+        zone_suffix(&zone, &offset)
+    )
+}
+
+fn zone_suffix(zone: &str, offset: &str) -> String {
+    if zone == offset {
+        offset.to_owned()
+    } else {
+        format!("{zone} ({offset})")
+    }
 }
 
 pub(super) fn fmt_age(now: DateTime<Utc>, at: DateTime<Utc>) -> String {
@@ -82,6 +95,21 @@ pub(super) fn fmt_age(now: DateTime<Utc>, at: DateTime<Utc>) -> String {
 
 pub(super) fn fmt_as_of(at: DateTime<Utc>) -> String {
     format!("as of {}", at.with_timezone(&Local).format("%b %-d, %H:%M"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::zone_suffix;
+
+    #[test]
+    fn numeric_timezone_is_not_repeated() {
+        assert_eq!(zone_suffix("+02:00", "+02:00"), "+02:00");
+    }
+
+    #[test]
+    fn named_timezone_keeps_its_numeric_offset() {
+        assert_eq!(zone_suffix("CEST", "+02:00"), "CEST (+02:00)");
+    }
 }
 
 // ---------------------------------------------------------------------------

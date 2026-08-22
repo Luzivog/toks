@@ -30,6 +30,7 @@ pub(crate) fn sidebar(
                 .text_color(cx.theme().sidebar_foreground)
                 .child("Usage"),
         )
+        .child(section_label("USAGE", cx))
         .child(sidebar_entry(
             app,
             cx,
@@ -70,13 +71,7 @@ pub(crate) fn sidebar(
             "All time",
             overlay,
         ))
-        .child(
-            div()
-                .mx_4()
-                .my_2()
-                .border_t_1()
-                .border_color(cx.theme().sidebar_border),
-        )
+        .child(section_label("ROUTING", cx))
         .child(sidebar_entry(
             app,
             cx,
@@ -85,6 +80,19 @@ pub(crate) fn sidebar(
             "Rotation",
             overlay,
         ))
+}
+
+/// Small uppercase group heading that structures the sidebar into
+/// "usage views" and "routing" without an orphaning divider.
+fn section_label(title: &'static str, cx: &gpui::App) -> gpui::Div {
+    div()
+        .mx_4()
+        .mt_3()
+        .mb_1()
+        .text_xs()
+        .font_semibold()
+        .text_color(cx.theme().sidebar_foreground.opacity(0.45))
+        .child(title)
 }
 
 pub(super) fn sidebar_entry(

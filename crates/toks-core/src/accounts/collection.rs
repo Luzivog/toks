@@ -18,17 +18,24 @@ enum CollectionMode {
 /// Refresh every discovered account with bounded parallelism. Broken accounts
 /// retain their last successful snapshot and an account-local typed issue.
 pub fn collect_limits() -> Vec<LimitSnapshot> {
-    collect(CollectionMode::Refresh)
+    collect(CollectionMode::Refresh, None)
 }
 
 /// Read local snapshots only. This is intentionally separate from refresh so
 /// applications can paint last-known values before any network work starts.
 pub fn hydrate_limits() -> Vec<LimitSnapshot> {
-    collect(CollectionMode::Hydrate)
+    collect(CollectionMode::Hydrate, None)
 }
 
-fn collect(mode: CollectionMode) -> Vec<LimitSnapshot> {
-    let profiles = discover_profiles();
+pub(crate) fn collect_provider_limits(provider: Provider) -> Vec<LimitSnapshot> {
+    collect(CollectionMode::Refresh, Some(provider))
+}
+
+fn collect(mode: CollectionMode, provider: Option<Provider>) -> Vec<LimitSnapshot> {
+    let profiles = discover_profiles()
+        .into_iter()
+        .filter(|profile| provider.is_none_or(|provider| profile.provider == provider))
+        .collect::<Vec<_>>();
     if profiles.is_empty() {
         return Vec::new();
     }

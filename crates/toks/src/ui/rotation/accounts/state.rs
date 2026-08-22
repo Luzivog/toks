@@ -1,67 +1,107 @@
+use chrono::{DateTime, Utc};
 use gpui::{App, Hsla};
 use gpui_component::ActiveTheme;
-use toks_core::{accounts::AccountId, LimitSnapshot};
+use toks_core::{
+    accounts::AccountId,
+    rotation::{AccountAvailability, UnixMillis},
+    LimitSnapshot, LimitWindow,
+};
 
 use crate::ToksApp;
+
+pub(super) struct AccountState {
+    pub(super) label: String,
+    pub(super) color: Hsla,
+    pub(super) reset_at: Option<DateTime<Utc>>,
+}
+
+/// The account's general weekly usage window — the one rotation cares about.
+/// Model-scoped windows (e.g. `Weekly — GPT-5.3-Codex-Spark`) carry a `scope`
+/// and are ignored; the general weekly window is the bare `"Weekly"` label,
+/// matching the predicate the `toks-core` limits tests rely on.
+pub(super) fn general_weekly_window(snapshot: &LimitSnapshot) -> Option<&LimitWindow> {
+    snapshot
+        .windows
+        .iter()
+        .find(|window| window.scope.is_none() && window.label == "Weekly")
+}
 
 pub(super) fn account_state(
     app: &ToksApp,
     snapshot: &LimitSnapshot,
     id: &AccountId,
     cx: &App,
-) -> (String, Hsla) {
+) -> AccountState {
     if app.rotation.settings.excluded().contains(id) {
-        return (
-            with_reset("Excluded", app, snapshot),
-            cx.theme().muted_foreground,
-        );
+        return state("Excluded", cx.theme().muted_foreground, None, app.now);
     }
+    let now = UnixMillis::new(app.now.timestamp_millis());
     if let Some(runtime) = app.rotation.runtime.accounts().get(id) {
-        if runtime.needs_sign_in() {
-            return (
-                with_reset("Needs sign-in", app, snapshot),
-                cx.theme().danger,
-            );
-        }
-        if let Some(until) = runtime
-            .blocked_until()
-            .filter(|until| until.get() > app.now.timestamp_millis())
-        {
-            return (
-                format!("Blocked until {}", super::super::format::exact_time(until)),
-                cx.theme().danger,
-            );
+        match runtime.availability(now) {
+            AccountAvailability::NeedsSignIn => {
+                return state("Needs sign-in", cx.theme().danger, None, app.now);
+            }
+            AccountAvailability::Blocked { until, reset_known } => {
+                let label = if reset_known {
+                    "Blocked"
+                } else {
+                    "Blocked, retrying"
+                };
+                return state(
+                    label,
+                    cx.theme().danger,
+                    DateTime::from_timestamp_millis(until.get()),
+                    app.now,
+                );
+            }
+            AccountAvailability::Draining { until, reset_known } => {
+                let label = if reset_known {
+                    "Draining at 0%"
+                } else {
+                    "Draining at 0%, rechecking"
+                };
+                return state(
+                    label,
+                    cx.theme().warning,
+                    DateTime::from_timestamp_millis(until.get()),
+                    app.now,
+                );
+            }
+            AccountAvailability::Available => {}
         }
     }
-    let draining = snapshot
-        .windows
-        .iter()
-        .any(|window| !window.reset_elapsed(app.now) && window.percent_remaining() <= f64::EPSILON);
-    if draining {
-        (
-            with_reset("Draining at 0%; active work continues", app, snapshot),
-            cx.theme().warning,
-        )
-    } else {
-        (
-            with_reset("Available", app, snapshot),
-            gpui::rgb(0x10_a3_7f).into(),
-        )
-    }
+    state(
+        "Available",
+        gpui::rgb(0x10_a3_7f).into(),
+        weekly_reset(app, snapshot),
+        app.now,
+    )
 }
 
-fn with_reset(label: &str, app: &ToksApp, snapshot: &LimitSnapshot) -> String {
-    snapshot
-        .windows
-        .iter()
-        .filter_map(|window| window.resets_at)
+/// The general weekly window's future reset instant, if any.
+fn weekly_reset(app: &ToksApp, snapshot: &LimitSnapshot) -> Option<chrono::DateTime<chrono::Utc>> {
+    general_weekly_window(snapshot)
+        .and_then(|window| window.resets_at)
         .filter(|reset| *reset > app.now)
-        .min()
+}
+
+fn state(
+    label: &str,
+    color: Hsla,
+    reset_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> AccountState {
+    let label = reset_at
         .map(|reset| {
             format!(
-                "{label}, resets {}",
-                super::super::super::fmt_exact_local(reset)
+                "{label} · {}",
+                super::super::super::fmt_reset(now, Some(reset))
             )
         })
-        .unwrap_or_else(|| label.to_owned())
+        .unwrap_or_else(|| label.to_owned());
+    AccountState {
+        label,
+        color,
+        reset_at,
+    }
 }

@@ -80,6 +80,32 @@ pub mod test_support {
     pub fn sidebar_open(app: &ToksApp) -> bool {
         app.sidebar_open
     }
+
+    pub fn prepare_rotation_accounts(app: &mut ToksApp) {
+        let accounts: Vec<_> = app
+            .limits
+            .iter()
+            .filter(|snapshot| snapshot.provider == toks_core::Provider::Codex)
+            .map(|snapshot| snapshot.account.id.clone())
+            .collect();
+        app.rotation.settings.reconcile(&accounts);
+        app.rotation.runtime.reconcile(
+            &accounts,
+            toks_core::rotation::UnixMillis::new(app.now.timestamp_millis()),
+        );
+    }
+
+    pub fn set_rotation_active_streams(app: &mut ToksApp, account: &str, count: u32) {
+        let account = toks_core::accounts::AccountId::new(account);
+        let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+        for index in 0..count {
+            app.rotation.runtime.connection_opened(
+                &account,
+                &toks_core::rotation::ThreadId::new(format!("fixture-{index}")),
+                at,
+            );
+        }
+    }
 }
 
 #[cfg(test)]

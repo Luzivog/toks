@@ -10,6 +10,7 @@ use super::super::headers::upstream_headers;
 use super::super::protocol::usage_block;
 use super::super::types::RouteCredential;
 use super::super::ProxyState;
+use crate::rotation::ThreadId;
 
 pub(super) type UpstreamSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -23,12 +24,13 @@ pub(super) async fn upstream(
     state: &ProxyState,
     uri: &Uri,
     incoming: &HeaderMap,
+    thread: Option<&ThreadId>,
 ) -> Result<Option<Connected>, ConnectFailure> {
     let mut skipped = BTreeSet::new();
     loop {
         let Some(mut credential) = state
             .engine
-            .select(&skipped)
+            .select_for_thread(thread, &skipped)
             .await
             .map_err(|_| ConnectFailure::Upstream)?
         else {

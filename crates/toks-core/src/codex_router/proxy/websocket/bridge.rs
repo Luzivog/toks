@@ -1,19 +1,20 @@
-use axum::extract::ws::{CloseFrame as ClientClose, Message as ClientMessage, WebSocket};
+use axum::extract::ws::{Message as ClientMessage, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::tungstenite::{
-    protocol::frame::CloseFrame as ServerClose, Message as ServerMessage,
-};
+use tokio_tungstenite::tungstenite::Message as ServerMessage;
 
 use crate::accounts::AccountId;
 use crate::rotation::ThreadId;
 
-use super::super::lease::StreamLease;
+use super::super::lease::{StreamLease, ThreadAttachment};
 use super::super::protocol::{
-    is_response_create, model_visible_output, response_terminal, thread_id, websocket_usage_block,
-    ALL_UNAVAILABLE_FRAME, RETRY_FRAME,
+    is_response_create, model_visible_output, requested_model, response_terminal, thread_id,
+    websocket_usage_block, with_service_tier, ALL_UNAVAILABLE_FRAME, RETRY_FRAME,
 };
 use super::super::Engine;
 use super::connect::UpstreamSocket;
+use message::{to_client, to_server};
+
+mod message;
 
 pub(super) async fn run(
     mut client: WebSocket,
@@ -22,10 +23,14 @@ pub(super) async fn run(
     account: AccountId,
     initial_thread: Option<ThreadId>,
 ) {
+    let attachment = initial_thread
+        .as_ref()
+        .and_then(|thread| ThreadAttachment::open(engine.clone(), &account, thread).ok());
     let mut turn = Turn {
         active: false,
         visible: false,
         thread: initial_thread,
+        attachment,
         lease: None,
     };
     loop {
@@ -51,6 +56,7 @@ struct Turn {
     active: bool,
     visible: bool,
     thread: Option<ThreadId>,
+    attachment: Option<ThreadAttachment>,
     lease: Option<StreamLease>,
 }
 
@@ -64,8 +70,16 @@ async fn handle_client(
 ) -> Result<(), ()> {
     if let ClientMessage::Text(text) = &message {
         if is_response_create(text) {
-            turn.thread = thread_id(text.as_bytes()).or_else(|| turn.thread.clone());
-            if !turn.active {
+            let requested_thread = thread_id(text.as_bytes()).or_else(|| turn.thread.clone());
+            let changes_thread = requested_thread.as_ref().is_some_and(|thread| {
+                turn.attachment
+                    .as_ref()
+                    .is_some_and(|attached| !attached.matches(thread))
+            });
+            let draining = requested_thread
+                .as_ref()
+                .is_some_and(|thread| engine.drains_in_place(account, thread));
+            if (!turn.active || changes_thread) && !draining {
                 match engine.eligible_account().ok().flatten() {
                     Some(selected) if &selected != account => {
                         client
@@ -85,6 +99,17 @@ async fn handle_client(
                     Some(_) => {}
                 }
             }
+            if let Some(thread) = requested_thread.as_ref() {
+                if turn
+                    .attachment
+                    .as_ref()
+                    .is_none_or(|attached| !attached.matches(thread))
+                {
+                    turn.attachment = None;
+                    turn.attachment = ThreadAttachment::open(engine.clone(), account, thread).ok();
+                }
+            }
+            turn.thread = requested_thread;
             if turn.lease.is_none() {
                 if let Some(id) = turn.thread.as_ref() {
                     turn.lease = StreamLease::open(engine.clone(), account, id).ok();
@@ -92,6 +117,18 @@ async fn handle_client(
             }
             turn.active = true;
             turn.visible = false;
+            // Burn the remainder fast, for the models that offer it.
+            let upgraded = draining
+                .then(|| requested_model(text))
+                .flatten()
+                .and_then(|model| engine.fast_tier(&model))
+                .and_then(|tier| with_service_tier(text, tier));
+            if let Some(upgraded) = upgraded {
+                return upstream
+                    .send(ServerMessage::Text(upgraded.as_str().into()))
+                    .await
+                    .map_err(|_| ());
+            }
         }
     }
     upstream.send(to_server(message)).await.map_err(|_| ())
@@ -106,9 +143,9 @@ async fn handle_server(
 ) -> Result<(), ()> {
     if let ServerMessage::Text(text) = &message {
         if let Some(block) = websocket_usage_block(text) {
-            let _ = engine.block(account, block.resets_at);
             turn.active = false;
             turn.lease.take();
+            let _ = engine.block(account, block.resets_at);
             if turn.visible {
                 client.send(to_client(message)).await.map_err(|_| ())?;
                 if engine.eligible_account().ok().flatten().is_none() {
@@ -139,32 +176,5 @@ async fn handle_server(
 fn wait(engine: &Engine, thread: &Option<ThreadId>) {
     if let Some(thread) = thread {
         let _ = engine.waiting(thread);
-    }
-}
-
-fn to_server(message: ClientMessage) -> ServerMessage {
-    match message {
-        ClientMessage::Text(value) => ServerMessage::Text(value.as_str().into()),
-        ClientMessage::Binary(value) => ServerMessage::Binary(value),
-        ClientMessage::Ping(value) => ServerMessage::Ping(value),
-        ClientMessage::Pong(value) => ServerMessage::Pong(value),
-        ClientMessage::Close(frame) => ServerMessage::Close(frame.map(|frame| ServerClose {
-            code: frame.code.into(),
-            reason: frame.reason.as_str().into(),
-        })),
-    }
-}
-
-fn to_client(message: ServerMessage) -> ClientMessage {
-    match message {
-        ServerMessage::Text(value) => ClientMessage::Text(value.as_str().into()),
-        ServerMessage::Binary(value) => ClientMessage::Binary(value),
-        ServerMessage::Ping(value) => ClientMessage::Ping(value),
-        ServerMessage::Pong(value) => ClientMessage::Pong(value),
-        ServerMessage::Close(frame) => ClientMessage::Close(frame.map(|frame| ClientClose {
-            code: frame.code.into(),
-            reason: frame.reason.as_str().into(),
-        })),
-        ServerMessage::Frame(_) => ClientMessage::Close(None),
     }
 }
