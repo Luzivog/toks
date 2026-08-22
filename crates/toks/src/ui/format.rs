@@ -50,9 +50,10 @@ pub(super) fn fmt_reset(now: DateTime<Utc>, at: Option<DateTime<Utc>>) -> String
     let mins = delta.num_minutes();
     if mins >= 24 * 60 {
         format!(
-            "resets in {}d {}h",
+            "resets in {}d {}h {}m",
             mins / (24 * 60),
-            (mins % (24 * 60)) / 60
+            (mins % (24 * 60)) / 60,
+            mins % 60
         )
     } else if mins >= 60 {
         format!("resets in {}h {:02}m", mins / 60, mins % 60)
@@ -99,7 +100,28 @@ pub(super) fn fmt_as_of(at: DateTime<Utc>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::zone_suffix;
+    use chrono::{TimeZone, Utc};
+
+    use super::{fmt_reset, zone_suffix};
+
+    #[test]
+    fn multi_day_reset_countdowns_include_minutes() {
+        let now = Utc
+            .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
+            .single()
+            .unwrap();
+        assert_eq!(
+            fmt_reset(now, Some(now + chrono::Duration::days(6))),
+            "resets in 6d 0h 0m"
+        );
+        assert_eq!(
+            fmt_reset(
+                now,
+                Some(now + chrono::Duration::days(6) + chrono::Duration::minutes(5))
+            ),
+            "resets in 6d 0h 5m"
+        );
+    }
 
     #[test]
     fn numeric_timezone_is_not_repeated() {
