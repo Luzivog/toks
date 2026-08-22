@@ -7,8 +7,8 @@ use crate::rotation::ThreadId;
 
 use super::super::lease::{StreamLease, ThreadAttachment};
 use super::super::protocol::{
-    is_response_create, model_visible_output, requested_model, response_terminal, thread_id,
-    websocket_usage_block, with_service_tier, ALL_UNAVAILABLE_FRAME, RETRY_FRAME,
+    is_response_create, model_visible_output, requested_model, thread_id, websocket_usage_block,
+    with_service_tier, ResponseLifecycle, ResponseLifecycleEnd, ALL_UNAVAILABLE_FRAME, RETRY_FRAME,
 };
 use super::super::Engine;
 use super::connect::UpstreamSocket;
@@ -32,6 +32,7 @@ pub(super) async fn run(
         thread: initial_thread,
         attachment,
         lease: None,
+        lifecycle: ResponseLifecycle::default(),
     };
     loop {
         tokio::select! {
@@ -58,6 +59,7 @@ struct Turn {
     thread: Option<ThreadId>,
     attachment: Option<ThreadAttachment>,
     lease: Option<StreamLease>,
+    lifecycle: ResponseLifecycle,
 }
 
 async fn handle_client(
@@ -117,6 +119,7 @@ async fn handle_client(
             }
             turn.active = true;
             turn.visible = false;
+            turn.lifecycle.reset();
             // Burn the remainder fast, for the models that offer it.
             let upgraded = draining
                 .then(|| requested_model(text))
@@ -165,9 +168,18 @@ async fn handle_server(
             return Err(());
         }
         turn.visible |= model_visible_output(text);
-        if response_terminal(text) {
-            turn.active = false;
-            turn.lease.take();
+        match turn.lifecycle.observe_json(text.as_bytes()) {
+            Some(ResponseLifecycleEnd::Continue) => {
+                turn.active = false;
+                if let Some(mut lease) = turn.lease.take() {
+                    lease.continue_after_response();
+                }
+            }
+            Some(ResponseLifecycleEnd::Finish) => {
+                turn.active = false;
+                turn.lease.take();
+            }
+            None => {}
         }
     }
     client.send(to_client(message)).await.map_err(|_| ())

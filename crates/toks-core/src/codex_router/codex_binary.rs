@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 
-pub(super) fn discover() -> Result<PathBuf> {
+pub(crate) fn discover() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("TOKS_CODEX_BIN").map(PathBuf::from) {
         return validate(path);
     }

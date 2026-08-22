@@ -28,12 +28,7 @@ pub(super) fn account_row(
         .is_available(&id, UnixMillis::new(app.now.timestamp_millis()));
     let busy = app.rotation.busy.is_some();
     let state = account_state(app, snapshot, &id, cx);
-    let active = app
-        .rotation
-        .runtime
-        .accounts()
-        .get(&id)
-        .map_or(0, |runtime| runtime.active_streams());
+    let active = app.rotation.runtime.active_threads(&id);
     let switch_account = id.clone();
     let handle = cx.entity().downgrade();
     let meter = weekly_meter(snapshot, cx);

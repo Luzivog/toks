@@ -8,7 +8,7 @@ use crate::accounts::AccountId;
 
 use super::headers::{response_headers, upstream_headers};
 use super::lease::StreamLease;
-use super::protocol::{thread_id, usage_block};
+use super::protocol::{thread_id, usage_block, ResponseLifecycle, ResponseLifecycleEnd};
 use super::types::RouteCredential;
 use super::ProxyState;
 
@@ -107,8 +107,26 @@ async fn classify_response(
         return Attempt::Response(build_response(status, headers, Body::from(body)));
     }
     let stream = stream::unfold(
-        (response.bytes_stream(), lease),
-        |(mut body, lease)| async move { body.next().await.map(|chunk| (chunk, (body, lease))) },
+        (response.bytes_stream(), lease, ResponseLifecycle::default()),
+        |(mut body, mut lease, mut lifecycle)| async move {
+            let chunk = body.next().await?;
+            let end = chunk
+                .as_ref()
+                .ok()
+                .and_then(|bytes| lifecycle.observe_sse(bytes));
+            match end {
+                Some(ResponseLifecycleEnd::Continue) => {
+                    if let Some(mut active) = lease.take() {
+                        active.continue_after_response();
+                    }
+                }
+                Some(ResponseLifecycleEnd::Finish) => {
+                    lease.take();
+                }
+                None => {}
+            }
+            Some((chunk, (body, lease, lifecycle)))
+        },
     );
     Attempt::Response(build_response(status, headers, Body::from_stream(stream)))
 }

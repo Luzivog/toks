@@ -32,7 +32,7 @@ fn heartbeat_label(app: &ToksApp, at: UnixMillis) -> String {
     }
 }
 
-pub(super) fn selected_account_label(app: &ToksApp) -> String {
+pub(in crate::ui::rotation) fn selected_account_label(app: &ToksApp) -> String {
     if !app.rotation.install.configured || !app.rotation.install.service_active {
         return "Direct Codex connection".into();
     }

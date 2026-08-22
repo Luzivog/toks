@@ -92,7 +92,7 @@ fn waiting_queue_controls_are_settings_owned_and_idempotent() {
 }
 
 #[test]
-fn runtime_tracks_streams_waiting_and_metadata_events_idempotently() {
+fn runtime_tracks_threads_waiting_and_metadata_events_idempotently() {
     let a = account("a");
     let b = account("b");
     let thread = ThreadId::new("thread-1");
@@ -112,9 +112,9 @@ fn runtime_tracks_streams_waiting_and_metadata_events_idempotently() {
 
     assert_eq!(runtime.health(), RouterHealth::Healthy);
     assert_eq!(runtime.heartbeat_at(), Some(UnixMillis::new(1)));
-    assert_eq!(runtime.accounts()[&a].active_streams(), 1);
-    assert!(runtime.connection_closed(&a));
-    assert!(!runtime.connection_closed(&a));
+    assert_eq!(runtime.active_threads(&a), 1);
+    assert!(runtime.connection_closed(&a, &thread, UnixMillis::new(8)));
+    assert!(!runtime.connection_closed(&a, &thread, UnixMillis::new(9)));
     assert!(runtime.waiting_threads().is_empty());
     assert!(matches!(
         runtime.events().front().map(|event| &event.event),
@@ -125,6 +125,32 @@ fn runtime_tracks_streams_waiting_and_metadata_events_idempotently() {
     for forbidden in ["prompt", "response", "tokens", "authorization"] {
         assert!(!json.contains(forbidden));
     }
+}
+
+#[test]
+fn active_count_is_unique_per_thread_and_survives_tool_follow_ups() {
+    let account = account("a");
+    let first = ThreadId::new("thread-1");
+    let second = ThreadId::new("thread-2");
+    let mut runtime = RotationRuntime::default();
+    runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
+    runtime.connection_opened(&account, &first, UnixMillis::new(1));
+    runtime.connection_opened(&account, &first, UnixMillis::new(2));
+    runtime.connection_opened(&account, &second, UnixMillis::new(3));
+    assert_eq!(runtime.active_threads(&account), 2);
+
+    assert!(runtime.connection_closed(&account, &first, UnixMillis::new(4)));
+    assert!(runtime.connection_continues(&account, &first, UnixMillis::new(5)));
+    assert_eq!(runtime.active_threads(&account), 2);
+
+    runtime.connection_opened(&account, &first, UnixMillis::new(6));
+    assert!(runtime.connection_closed(&account, &first, UnixMillis::new(7)));
+    assert_eq!(runtime.active_threads(&account), 1);
+
+    runtime.thread_attached(&account, &second);
+    assert!(runtime.connection_continues(&account, &second, UnixMillis::new(8)));
+    assert!(runtime.thread_detached(&account, &second));
+    assert_eq!(runtime.active_threads(&account), 0);
 }
 
 #[test]

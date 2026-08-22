@@ -3,6 +3,10 @@ use serde_json::Value;
 
 use crate::rotation::{ThreadId, UnixMillis};
 
+mod lifecycle;
+
+pub(super) use lifecycle::{ResponseLifecycle, ResponseLifecycleEnd};
+
 pub(super) const RETRY_FRAME: &str = r#"{"type":"error","status":400,"error":{"type":"invalid_request_error","code":"websocket_connection_limit_reached","message":"Responses websocket connection limit reached (60 minutes). Create a new websocket connection to continue."}}"#;
 pub(super) const ALL_UNAVAILABLE_FRAME: &str = r#"{"type":"error","status":429,"error":{"type":"usage_limit_reached","message":"All enrolled Codex subscriptions are unavailable."}}"#;
 
@@ -136,13 +140,6 @@ pub(super) fn with_service_tier(payload: &str, tier: &str) -> Option<String> {
     }
     object.insert("service_tier".into(), Value::String(tier.to_owned()));
     serde_json::to_string(&value).ok()
-}
-
-pub(super) fn response_terminal(payload: &str) -> bool {
-    matches!(
-        event_type(payload).as_deref(),
-        Some("response.completed" | "response.failed" | "response.incomplete")
-    )
 }
 
 pub(super) fn model_visible_output(payload: &str) -> bool {

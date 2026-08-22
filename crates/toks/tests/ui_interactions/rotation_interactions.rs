@@ -9,7 +9,7 @@ use gpui_component::TitleBar;
 use toks::{
     test_support::{
         current_page, emails_hidden, initialize, prepare_rotation_accounts, set_page,
-        set_rotation_active_streams, set_rotation_blocked, WindowFrame,
+        set_rotation_active_threads, set_rotation_blocked, WindowFrame,
     },
     Page, ToksApp,
 };
@@ -138,7 +138,7 @@ fn active_thread_counts_do_not_shift_account_meters(cx: &mut TestAppContext) {
             now,
         );
         prepare_rotation_accounts(&mut app);
-        set_rotation_active_streams(&mut app, "active", 7);
+        set_rotation_active_threads(&mut app, "active", 7);
         set_page(&mut app, Page::Rotation);
         app
     });
@@ -184,7 +184,7 @@ fn rotation_hides_emails_and_confirms_resets_without_spending_one(cx: &mut TestA
         snapshot.banked_resets = 1;
         let mut app = ToksApp::from_snapshots(None, vec![snapshot], now);
         prepare_rotation_accounts(&mut app);
-        set_rotation_active_streams(&mut app, "resettable", 1);
+        set_rotation_active_threads(&mut app, "resettable", 1);
         set_rotation_blocked(&mut app, "resettable");
         set_page(&mut app, Page::Rotation);
         app

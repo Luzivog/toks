@@ -17,39 +17,6 @@ impl RotationRuntime {
         self.push_event(at, RotationEventKind::RouterFailure);
     }
 
-    pub fn connection_opened(&mut self, account: &AccountId, thread: &ThreadId, at: UnixMillis) {
-        let state = self.accounts.entry(account.clone()).or_default();
-        state.active_streams = state.active_streams.saturating_add(1);
-        self.push_event(
-            at,
-            RotationEventKind::Routed {
-                thread_id: thread.clone(),
-                account_id: account.clone(),
-            },
-        );
-    }
-
-    pub fn connection_closed(&mut self, account: &AccountId) -> bool {
-        let Some(state) = self.accounts.get_mut(account) else {
-            return false;
-        };
-        let Some(count) = state.active_streams.checked_sub(1) else {
-            return false;
-        };
-        state.active_streams = count;
-        true
-    }
-
-    pub fn reset_connections(&mut self) -> bool {
-        let mut changed = !self.attached_threads.is_empty();
-        self.attached_threads.clear();
-        for state in self.accounts.values_mut() {
-            changed |= state.active_streams != 0;
-            state.active_streams = 0;
-        }
-        changed
-    }
-
     pub fn thread_attached(&mut self, account: &AccountId, thread: &ThreadId) -> bool {
         let attachment = self
             .attached_threads
@@ -82,10 +49,11 @@ impl RotationRuntime {
             return false;
         };
         attachment.connections = attachment.connections.saturating_sub(1);
-        if attachment.connections == 0 {
-            self.attached_threads.remove(thread);
+        if attachment.connections != 0 {
+            return false;
         }
-        false
+        self.attached_threads.remove(thread);
+        self.cancel_active_thread(account, thread)
     }
 
     pub fn block(

@@ -9,6 +9,7 @@ use toks_core::{
     Provider,
 };
 
+use super::remote_control_operations::RemoteControlUiState;
 use crate::ToksApp;
 
 mod io;
@@ -38,10 +39,12 @@ pub(crate) struct RotationUiState {
     pub install: RouterInstallStatus,
     pub error: Option<String>,
     pub busy: Option<&'static str>,
+    pub remote: RemoteControlUiState,
     generation: u64,
 }
 
 pub(super) fn spawn(cx: &mut Context<ToksApp>) {
+    super::remote_control_operations::spawn(cx);
     cx.spawn(async move |this, cx| loop {
         let request = this
             .update(cx, |app, _| {

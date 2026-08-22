@@ -13,6 +13,7 @@ mod account_operations;
 mod account_removals;
 pub(crate) mod banked_reset_operations;
 mod history_task;
+pub(crate) mod remote_control_operations;
 mod rotation_operations;
 pub(crate) use account_operations::AccountOperations;
 pub(crate) use account_removals::{request_removal, AccountRemovals, RemovalStatus};
@@ -61,7 +62,6 @@ impl Page {
         }
     }
 
-    /// The neighbor `delta` steps away in sidebar order, clamped at the ends.
     pub fn shifted(self, delta: isize) -> Page {
         let index = Page::ALL.iter().position(|page| *page == self).unwrap_or(0) as isize;
         let next = (index + delta).clamp(0, Page::ALL.len() as isize - 1);

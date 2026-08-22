@@ -6,7 +6,8 @@ use crate::ToksApp;
 mod controls;
 mod state;
 use controls::service_controls;
-use state::{health_label, selected_account_label};
+use state::health_label;
+pub(super) use state::selected_account_label;
 
 pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
     let install = &app.rotation.install;

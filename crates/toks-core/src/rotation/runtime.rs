@@ -7,6 +7,7 @@ use crate::accounts::AccountId;
 use super::{RotationEvent, RotationEventKind, ThreadId, UnixMillis};
 
 mod account;
+mod active_threads;
 mod mutations;
 
 pub(super) const RUNTIME_VERSION: u8 = 1;
@@ -34,7 +35,6 @@ pub struct AccountRuntime {
     #[serde(default)]
     grandfathered_threads: BTreeSet<ThreadId>,
     needs_sign_in: bool,
-    active_streams: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -78,6 +78,8 @@ pub struct RotationRuntime {
     health: RouterHealth,
     heartbeat_at: Option<UnixMillis>,
     accounts: BTreeMap<AccountId, AccountRuntime>,
+    #[serde(default)]
+    active_threads: BTreeMap<ThreadId, active_threads::ActiveThread>,
     #[serde(skip)]
     attached_threads: BTreeMap<ThreadId, AttachedThread>,
     waiting_threads: Vec<WaitingThread>,
@@ -91,6 +93,7 @@ impl Default for RotationRuntime {
             health: RouterHealth::Unknown,
             heartbeat_at: None,
             accounts: BTreeMap::new(),
+            active_threads: BTreeMap::new(),
             attached_threads: BTreeMap::new(),
             waiting_threads: Vec::new(),
             events: VecDeque::new(),
@@ -152,7 +155,7 @@ impl RotationRuntime {
                 state.block_reset_known = false;
             }
         }
-        self.accounts != before
+        self.accounts != before || self.reconcile_active_threads(&known, now)
     }
 
     pub(super) fn push_event(&mut self, at: UnixMillis, event: RotationEventKind) {

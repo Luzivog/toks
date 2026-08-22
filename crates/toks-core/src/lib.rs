@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod codex_router;
 pub mod history;
 pub mod limits;
+pub mod remote_control;
 pub mod rotation;
 
 pub use accounts::{AddAccountStarted, ProviderAccount};

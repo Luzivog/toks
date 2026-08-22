@@ -99,13 +99,13 @@ pub mod test_support {
         );
     }
 
-    pub fn set_rotation_active_streams(app: &mut ToksApp, account: &str, count: u32) {
+    pub fn set_rotation_active_threads(app: &mut ToksApp, account: &str, count: u32) {
         let account = toks_core::accounts::AccountId::new(account);
         let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
         for index in 0..count {
             app.rotation.runtime.connection_opened(
                 &account,
-                &toks_core::rotation::ThreadId::new(format!("fixture-{index}")),
+                &toks_core::rotation::ThreadId::new(format!("active-fixture-{index}")),
                 at,
             );
         }
@@ -120,6 +120,41 @@ pub mod test_support {
             true,
             at,
         );
+    }
+
+    pub fn exclude_rotation_account(app: &mut ToksApp, account: &str) {
+        app.rotation
+            .settings
+            .set_included(&toks_core::accounts::AccountId::new(account), false);
+    }
+
+    pub fn set_remote_control(
+        app: &mut ToksApp,
+        status: toks_core::remote_control::RemoteConnectionStatus,
+        devices: Vec<toks_core::remote_control::RemoteDevice>,
+    ) {
+        app.rotation.remote.snapshot = toks_core::remote_control::RemoteControlSnapshot {
+            connection: toks_core::remote_control::RemoteConnection {
+                status,
+                server_name: Some("test-computer".into()),
+            },
+            environment_id: Some("test-environment".into()),
+            devices: toks_core::remote_control::RemoteDevices::Loaded(devices),
+        };
+    }
+
+    pub fn show_remote_devices(app: &mut ToksApp) {
+        app.rotation.remote.panel = crate::app::remote_control_operations::RemotePanel::Devices;
+    }
+
+    pub fn show_remote_pairing(app: &mut ToksApp, now_seconds: i64) {
+        app.rotation.remote.panel = crate::app::remote_control_operations::RemotePanel::Pairing;
+        app.rotation.remote.pairing = Some(toks_core::remote_control::RemotePairing::new(
+            "opaque-test-code".into(),
+            "ABCD-EFGH".into(),
+            "test-environment".into(),
+            now_seconds + 300,
+        ));
     }
 }
 

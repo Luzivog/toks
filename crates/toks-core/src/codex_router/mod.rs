@@ -1,6 +1,6 @@
 //! Installation and runtime support for routing local Codex model traffic.
 
-mod codex_binary;
+pub(crate) mod codex_binary;
 mod codex_config;
 pub(crate) mod credentials;
 pub mod proxy;

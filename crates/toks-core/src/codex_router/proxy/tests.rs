@@ -22,6 +22,7 @@ use super::types::{CredentialFailure, CredentialSource, RouteCredential, SharedC
 use super::{app, InboundTokens, ProxyState, RouterRuntimeHandle, Upstream};
 
 mod fast_drain;
+mod remote_control;
 
 struct FakeCredentials {
     ids: Vec<AccountId>,

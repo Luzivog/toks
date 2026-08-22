@@ -17,7 +17,7 @@ dirs = "6"
 base64 = "0.22"
 # Toks-owned local parsing, incremental scanning, and pricing engine.
 toks-ingest = { path = "../toks-ingest" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "signal", "sync", "time"] }
 # Same TLS backend as the ingestion engine, so the artifact is shared.
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls-vendored", "stream"] }
 axum = { version = "0.8", features = ["ws"] }

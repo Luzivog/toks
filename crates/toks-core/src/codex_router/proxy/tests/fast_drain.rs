@@ -72,6 +72,37 @@ async fn only_a_thread_attached_before_exhaustion_drains_in_place() {
 }
 
 #[tokio::test]
+async fn tool_follow_ups_stay_active_until_the_final_response() {
+    let upstream = Router::new().fallback(any(tool_then_final));
+    let origin = spawn(upstream).await;
+    let harness = Harness::new(&[("a", "token-a")]);
+    let proxy = spawn(app(
+        harness.state(origin.clone(), origin.replacen("http://", "ws://", 1))
+    ))
+    .await;
+    let ws = proxy.replacen("http://", "ws://", 1);
+    let mut socket = connect(&ws, "token-a", Some("tool-thread")).await;
+
+    socket
+        .send(response_frame("tool-thread", "gpt-5.6-sol", "default").into())
+        .await
+        .unwrap();
+    assert_eq!(
+        next_json(&mut socket).await["type"],
+        "response.output_item.done"
+    );
+    assert_eq!(next_json(&mut socket).await["type"], "response.completed");
+    assert_eq!(active_threads(&harness, "a"), 1);
+
+    socket
+        .send(response_frame("tool-thread", "gpt-5.6-sol", "default").into())
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "response.completed");
+    assert_eq!(active_threads(&harness, "a"), 0);
+}
+
+#[tokio::test]
 async fn a_grandfathered_thread_reconnects_to_its_draining_account() {
     let upstream = Router::new().fallback(any(echo_turn));
     let origin = spawn(upstream).await;
@@ -154,6 +185,43 @@ async fn echo_turn(ws: WebSocketUpgrade, headers: HeaderMap) -> impl IntoRespons
                 .unwrap();
         }
     })
+}
+
+async fn tool_then_final(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(move |mut socket| async move {
+        let mut response_index = 0;
+        while let Some(Ok(Message::Text(_))) = socket.next().await {
+            if response_index == 0 {
+                socket
+                    .send(Message::Text(
+                        json!({
+                            "type":"response.output_item.done",
+                            "item":{"type":"function_call"}
+                        })
+                        .to_string()
+                        .into(),
+                    ))
+                    .await
+                    .unwrap();
+            }
+            socket
+                .send(Message::Text(
+                    json!({"type":"response.completed","response":{}})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            response_index += 1;
+        }
+    })
+}
+
+fn active_threads(harness: &Harness, account: &str) -> u32 {
+    RotationRuntimeStore::for_data_dir(harness._directory.path())
+        .load()
+        .unwrap()
+        .active_threads(&AccountId::new(account))
 }
 
 async fn connect(

@@ -10,6 +10,8 @@ mod email_privacy_interaction;
 mod navigate_button_interactions;
 #[path = "ui_interactions/reauth_interactions.rs"]
 mod reauth_interactions;
+#[path = "ui_interactions/remote_control_interactions.rs"]
+mod remote_control_interactions;
 #[path = "ui_interactions/rotation_interactions.rs"]
 mod rotation_interactions;
 #[path = "ui_interactions/sidebar_interactions.rs"]

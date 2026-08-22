@@ -11,10 +11,6 @@ impl AccountRuntime {
         self.needs_sign_in
     }
 
-    pub fn active_streams(&self) -> u32 {
-        self.active_streams
-    }
-
     pub fn availability(&self, now: UnixMillis) -> AccountAvailability {
         if self.needs_sign_in {
             return AccountAvailability::NeedsSignIn;

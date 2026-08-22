@@ -8,6 +8,8 @@ use super::engine::Engine;
 pub(super) struct StreamLease {
     engine: Arc<Engine>,
     account: AccountId,
+    thread: ThreadId,
+    continues: bool,
 }
 
 pub(super) struct ThreadAttachment {
@@ -26,7 +28,13 @@ impl StreamLease {
         Ok(Self {
             engine,
             account: account.clone(),
+            thread: thread.clone(),
+            continues: false,
         })
+    }
+
+    pub fn continue_after_response(&mut self) {
+        self.continues = true;
     }
 }
 
@@ -51,7 +59,11 @@ impl ThreadAttachment {
 
 impl Drop for StreamLease {
     fn drop(&mut self) {
-        let _ = self.engine.close(&self.account);
+        if self.continues {
+            let _ = self.engine.continue_response(&self.account, &self.thread);
+        } else {
+            let _ = self.engine.close(&self.account, &self.thread);
+        }
     }
 }
 

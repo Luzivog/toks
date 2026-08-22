@@ -17,6 +17,7 @@ impl Default for RotationUiState {
             },
             error: None,
             busy: None,
+            remote: Default::default(),
             generation: 0,
         }
     }

@@ -46,7 +46,7 @@ impl Engine {
         let mut runtime = runtime_store.load()?;
         let now = now();
         runtime.reconcile(&credentials.account_ids(), now);
-        runtime.reset_connections();
+        runtime.reset_connections(now);
         runtime.heartbeat(now);
         runtime_store.save(&runtime)?;
         Ok(Arc::new(Self {
@@ -94,8 +94,12 @@ impl Engine {
         self.runtime_store.save(&runtime)
     }
 
-    pub fn close(&self, account: &AccountId) -> Result<()> {
-        self.mutate(|runtime| runtime.connection_closed(account))
+    pub fn close(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        self.mutate(|runtime| runtime.connection_closed(account, thread, now()))
+    }
+
+    pub fn continue_response(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        self.mutate(|runtime| runtime.connection_continues(account, thread, now()))
     }
 
     pub fn attach(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
