@@ -12,8 +12,10 @@ use crate::{
 mod account_operations;
 mod account_removals;
 mod history_task;
+mod rotation_operations;
 pub(crate) use account_operations::AccountOperations;
 pub(crate) use account_removals::{request_removal, AccountRemovals, RemovalStatus};
+pub(crate) use rotation_operations::{RotationServiceAction, RotationUiState, SettingsAction};
 
 const LIMITS_REFRESH: Duration = Duration::from_secs(15);
 pub(super) fn sidebar_open_for_layout(
@@ -27,6 +29,7 @@ pub(super) fn sidebar_open_for_layout(
         !compact_layout
     }
 }
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Overview,
@@ -34,25 +37,25 @@ pub enum Page {
     Daily,
     Monthly,
     AllTime,
+    Rotation,
 }
 
 impl Page {
-    /// Sidebar display order.
-    pub const ALL: [Page; 5] = [
+    pub const ALL: [Page; 6] = [
         Page::Overview,
         Page::Hourly,
         Page::Daily,
         Page::Monthly,
         Page::AllTime,
+        Page::Rotation,
     ];
 
     pub fn usage_period(&self) -> Option<UsagePeriod> {
         match self {
-            Page::Overview => None,
+            Page::Overview | Page::AllTime | Page::Rotation => None,
             Page::Hourly => Some(UsagePeriod::Hourly),
             Page::Daily => Some(UsagePeriod::Daily),
             Page::Monthly => Some(UsagePeriod::Monthly),
-            Page::AllTime => None,
         }
     }
 
@@ -79,6 +82,7 @@ pub struct ToksApp {
     pub(crate) emails_hidden: bool,
     pub(crate) usage_tables: UsageTablesState,
     pub(crate) model_tables: ModelTablesState,
+    pub(crate) rotation: RotationUiState,
     pub(crate) now: chrono::DateTime<Utc>,
     pub(super) compact_layout: Option<bool>,
     pub(super) sidebar_motion: SidebarMotion,
@@ -136,8 +140,7 @@ impl ToksApp {
         })
         .detach();
 
-        // Countdown labels must keep advancing even while a provider request is
-        // delayed or being backed off.
+        // Countdown labels advance even while a provider refresh is delayed.
         cx.spawn(async move |this, cx| loop {
             smol::Timer::after(LIMITS_REFRESH).await;
             if this
@@ -153,14 +156,13 @@ impl ToksApp {
         .detach();
 
         history_task::spawn(cx);
+        rotation_operations::spawn(cx);
 
         Self::from_snapshots(None, Vec::new(), Utc::now())
     }
 
     /// Construct the render state without starting filesystem or network work.
-    ///
-    /// The production constructor owns refresh scheduling; tests and headless
-    /// renderers cross this pure seam with deterministic snapshots instead.
+    /// Tests and headless renderers use deterministic snapshots instead.
     pub fn from_snapshots(
         history: Option<HistorySnapshot>,
         limits: Vec<LimitSnapshot>,
@@ -187,6 +189,7 @@ impl ToksApp {
             emails_hidden: false,
             usage_tables: UsageTablesState::new(),
             model_tables: ModelTablesState::new(),
+            rotation: RotationUiState::default(),
             now,
             compact_layout: None,
             sidebar_motion: SidebarMotion::new(),

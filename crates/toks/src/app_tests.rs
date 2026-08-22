@@ -18,8 +18,10 @@ fn page_shift_follows_sidebar_order_and_stops_at_the_ends() {
     assert_eq!(Page::Overview.shifted(1), Page::Hourly);
     assert_eq!(Page::Overview.shifted(-1), Page::Overview);
     assert_eq!(Page::Daily.shifted(-1), Page::Hourly);
-    assert_eq!(Page::AllTime.shifted(1), Page::AllTime);
+    assert_eq!(Page::AllTime.shifted(1), Page::Rotation);
     assert_eq!(Page::AllTime.shifted(-1), Page::Monthly);
+    assert_eq!(Page::Rotation.shifted(1), Page::Rotation);
+    assert_eq!(Page::Rotation.shifted(-1), Page::AllTime);
 }
 
 #[test]

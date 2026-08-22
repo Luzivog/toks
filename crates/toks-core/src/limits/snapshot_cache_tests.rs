@@ -38,6 +38,7 @@ fn cache_replacement_round_trips_without_leaving_temporary_files() {
         plan: None,
         plan_multiplier: Some(PlanMultiplier::Five),
         banked_resets: 0,
+        banked_reset_credits: None,
         windows: Vec::new(),
         extras: Vec::new(),
         fetched_at: None,
@@ -70,6 +71,15 @@ fn persisted_snapshot_excludes_identity_raw_payloads_and_transient_failures() {
         plan: Some("pro".into()),
         plan_multiplier: Some(super::PlanMultiplier::Twenty),
         banked_resets: 4,
+        banked_reset_credits: Some(vec![super::BankedResetCredit {
+            expires_at: Some(
+                chrono::DateTime::parse_from_rfc3339("2026-09-01T12:00:00Z")
+                    .unwrap()
+                    .with_timezone(&chrono::Utc),
+            ),
+            title: Some("September reset".into()),
+            status: Some(super::BankedResetCreditStatus::Available),
+        }]),
         windows: vec![LimitWindow {
             id: "weekly".into(),
             label: "Weekly".into(),
@@ -97,11 +107,14 @@ fn persisted_snapshot_excludes_identity_raw_payloads_and_transient_failures() {
     assert_eq!(stored.account.id.as_str(), "stable-local-id");
     assert_eq!(stored.plan_multiplier, Some(PlanMultiplier::Twenty));
     assert_eq!(stored.banked_resets, 4);
+    assert_eq!(stored.banked_reset_credits.as_ref().unwrap().len(), 1);
     assert_eq!(stored.windows[0].percent_used, 42.0);
 
     let directory = tempfile::tempdir().unwrap();
-    let restored = round_trip_for_test(&directory.path().join("snapshot.json"), stored).unwrap();
+    let restored =
+        round_trip_for_test(&directory.path().join("snapshot.json"), stored.clone()).unwrap();
     assert_eq!(restored.banked_resets, 4);
+    assert_eq!(restored.banked_reset_credits, stored.banked_reset_credits);
     assert!(restored.extras.is_empty());
 }
 
@@ -163,5 +176,6 @@ fn v1_and_v2_cache_envelopes_without_new_typed_fields_remain_readable() {
         assert_eq!(decoded_version, version);
         assert_eq!(decoded.plan_multiplier, None);
         assert_eq!(decoded.banked_resets, 0);
+        assert_eq!(decoded.banked_reset_credits, None);
     }
 }

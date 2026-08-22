@@ -98,6 +98,7 @@ fn snapshot(id: &str, email: &str, now: chrono::DateTime<Utc>) -> LimitSnapshot 
         plan: Some("Pro".into()),
         plan_multiplier: None,
         banked_resets: 0,
+        banked_reset_credits: None,
         windows: Vec::new(),
         extras: Vec::new(),
         fetched_at: Some(now),

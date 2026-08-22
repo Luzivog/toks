@@ -61,6 +61,12 @@ pub(super) fn fmt_reset(now: DateTime<Utc>, at: Option<DateTime<Utc>>) -> String
     }
 }
 
+pub(super) fn fmt_exact_local(at: DateTime<Utc>) -> String {
+    at.with_timezone(&Local)
+        .format("%b %-d, %Y, %-I:%M %p %Z (%:z)")
+        .to_string()
+}
+
 pub(super) fn fmt_age(now: DateTime<Utc>, at: DateTime<Utc>) -> String {
     let seconds = (now - at).num_seconds().max(0);
     if seconds < 60 {

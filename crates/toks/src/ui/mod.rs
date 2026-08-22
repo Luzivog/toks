@@ -12,6 +12,7 @@ mod action;
 mod all_time;
 mod all_time_data;
 mod banked_reset_badge;
+mod banked_reset_tooltip;
 #[cfg(test)]
 mod chart_data_tests;
 mod chart_layout;
@@ -36,6 +37,7 @@ mod overview_metrics;
 mod pages;
 mod plan_badge;
 mod quota_row;
+mod rotation;
 mod section;
 mod sidebar;
 mod summary;
@@ -62,8 +64,8 @@ use chart_plot::{usage_chart_maximum, usage_hover_geometry, usage_marker_top};
 use chart_tooltip::provider_rows;
 use chart_tooltip::{usage_point_tooltip, ProviderPoint};
 use format::{
-    cost_per_million, fmt_age, fmt_as_of, fmt_cost_full, fmt_cost_per_million, fmt_reset,
-    fmt_tokens,
+    cost_per_million, fmt_age, fmt_as_of, fmt_cost_full, fmt_cost_per_million, fmt_exact_local,
+    fmt_reset, fmt_tokens,
 };
 use history_error::history_error_card;
 use history_freshness::history_freshness_text;

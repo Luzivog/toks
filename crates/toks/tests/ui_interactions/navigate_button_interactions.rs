@@ -100,7 +100,9 @@ fn mouse_forward_then_back_walks_sidebar_tabs_and_stops_at_the_ends(cx: &mut Tes
         .app
         .update(harness.cx, |app, _| set_page(app, Page::AllTime));
     harness.press(NavigationDirection::Forward);
-    assert_eq!(harness.page(), Page::AllTime);
+    assert_eq!(harness.page(), Page::Rotation);
+    harness.press(NavigationDirection::Forward);
+    assert_eq!(harness.page(), Page::Rotation);
 }
 
 #[gpui::test]

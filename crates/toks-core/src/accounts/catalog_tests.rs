@@ -30,6 +30,7 @@ fn snapshot(
         plan: Some("pro".into()),
         plan_multiplier: None,
         banked_resets: 0,
+        banked_reset_credits: None,
         windows: vec![LimitWindow {
             id: "weekly".into(),
             label: "Weekly".into(),

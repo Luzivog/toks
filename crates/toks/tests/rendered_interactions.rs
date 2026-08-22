@@ -103,7 +103,6 @@ fn account_handle_drops_onto_another_account_row(cx: &mut TestAppContext) {
     ];
     let mut harness = Harness::open_with_limits(cx, Page::Overview, VIEWPORT, limits);
     assert!(harness.above("account-drop-codex-first", "account-drop-claude-second"));
-
     let start = harness.bounds("account-drag-codex-first").center();
     let end = harness.bounds("account-drop-claude-second").center();
     harness
@@ -476,6 +475,7 @@ fn limit_snapshot(provider: Provider, id: &str) -> LimitSnapshot {
         plan: None,
         plan_multiplier: None,
         banked_resets: 0,
+        banked_reset_credits: None,
         windows: vec![LimitWindow {
             id: "weekly".into(),
             label: "Weekly — GPT-5.3-Codex-Spark".into(),

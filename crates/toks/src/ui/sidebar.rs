@@ -70,6 +70,21 @@ pub(crate) fn sidebar(
             "All time",
             overlay,
         ))
+        .child(
+            div()
+                .mx_4()
+                .my_2()
+                .border_t_1()
+                .border_color(cx.theme().sidebar_border),
+        )
+        .child(sidebar_entry(
+            app,
+            cx,
+            "rotation",
+            Page::Rotation,
+            "Rotation",
+            overlay,
+        ))
 }
 
 pub(super) fn sidebar_entry(

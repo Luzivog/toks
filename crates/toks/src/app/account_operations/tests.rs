@@ -35,6 +35,7 @@ fn snapshot(
         plan: None,
         plan_multiplier: None,
         banked_resets: 0,
+        banked_reset_credits: None,
         windows: Vec::new(),
         extras: Vec::new(),
         fetched_at: attempted_at,

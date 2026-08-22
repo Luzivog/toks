@@ -21,6 +21,7 @@ pub(crate) fn detail(
     let body = match page {
         Page::Overview => overview_page(app, layout, cx),
         Page::AllTime => super::all_time::all_time_page(app, layout, cx),
+        Page::Rotation => super::rotation::rotation_page(app, cx),
         _ => usage_page(
             app,
             page.usage_period().expect("usage page period"),

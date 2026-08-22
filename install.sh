@@ -4,9 +4,11 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 toks_binary=target/release/toks
+toks_router_binary=target/release/toks-router
 toks_prefix=${TOKS_INSTALL_PREFIX:-${TOKSCOPE_INSTALL_PREFIX:-"$HOME/.local"}}
 toks_data_home=${XDG_DATA_HOME:-"$HOME/.local/share"}
 toks_binary_dest="$toks_prefix/bin/toks"
+toks_router_binary_dest="$toks_prefix/bin/toks-router"
 toks_legacy_binary_dest="$toks_prefix/bin/tokscope"
 toks_icon_root="$toks_data_home/icons/hicolor"
 toks_app_root="$toks_data_home/applications"
@@ -24,12 +26,13 @@ for toks_process in /proc/[0-9]*; do
     fi
 done
 
-if [[ ! -x "$toks_binary" ]]; then
-    echo "release binary missing — run: cargo build --release --locked" >&2
+if [[ ! -x "$toks_binary" || ! -x "$toks_router_binary" ]]; then
+    echo "release binaries missing — build both Toks and toks-router first" >&2
     exit 1
 fi
 
 install -Dm755 "$toks_binary" "$toks_binary_dest"
+install -Dm755 "$toks_router_binary" "$toks_router_binary_dest"
 install -Dm644 assets/toks.svg \
     "$toks_icon_root/scalable/apps/toks.svg"
 
@@ -73,7 +76,11 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -f "$toks_icon_root" 2>/dev/null || true
 fi
 
-echo "installed: $toks_binary_dest + $toks_desktop_dest"
+if systemctl --user is-active --quiet toks-router.service 2>/dev/null; then
+    systemctl --user restart toks-router.service
+fi
+
+echo "installed: $toks_binary_dest + $toks_router_binary_dest + $toks_desktop_dest"
 if [[ "$toks_was_running" == true ]]; then
     echo "The previous app is still running — close it before opening Toks so local data can migrate safely."
 fi

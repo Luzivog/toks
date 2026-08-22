@@ -15,6 +15,7 @@ mod http;
 pub mod live;
 mod live_fetch;
 mod plan;
+mod reset_credits;
 pub(crate) mod settling;
 mod snapshot_cache;
 mod status;
@@ -33,6 +34,7 @@ use serde::{Deserialize, Serialize};
 
 pub use plan::PlanMultiplier;
 pub(crate) use plan::{read_claude_plan, PlanDetails};
+pub use reset_credits::{BankedResetCredit, BankedResetCreditStatus};
 pub use status::{LimitIssue, LimitIssueKind, SnapshotFreshness, SnapshotStatus};
 
 pub(crate) fn forget_account_profile(
@@ -122,6 +124,9 @@ pub struct LimitSnapshot {
     /// Redeemable Codex credits that reset both standard usage windows.
     #[serde(default)]
     pub banked_resets: u64,
+    /// Optional returned rows; the provider count above remains authoritative.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub banked_reset_credits: Option<Vec<BankedResetCredit>>,
     pub windows: Vec<LimitWindow>,
     /// Non-window facts worth surfacing (credits, spend, extra usage…).
     pub extras: Vec<(String, serde_json::Value)>,
@@ -147,6 +152,7 @@ impl LimitSnapshot {
             plan: None,
             plan_multiplier: None,
             banked_resets: 0,
+            banked_reset_credits: None,
             windows: Vec::new(),
             extras: Vec::new(),
             fetched_at: None,

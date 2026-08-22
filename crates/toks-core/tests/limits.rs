@@ -143,6 +143,7 @@ fn codex_banked_resets_are_typed_instead_of_preserved_as_extras() {
     let snapshot = codex::parse(&response, None, "test".into());
 
     assert_eq!(snapshot.banked_resets, 3);
+    assert_eq!(snapshot.banked_reset_credits, None);
     assert!(!snapshot
         .extras
         .iter()

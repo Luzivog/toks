@@ -121,6 +121,7 @@ fn unavailable_snapshot(
         plan: details.name,
         plan_multiplier: details.multiplier,
         banked_resets: 0,
+        banked_reset_credits: None,
         windows: Vec::new(),
         extras: Vec::new(),
         fetched_at: None,

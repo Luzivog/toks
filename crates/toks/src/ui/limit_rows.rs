@@ -119,7 +119,7 @@ pub(super) fn account_limits_group(
                                             .child(plan_badge_label(plan, s.plan_multiplier)),
                                     )
                                 })
-                                .when_some(banked_reset_badge(s, accent), |row, badge| {
+                                .when_some(banked_reset_badge(s, now), |row, badge| {
                                     row.child(badge)
                                 }),
                         ),

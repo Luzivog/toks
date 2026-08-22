@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use reqwest::{Client, RequestBuilder, StatusCode};
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::{LimitIssue, LimitIssueKind};
@@ -62,6 +63,12 @@ fn executor() -> Result<&'static HttpExecutor, LiveError> {
 }
 
 pub(crate) fn get_json(build: impl FnOnce(&Client) -> RequestBuilder) -> Result<Value, LiveError> {
+    get_typed_json(build)
+}
+
+pub(crate) fn get_typed_json<T: DeserializeOwned>(
+    build: impl FnOnce(&Client) -> RequestBuilder,
+) -> Result<T, LiveError> {
     let executor = executor()?;
     let request = build(&executor.client);
     executor.runtime.block_on(async move {
@@ -102,7 +109,7 @@ pub(crate) fn get_json(build: impl FnOnce(&Client) -> RequestBuilder) -> Result<
                 "provider returned HTML instead of JSON",
             ));
         }
-        serde_json::from_str(&body).map_err(|error| {
+        serde_json::from_str::<T>(&body).map_err(|error| {
             LiveError::new(
                 LimitIssueKind::InvalidResponse,
                 format!("provider returned invalid JSON: {error}"),

@@ -115,13 +115,13 @@ pub(crate) enum ModelSortColumn {
 }
 
 pub(crate) struct ModelTablesState {
-    sorts: [SortState<ModelSortColumn>; 5],
+    sorts: [SortState<ModelSortColumn>; 6],
 }
 
 impl ModelTablesState {
     pub(crate) fn new() -> Self {
         Self {
-            sorts: [SortState::descending(ModelSortColumn::Cost); 5],
+            sorts: [SortState::descending(ModelSortColumn::Cost); 6],
         }
     }
 
@@ -149,6 +149,7 @@ const fn page_index(page: Page) -> usize {
         Page::Daily => 2,
         Page::Monthly => 3,
         Page::AllTime => 4,
+        Page::Rotation => 5,
     }
 }
 

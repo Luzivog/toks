@@ -22,6 +22,7 @@ pub(super) fn title_bar(
         Page::Daily => ("Daily", ui::page_accent(Page::Daily, cx)),
         Page::Monthly => ("Monthly", ui::page_accent(Page::Monthly, cx)),
         Page::AllTime => ("All time", ui::page_accent(Page::AllTime, cx)),
+        Page::Rotation => ("Rotation", ui::page_accent(Page::Rotation, cx)),
     };
     let sidebar_tooltip = if app.sidebar_open {
         "Hide sidebar"

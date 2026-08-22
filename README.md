@@ -30,11 +30,13 @@ Toks currently supports Linux. Install Rust with
 git clone https://github.com/Luzivog/toks.git
 cd toks
 cargo build -p toks --release --locked
+cargo build -p toks-core --bin toks-router --release --locked
 ./install.sh
 ```
 
 Open **Toks** from your application launcher. The installer is user-local:
-the binary goes to `~/.local/bin` and no `sudo` is required.
+the app and its Codex router go to `~/.local/bin`. The install does not require
+`sudo`.
 
 <details>
 <summary>Debian / Ubuntu build requirements</summary>

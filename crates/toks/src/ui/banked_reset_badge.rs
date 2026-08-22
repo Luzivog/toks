@@ -1,14 +1,17 @@
-use gpui::{div, prelude::*, Hsla, SharedString};
-use gpui_component::tooltip::Tooltip;
+use chrono::{DateTime, Utc};
+use gpui::{div, prelude::*, SharedString};
+use gpui_component::{tooltip::Tooltip, StyledExt};
 use toks_core::{LimitSnapshot, Provider};
 
-const TOOLTIP: &str = "Redeeming one reset resets both the Codex 5-hour and weekly usage windows.";
+use super::banked_reset_tooltip::reset_credit_tooltip;
 
 pub(super) fn banked_reset_badge(
     snapshot: &LimitSnapshot,
-    accent: Hsla,
+    now: DateTime<Utc>,
 ) -> Option<impl IntoElement> {
     let label = banked_reset_label(snapshot.provider, snapshot.banked_resets)?;
+    let count = snapshot.banked_resets;
+    let credits = snapshot.banked_reset_credits.clone();
     let selector = format!(
         "account-resets-{}-{}",
         snapshot.provider.slug(),
@@ -22,15 +25,16 @@ pub(super) fn banked_reset_badge(
             .px_1p5()
             .rounded_sm()
             .text_xs()
-            .bg(accent.opacity(0.1))
-            .text_color(accent.opacity(0.82))
+            .font_medium()
+            .bg(gpui::rgb(0x10_a3_7f))
+            .text_color(gpui::white())
             .child(label)
-            .tooltip(|window, cx| {
-                Tooltip::element(|_, _| {
-                    div()
-                        .debug_selector(|| "banked-reset-tooltip".to_string())
-                        .child(TOOLTIP)
+            .tooltip(move |window, cx| {
+                let credits = credits.clone();
+                Tooltip::element(move |_, cx| {
+                    reset_credit_tooltip(count, credits.as_deref(), now, cx)
                 })
+                .p_0()
                 .build(window, cx)
             }),
     )

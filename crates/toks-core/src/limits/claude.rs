@@ -1,5 +1,4 @@
-//! Claude Code plan limits from its local cache and live usage response. Both
-//! shapes feed [`parse_utilization`].
+//! Claude Code plan limits from local and live usage responses.
 
 mod principal;
 
@@ -105,6 +104,7 @@ pub fn parse_utilization(
         plan: None,
         plan_multiplier: PlanMultiplier::from_explicit_metadata(util),
         banked_resets: 0,
+        banked_reset_credits: None,
         windows,
         extras,
         fetched_at,
