@@ -1,9 +1,58 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
+use std::{future::Future, task::Poll, time::Duration};
 use tokio::net::UnixListener;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
-use super::{devices, rpc};
+use super::{commands, devices, rpc};
+
+#[test]
+fn rpc_request_works_from_a_non_tokio_executor() {
+    let directory = tempfile::tempdir().unwrap();
+    let socket = directory.path().join("app-server.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let listener = UnixListener::from_std(listener).unwrap();
+            serve_once(
+                listener,
+                "remoteControl/status/read",
+                None,
+                json!({
+                    "status": "connected",
+                    "serverName": "workstation",
+                    "environmentId": "environment"
+                }),
+            )
+            .await;
+        });
+    });
+
+    let response: Value =
+        block_on_without_tokio(rpc::request(&socket, "remoteControl/status/read", None)).unwrap();
+    assert_eq!(response["status"], "connected");
+    server.join().unwrap();
+}
+
+#[test]
+fn lifecycle_command_works_from_a_non_tokio_executor() {
+    let executable = std::env::current_exe().unwrap();
+    let output = block_on_without_tokio(commands::run_at(&executable, &["--help"])).unwrap();
+    assert!(!output.is_empty());
+}
+
+fn block_on_without_tokio<F: Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let waker = futures_util::task::noop_waker();
+    let mut context = std::task::Context::from_waker(&waker);
+    loop {
+        if let Poll::Ready(output) = future.as_mut().poll(&mut context) {
+            return output;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
 
 #[tokio::test]
 async fn rpc_initializes_experimental_api_and_sends_exact_request() {

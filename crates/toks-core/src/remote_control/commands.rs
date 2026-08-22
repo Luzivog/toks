@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{path::Path, time::Duration};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -58,26 +58,38 @@ pub(super) async fn pair() -> Result<RemotePairing> {
 
 async fn run(args: &[&str]) -> Result<Vec<u8>> {
     let executable = crate::codex_router::codex_binary::discover()?;
-    let mut command = Command::new(&executable);
-    command.args(args).kill_on_drop(true);
-    let output = timeout(COMMAND_TIMEOUT, command.output())
-        .await
-        .with_context(|| {
-            format!(
-                "Codex command timed out after {}s",
-                COMMAND_TIMEOUT.as_secs()
-            )
-        })?
-        .with_context(|| format!("running {} {}", executable.display(), args.join(" ")))?;
-    if output.status.success() {
-        return Ok(output.stdout);
-    }
-    let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    anyhow::bail!(if message.is_empty() {
-        "Codex command failed without an error message".into()
-    } else {
-        message
+    run_at(&executable, args).await
+}
+
+pub(super) async fn run_at(executable: &Path, args: &[&str]) -> Result<Vec<u8>> {
+    let executable = executable.to_path_buf();
+    let args: Vec<String> = args
+        .iter()
+        .map(|argument| (*argument).to_string())
+        .collect();
+    super::runtime::run(async move {
+        let mut command = Command::new(&executable);
+        command.args(&args).kill_on_drop(true);
+        let output = timeout(COMMAND_TIMEOUT, command.output())
+            .await
+            .with_context(|| {
+                format!(
+                    "Codex command timed out after {}s",
+                    COMMAND_TIMEOUT.as_secs()
+                )
+            })?
+            .with_context(|| format!("running {} {}", executable.display(), args.join(" ")))?;
+        if output.status.success() {
+            return Ok(output.stdout);
+        }
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        anyhow::bail!(if message.is_empty() {
+            "Codex command failed without an error message".into()
+        } else {
+            message
+        })
     })
+    .await
 }
 
 fn arguments(operation: Operation) -> &'static [&'static str] {

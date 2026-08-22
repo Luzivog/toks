@@ -9,14 +9,19 @@ use tokio_tungstenite::{client_async, tungstenite::Message, WebSocketStream};
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(12);
 
-pub(super) async fn request<T: DeserializeOwned>(
+pub(super) async fn request<T: DeserializeOwned + Send + 'static>(
     socket: &Path,
     method: &str,
     params: Option<Value>,
 ) -> Result<T> {
-    timeout(RESPONSE_TIMEOUT, request_inner(socket, method, params))
-        .await
-        .with_context(|| format!("timed out waiting for {method}"))?
+    let socket = socket.to_path_buf();
+    let method = method.to_string();
+    super::runtime::run(async move {
+        timeout(RESPONSE_TIMEOUT, request_inner(&socket, &method, params))
+            .await
+            .with_context(|| format!("timed out waiting for {method}"))?
+    })
+    .await
 }
 
 async fn request_inner<T: DeserializeOwned>(

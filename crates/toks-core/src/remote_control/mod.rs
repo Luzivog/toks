@@ -1,6 +1,7 @@
 mod commands;
 mod devices;
 mod rpc;
+mod runtime;
 mod store;
 mod types;
 mod wire;
