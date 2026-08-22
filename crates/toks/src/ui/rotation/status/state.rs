@@ -1,8 +1,7 @@
+use toks_core::accounts::AccountId;
 use toks_core::rotation::{RouterHealth, UnixMillis};
 
 use crate::ToksApp;
-
-use super::super::format::account_label;
 
 pub(super) fn health_label(app: &ToksApp) -> String {
     if app.rotation.install.configured && !app.rotation.install.service_active {
@@ -32,9 +31,15 @@ fn heartbeat_label(app: &ToksApp, at: UnixMillis) -> String {
     }
 }
 
-pub(in crate::ui::rotation) fn selected_account_label(app: &ToksApp) -> String {
+pub(super) enum SelectedAccount {
+    Direct,
+    Account(AccountId),
+    Waiting,
+}
+
+pub(super) fn selected_account(app: &ToksApp) -> SelectedAccount {
     if !app.rotation.install.configured || !app.rotation.install.service_active {
-        return "Direct Codex connection".into();
+        return SelectedAccount::Direct;
     }
     let accounts: Vec<_> = app
         .limits
@@ -49,6 +54,6 @@ pub(in crate::ui::rotation) fn selected_account_label(app: &ToksApp) -> String {
             &accounts,
             UnixMillis::new(app.now.timestamp_millis()),
         )
-        .map(|id| account_label(app, &id))
-        .unwrap_or_else(|| "Waiting for an available account".into())
+        .map(SelectedAccount::Account)
+        .unwrap_or(SelectedAccount::Waiting)
 }

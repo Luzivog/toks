@@ -13,6 +13,7 @@ mod account_operations;
 mod account_removals;
 pub(crate) mod banked_reset_operations;
 mod history_task;
+mod navigation;
 pub(crate) mod remote_control_operations;
 mod rotation_operations;
 pub(crate) use account_operations::AccountOperations;
@@ -44,15 +45,6 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 6] = [
-        Page::Overview,
-        Page::Hourly,
-        Page::Daily,
-        Page::Monthly,
-        Page::AllTime,
-        Page::Rotation,
-    ];
-
     pub fn usage_period(&self) -> Option<UsagePeriod> {
         match self {
             Page::Overview | Page::AllTime | Page::Rotation => None,
@@ -61,16 +53,10 @@ impl Page {
             Page::Monthly => Some(UsagePeriod::Monthly),
         }
     }
-
-    pub fn shifted(self, delta: isize) -> Page {
-        let index = Page::ALL.iter().position(|page| *page == self).unwrap_or(0) as isize;
-        let next = (index + delta).clamp(0, Page::ALL.len() as isize - 1);
-        Page::ALL[next as usize]
-    }
 }
 
 pub struct ToksApp {
-    pub(crate) page: Page,
+    navigation: navigation::PageNavigation,
     pub(crate) sidebar_open: bool,
     pub(crate) limits: Vec<LimitSnapshot>,
     pub(crate) limits_loaded: bool,
@@ -176,7 +162,7 @@ impl ToksApp {
                 .and_then(|snapshot| snapshot.captured_through_ms),
         );
         Self {
-            page: Page::Overview,
+            navigation: Default::default(),
             sidebar_open: true,
             limits,
             limits_loaded,

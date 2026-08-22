@@ -40,6 +40,28 @@ pub(super) fn account_email(
     account_id: &str,
     cx: &App,
 ) -> gpui::Div {
+    styled_account_email(
+        email,
+        hidden,
+        provider,
+        account_id,
+        div()
+            .min_w_0()
+            .truncate()
+            .text_xs()
+            .text_color(cx.theme().muted_foreground),
+        cx,
+    )
+}
+
+pub(super) fn styled_account_email(
+    email: &str,
+    hidden: bool,
+    provider: &str,
+    account_id: &str,
+    content: gpui::Div,
+    cx: &App,
+) -> gpui::Div {
     let selector = format!("account-email-{provider}-{account_id}");
     let blur_selector = format!("account-email-blur-{provider}-{account_id}");
     div()
@@ -47,15 +69,8 @@ pub(super) fn account_email(
         .relative()
         .min_w_0()
         .child(
-            div()
-                .min_w_0()
-                .truncate()
-                .text_xs()
-                .text_color(
-                    cx.theme()
-                        .muted_foreground
-                        .opacity(if hidden { 0.0 } else { 1.0 }),
-                )
+            content
+                .opacity(if hidden { 0.0 } else { 1.0 })
                 .child(email.to_string()),
         )
         .when(hidden, |email| email.child(privacy_blur(blur_selector, cx)))

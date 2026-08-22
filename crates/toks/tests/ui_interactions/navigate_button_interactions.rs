@@ -9,7 +9,7 @@ use gpui::{
     WindowOptions,
 };
 use gpui_component::TitleBar;
-use toks::test_support::{current_page, initialize, set_page, sidebar_open, WindowFrame};
+use toks::test_support::{current_page, initialize, sidebar_open, WindowFrame};
 use toks::{Page, ToksApp};
 use toks_core::history::{HistorySnapshot, ModelUsage, SourceHistory, UsageBucket, UsageSeries};
 
@@ -82,27 +82,31 @@ impl Harness {
 }
 
 #[gpui::test]
-fn mouse_forward_then_back_walks_sidebar_tabs_and_stops_at_the_ends(cx: &mut TestAppContext) {
+fn mouse_back_and_forward_follow_visited_tabs(cx: &mut TestAppContext) {
     let mut harness = Harness::open(cx, 1600.);
     assert!(harness.has("overview-usage-card"));
 
-    harness.press(NavigationDirection::Forward);
-    assert_eq!(harness.page(), Page::Hourly);
-    assert!(harness.has("hourly-usage-chart"));
-
+    harness.click("rotation");
+    assert_eq!(harness.page(), Page::Rotation);
     harness.press(NavigationDirection::Back);
     assert_eq!(harness.page(), Page::Overview);
+    harness.press(NavigationDirection::Forward);
+    assert_eq!(harness.page(), Page::Rotation);
 
+    harness.click("daily");
+    assert_eq!(harness.page(), Page::Daily);
+    harness.press(NavigationDirection::Back);
+    assert_eq!(harness.page(), Page::Rotation);
     harness.press(NavigationDirection::Back);
     assert_eq!(harness.page(), Page::Overview);
+    harness.press(NavigationDirection::Forward);
+    assert_eq!(harness.page(), Page::Rotation);
 
-    harness
-        .app
-        .update(harness.cx, |app, _| set_page(app, Page::AllTime));
-    harness.press(NavigationDirection::Forward);
+    harness.click("monthly");
+    harness.press(NavigationDirection::Back);
     assert_eq!(harness.page(), Page::Rotation);
     harness.press(NavigationDirection::Forward);
-    assert_eq!(harness.page(), Page::Rotation);
+    assert_eq!(harness.page(), Page::Monthly);
 }
 
 #[gpui::test]

@@ -11,8 +11,11 @@ use crate::{app::sidebar_open_for_layout, title_bar::title_bar, ui, ToksApp};
 const SIDEBAR_OVERLAY_BREAKPOINT: f32 = 1100.0;
 const SIDEBAR_WIDTH: f32 = 250.0;
 
-fn shift_page(app: &mut ToksApp, delta: isize, cx: &mut Context<ToksApp>) {
-    app.page = app.page.shifted(delta);
+fn navigate_page(app: &mut ToksApp, direction: NavigationDirection, cx: &mut Context<ToksApp>) {
+    match direction {
+        NavigationDirection::Back => app.navigate_back(),
+        NavigationDirection::Forward => app.navigate_forward(),
+    };
     if app.compact_layout == Some(true) {
         app.sidebar_open = false;
     }
@@ -34,10 +37,10 @@ fn navigate_button_listener(handle: gpui::WeakEntity<ToksApp>) -> impl IntoEleme
                 let Some(app) = handle.upgrade() else {
                     return;
                 };
-                app.update(cx, |app, cx| match event.button {
-                    MouseButton::Navigate(NavigationDirection::Back) => shift_page(app, -1, cx),
-                    MouseButton::Navigate(NavigationDirection::Forward) => shift_page(app, 1, cx),
-                    _ => {}
+                app.update(cx, |app, cx| {
+                    if let MouseButton::Navigate(direction) = event.button {
+                        navigate_page(app, direction, cx);
+                    }
                 });
             });
         },

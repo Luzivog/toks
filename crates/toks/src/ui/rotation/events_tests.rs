@@ -36,8 +36,14 @@ fn thread_and_account_identity_use_distinct_semantic_tones() {
 
     app.emails_hidden = true;
     let hidden = event_text(&app, &event);
-    assert_eq!(hidden.text, "Thread thread-123 routed to Codex account 1");
-    assert_eq!(&hidden.text[hidden.tones[1].0.clone()], "Codex account 1");
+    assert_eq!(
+        hidden.text,
+        "Thread thread-123 routed to person@example.test"
+    );
+    assert_eq!(
+        &hidden.text[hidden.tones[1].0.clone()],
+        "person@example.test"
+    );
 }
 
 fn snapshot(id: &str) -> LimitSnapshot {

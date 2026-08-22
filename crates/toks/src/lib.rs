@@ -70,11 +70,11 @@ pub mod test_support {
     }
 
     pub fn set_page(app: &mut ToksApp, page: Page) {
-        app.page = page;
+        app.navigate_to(page);
     }
 
     pub fn current_page(app: &ToksApp) -> Page {
-        app.page
+        app.page()
     }
 
     pub fn sidebar_open(app: &ToksApp) -> bool {
@@ -97,6 +97,15 @@ pub mod test_support {
             &accounts,
             toks_core::rotation::UnixMillis::new(app.now.timestamp_millis()),
         );
+    }
+
+    pub fn set_rotation_service_active(app: &mut ToksApp) {
+        app.rotation.settings.set_enabled(true);
+        app.rotation.install = toks_core::codex_router::RouterInstallStatus {
+            configured: true,
+            service_installed: true,
+            service_active: true,
+        };
     }
 
     pub fn set_rotation_active_threads(app: &mut ToksApp, account: &str, count: u32) {

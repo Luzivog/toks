@@ -103,7 +103,7 @@ pub(super) fn sidebar_entry(
     title: &'static str,
     overlay: bool,
 ) -> Button {
-    let selected = app.page == page;
+    let selected = app.page() == page;
     let accent = page_accent(page, cx);
     action_button(id, cx)
         .mx_2()
@@ -114,7 +114,7 @@ pub(super) fn sidebar_entry(
         .justify_start()
         .when(selected, |d| d.bg(accent.opacity(0.12)))
         .on_click(cx.listener(move |app, _, _, cx| {
-            app.page = page;
+            app.navigate_to(page);
             if overlay {
                 app.sidebar_open = false;
             }

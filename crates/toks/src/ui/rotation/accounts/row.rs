@@ -11,7 +11,7 @@ use super::{
     row_status::{account_status, weekly_meter},
     state::account_state,
 };
-use crate::ui::rotation::format::account_label;
+use crate::ui::rotation::format::account_identity;
 
 pub(super) fn account_row(
     app: &ToksApp,
@@ -44,15 +44,13 @@ pub(super) fn account_row(
                 .text_color(cx.theme().muted_foreground)
                 .child(format!("{}", index + 1)),
         )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .text_sm()
-                .font_semibold()
-                .truncate()
-                .child(account_label(app, &id)),
-        )
+        .child(h_flex().flex_1().min_w_0().child(account_identity(
+            app,
+            &id,
+            "rotation-priority",
+            div().min_w_0().truncate().text_sm().font_semibold(),
+            cx,
+        )))
         .when_some(
             super::reset_action::banked_reset_action(app, snapshot, available, cx),
             |identity, action| identity.child(action),

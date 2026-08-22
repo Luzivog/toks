@@ -6,8 +6,7 @@ use crate::ToksApp;
 mod controls;
 mod state;
 use controls::service_controls;
-use state::health_label;
-pub(super) use state::selected_account_label;
+use state::{health_label, selected_account, SelectedAccount};
 
 pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
     let install = &app.rotation.install;
@@ -21,7 +20,7 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
         "Not enabled"
     };
     let health = health_label(app);
-    let selected = selected_account_label(app);
+    let selected = selected_account_identity(app, "rotation-selected", cx);
     let busy = app.rotation.busy.is_some();
     let status_color = if install.configured && install.service_active {
         gpui::rgb(0x10_a3_7f).into()
@@ -80,7 +79,7 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
                                 .text_color(cx.theme().muted_foreground)
                                 .child("New work"),
                         )
-                        .child(div().min_w_0().truncate().text_sm().child(selected)),
+                        .child(h_flex().min_w_0().flex_1().child(selected)),
                 )
                 .child(service_controls(app, busy, cx))
                 .when_some(app.rotation.busy, |row, label| {
@@ -107,4 +106,22 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
                     ),
             )
         })
+}
+
+pub(in crate::ui::rotation) fn selected_account_identity(
+    app: &ToksApp,
+    surface: &str,
+    cx: &gpui::App,
+) -> gpui::Div {
+    match selected_account(app) {
+        SelectedAccount::Direct => div().text_sm().child("Direct Codex connection"),
+        SelectedAccount::Account(account) => super::format::account_identity(
+            app,
+            &account,
+            surface,
+            div().min_w_0().truncate().text_sm(),
+            cx,
+        ),
+        SelectedAccount::Waiting => div().text_sm().child("Waiting for an available account"),
+    }
 }

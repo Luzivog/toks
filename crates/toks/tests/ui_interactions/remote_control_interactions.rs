@@ -2,14 +2,15 @@ use std::ops::Deref;
 
 use chrono::{TimeZone, Utc};
 use gpui::{
-    point, px, size, AppContext, Bounds, Modifiers, MouseButton, TestAppContext, VisualTestContext,
-    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions,
+    point, px, size, AppContext, Bounds, Modifiers, MouseButton, Pixels, TestAppContext,
+    VisualTestContext, WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions,
 };
 use gpui_component::TitleBar;
 use toks::{
     test_support::{
         emails_hidden, exclude_rotation_account, initialize, prepare_rotation_accounts, set_page,
-        set_remote_control, show_remote_devices, show_remote_pairing, WindowFrame,
+        set_remote_control, set_rotation_active_threads, set_rotation_service_active,
+        show_remote_devices, show_remote_pairing, WindowFrame,
     },
     Page, ToksApp,
 };
@@ -30,7 +31,9 @@ fn remote_control_keeps_connection_identity_separate_and_private(cx: &mut TestAp
             now,
         );
         prepare_rotation_accounts(&mut app);
+        set_rotation_service_active(&mut app);
         exclude_rotation_account(&mut app, "control");
+        set_rotation_active_threads(&mut app, "worker", 1);
         set_remote_control(&mut app, RemoteConnectionStatus::Connected, vec![phone()]);
         show_remote_devices(&mut app);
         set_page(&mut app, Page::Rotation);
@@ -49,11 +52,56 @@ fn remote_control_keeps_connection_identity_separate_and_private(cx: &mut TestAp
     ] {
         assert!(cx.debug_bounds(selector).is_some(), "missing {selector}");
     }
+    let connection_before = bounds(cx, "account-email-remote-control");
     click(cx, "rotation-toggle-account-emails");
     assert!(app.read_with(cx, |app, _| emails_hidden(app)));
+    assert_eq!(
+        connection_before,
+        bounds(cx, "account-email-remote-control")
+    );
+    let connection_blur = bounds(cx, "account-email-blur-remote-control");
+    assert_eq!(connection_before, connection_blur);
+    assert!(
+        connection_blur.size.width < px(220.),
+        "connection email haze must not fill the value column"
+    );
+    for selector in [
+        "account-email-blur-rotation-priority-control",
+        "account-email-blur-rotation-priority-worker",
+        "account-email-blur-remote-model-worker",
+        "account-email-blur-rotation-selected-worker",
+    ] {
+        assert!(cx.debug_bounds(selector).is_some(), "missing {selector}");
+    }
     assert!(cx
-        .debug_bounds("account-email-blur-remote-control")
+        .debug_bounds("account-email-blur-rotation-event-1787486400000-worker")
         .is_some());
+    let control_hidden = bounds(cx, "account-email-rotation-priority-control");
+    let worker_hidden = bounds(cx, "account-email-rotation-priority-worker");
+    let model_hidden = bounds(cx, "account-email-remote-model-worker");
+    let selected_hidden = bounds(cx, "account-email-rotation-selected-worker");
+    let event_hidden = bounds(cx, "account-email-rotation-event-1787486400000-worker");
+    click(cx, "rotation-toggle-account-emails");
+    assert_eq!(
+        control_hidden,
+        bounds(cx, "account-email-rotation-priority-control")
+    );
+    assert_eq!(
+        worker_hidden,
+        bounds(cx, "account-email-rotation-priority-worker")
+    );
+    assert_eq!(
+        model_hidden,
+        bounds(cx, "account-email-remote-model-worker")
+    );
+    assert_eq!(
+        selected_hidden,
+        bounds(cx, "account-email-rotation-selected-worker")
+    );
+    assert_eq!(
+        event_hidden,
+        bounds(cx, "account-email-rotation-event-1787486400000-worker")
+    );
 
     click(cx, "rotation-remote-remove-phone");
     assert!(cx
@@ -115,6 +163,11 @@ fn click(cx: &mut VisualTestContext, selector: &'static str) {
     cx.simulate_mouse_move(point, None::<MouseButton>, Modifiers::none());
     cx.simulate_click(point, Modifiers::none());
     cx.run_until_parked();
+}
+
+fn bounds(cx: &mut VisualTestContext, selector: &'static str) -> Bounds<Pixels> {
+    cx.debug_bounds(selector)
+        .unwrap_or_else(|| panic!("missing rendered selector: {selector}"))
 }
 
 fn fixture_time() -> chrono::DateTime<Utc> {

@@ -16,7 +16,7 @@ pub(crate) fn detail(
     detail_width: Pixels,
     cx: &mut gpui::Context<ToksApp>,
 ) -> impl IntoElement {
-    let page = app.page;
+    let page = app.page();
     let layout = TableLayout::from_detail_width(detail_width);
     let body = match page {
         Page::Overview => overview_page(app, layout, cx),
@@ -97,14 +97,14 @@ pub(super) fn usage_page(
             .child(usage_chart_card(
                 history,
                 period,
-                page_accent(app.page, cx),
+                page_accent(app.page(), cx),
                 cx,
             ))
             .child(model_breakdown_card(
                 models,
                 range,
-                app.page,
-                app.model_tables.sort(app.page),
+                app.page(),
+                app.model_tables.sort(app.page()),
                 layout,
                 cx,
             ))
@@ -120,7 +120,7 @@ pub(super) fn usage_page(
     } else if let Some(error) = &app.history_error {
         root = root.child(history_error_card(error, cx));
     } else {
-        root = root.child(usage_page_loading(period, page_accent(app.page, cx), cx));
+        root = root.child(usage_page_loading(period, page_accent(app.page(), cx), cx));
     }
 
     root

@@ -16,7 +16,7 @@ pub(super) fn title_bar(
     window: &Window,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
-    let (page_title, page_accent) = match app.page {
+    let (page_title, page_accent) = match app.page() {
         Page::Overview => ("Overview", ui::page_accent(Page::Overview, cx)),
         Page::Hourly => ("Hourly", ui::page_accent(Page::Hourly, cx)),
         Page::Daily => ("Daily", ui::page_accent(Page::Daily, cx)),

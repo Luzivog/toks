@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
+use gpui::prelude::*;
 use toks_core::{accounts::AccountId, rotation::UnixMillis, Provider};
 
 use crate::ToksApp;
 
-pub(super) fn account_label(app: &ToksApp, account: &AccountId) -> String {
+pub(super) fn account_name(app: &ToksApp, account: &AccountId) -> String {
     let codex_accounts: Vec<_> = app
         .limits
         .iter()
@@ -16,14 +17,37 @@ pub(super) fn account_label(app: &ToksApp, account: &AccountId) -> String {
     else {
         return "Unknown Codex account".into();
     };
-    if app.emails_hidden {
-        format!("Codex account {}", index + 1)
-    } else {
-        snapshot
-            .account
-            .email
-            .clone()
-            .unwrap_or_else(|| format!("Codex account {}", index + 1))
+    snapshot
+        .account
+        .email
+        .clone()
+        .unwrap_or_else(|| format!("Codex account {}", index + 1))
+}
+
+pub(super) fn account_identity(
+    app: &ToksApp,
+    account: &AccountId,
+    surface: &str,
+    content: gpui::Div,
+    cx: &gpui::App,
+) -> gpui::Div {
+    let Some(snapshot) = app
+        .limits
+        .iter()
+        .find(|snapshot| snapshot.provider == Provider::Codex && &snapshot.account.id == account)
+    else {
+        return content.child("Unknown Codex account");
+    };
+    match snapshot.account.email.as_deref() {
+        Some(email) => super::super::account_email::styled_account_email(
+            email,
+            app.emails_hidden,
+            surface,
+            account.as_str(),
+            content,
+            cx,
+        ),
+        None => content.child(account_name(app, account)),
     }
 }
 
