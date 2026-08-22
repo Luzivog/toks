@@ -39,7 +39,7 @@ fn remote_control_keeps_connection_identity_separate_and_private(cx: &mut TestAp
         set_page(&mut app, Page::Rotation);
         app
     });
-    let cx = harness(cx, &app);
+    let cx = harness(cx, &app, 1400.);
 
     for selector in [
         "rotation-remote-control-card",
@@ -112,6 +112,39 @@ fn remote_control_keeps_connection_identity_separate_and_private(cx: &mut TestAp
 }
 
 #[gpui::test]
+fn paired_device_text_stays_inside_its_row(cx: &mut TestAppContext) {
+    let now = fixture_time();
+    let app = cx.new(|_| {
+        let mut device = phone();
+        device.display_name = Some("iOS 26.6 iPhone".into());
+        let mut app = ToksApp::from_snapshots(
+            None,
+            vec![account(now, "control", true), account(now, "worker", false)],
+            now,
+        );
+        prepare_rotation_accounts(&mut app);
+        set_remote_control(&mut app, RemoteConnectionStatus::Errored, vec![device]);
+        show_remote_devices(&mut app);
+        set_page(&mut app, Page::Rotation);
+        app
+    });
+    let cx = harness(cx, &app, 1000.);
+
+    let row = bounds(cx, "rotation-remote-device-phone");
+    for selector in [
+        "rotation-remote-device-phone-title",
+        "rotation-remote-device-phone-detail",
+        "rotation-remote-remove-phone",
+    ] {
+        let child = bounds(cx, selector);
+        assert!(
+            row.contains(&child.center()),
+            "{selector} must stay inside its row: row={row:?}, child={child:?}"
+        );
+    }
+}
+
+#[gpui::test]
 fn pairing_code_is_inline_and_expiring(cx: &mut TestAppContext) {
     let now = fixture_time();
     let app = cx.new(|_| {
@@ -122,7 +155,7 @@ fn pairing_code_is_inline_and_expiring(cx: &mut TestAppContext) {
         set_page(&mut app, Page::Rotation);
         app
     });
-    let cx = harness(cx, &app);
+    let cx = harness(cx, &app, 1400.);
     for selector in [
         "rotation-remote-pairing-panel",
         "rotation-remote-pairing-code",
@@ -134,7 +167,11 @@ fn pairing_code_is_inline_and_expiring(cx: &mut TestAppContext) {
     }
 }
 
-fn harness(cx: &mut TestAppContext, app: &gpui::Entity<ToksApp>) -> &'static mut VisualTestContext {
+fn harness(
+    cx: &mut TestAppContext,
+    app: &gpui::Entity<ToksApp>,
+    width: f32,
+) -> &'static mut VisualTestContext {
     initialize(cx);
     let content = app.clone();
     let window = cx.update(|cx| {
@@ -142,7 +179,7 @@ fn harness(cx: &mut TestAppContext, app: &gpui::Entity<ToksApp>) -> &'static mut
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                     point(px(0.), px(0.)),
-                    size(px(1400.), px(1000.)),
+                    size(px(width), px(1000.)),
                 ))),
                 window_background: WindowBackgroundAppearance::Opaque,
                 window_decorations: Some(WindowDecorations::Client),

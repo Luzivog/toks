@@ -41,6 +41,8 @@ pub(super) fn devices_panel(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
 
 fn device_row(app: &ToksApp, device: &RemoteDevice, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
     let id = device.client_id.clone();
+    let title_id = id.clone();
+    let detail_id = id.clone();
     let confirming = app.rotation.remote.pending_revoke.as_deref() == Some(id.as_str());
     let title = device.display_name.as_deref().unwrap_or("Remote device");
     let detail = device_detail(device, app.now);
@@ -90,9 +92,19 @@ fn device_row(app: &ToksApp, device: &RemoteDevice, cx: &mut gpui::Context<ToksA
         .child(
             v_flex()
                 .min_w_0()
-                .child(div().text_sm().truncate().child(title.to_string()))
+                .flex_1()
                 .child(
                     div()
+                        .debug_selector(move || format!("rotation-remote-device-{title_id}-title"))
+                        .text_sm()
+                        .truncate()
+                        .child(title.to_string()),
+                )
+                .child(
+                    div()
+                        .debug_selector(move || {
+                            format!("rotation-remote-device-{detail_id}-detail")
+                        })
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
                         .child(detail),
