@@ -6530,6 +6530,7 @@ dependencies = [
  "tokio-tungstenite",
  "toks-ingest",
  "toml_edit 0.22.27",
+ "uuid",
 ]
 
 [[package]]

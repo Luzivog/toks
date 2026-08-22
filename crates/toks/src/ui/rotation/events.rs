@@ -1,4 +1,6 @@
-use gpui::{div, prelude::*, SharedString};
+use std::ops::Range;
+
+use gpui::{div, prelude::*, FontWeight, HighlightStyle, SharedString, StyledText};
 use gpui_component::{h_flex, tooltip::Tooltip, ActiveTheme};
 use toks_core::rotation::{RotationEvent, RotationEventKind};
 
@@ -40,7 +42,8 @@ fn event_row(app: &ToksApp, event: &RotationEvent, cx: &gpui::App) -> gpui::Div 
                 .min_w_0()
                 .truncate()
                 .text_sm()
-                .child(event_text(app, event)),
+                .text_color(cx.theme().muted_foreground)
+                .child(event_text(app, event).styled(cx)),
         )
         .child(
             div()
@@ -64,49 +67,104 @@ fn event_row(app: &ToksApp, event: &RotationEvent, cx: &gpui::App) -> gpui::Div 
         )
 }
 
-fn event_text(app: &ToksApp, event: &RotationEvent) -> String {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EventTone {
+    Thread,
+    Account,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct EventText {
+    text: String,
+    tones: Vec<(Range<usize>, EventTone)>,
+}
+
+impl EventText {
+    fn plain(mut self, text: &str) -> Self {
+        self.text.push_str(text);
+        self
+    }
+
+    fn toned(mut self, text: &str, tone: EventTone) -> Self {
+        let start = self.text.len();
+        self.text.push_str(text);
+        self.tones.push((start..self.text.len(), tone));
+        self
+    }
+
+    fn thread(self, text: &str) -> Self {
+        self.toned(text, EventTone::Thread)
+    }
+
+    fn account(self, text: &str) -> Self {
+        self.toned(text, EventTone::Account)
+    }
+
+    fn styled(self, cx: &gpui::App) -> StyledText {
+        let thread = cx.theme().foreground.opacity(0.72);
+        let account = cx.theme().foreground;
+        StyledText::new(self.text).with_highlights(self.tones.into_iter().map(
+            move |(range, tone)| {
+                let style = match tone {
+                    EventTone::Thread => HighlightStyle::color(thread),
+                    EventTone::Account => HighlightStyle {
+                        color: Some(account),
+                        font_weight: Some(FontWeight::MEDIUM),
+                        ..Default::default()
+                    },
+                };
+                (range, style)
+            },
+        ))
+    }
+}
+
+fn event_text(app: &ToksApp, event: &RotationEvent) -> EventText {
     match &event.event {
         RotationEventKind::Routed {
             thread_id,
             account_id,
-        } => format!(
-            "Thread {} routed to {}",
-            thread_id.as_str(),
-            account_label(app, account_id)
-        ),
+        } => EventText::default()
+            .plain("Thread ")
+            .thread(thread_id.as_str())
+            .plain(" routed to ")
+            .account(&account_label(app, account_id)),
         RotationEventKind::Rotated {
             thread_id,
             from,
             to,
-        } => format!(
-            "Thread {} moved from {} to {}",
-            thread_id.as_str(),
-            account_label(app, from),
-            account_label(app, to)
-        ),
-        RotationEventKind::Blocked { account_id, .. } => {
-            format!("{} blocked", account_label(app, account_id))
-        }
-        RotationEventKind::Draining { account_id } => {
-            format!(
-                "{} reached 0% and is draining",
-                account_label(app, account_id)
-            )
-        }
-        RotationEventKind::AuthNeeded { account_id } => {
-            format!("{} needs sign-in", account_label(app, account_id))
-        }
-        RotationEventKind::Waiting { thread_id } => {
-            format!("Thread {} is waiting", thread_id.as_str())
-        }
+        } => EventText::default()
+            .plain("Thread ")
+            .thread(thread_id.as_str())
+            .plain(" moved from ")
+            .account(&account_label(app, from))
+            .plain(" to ")
+            .account(&account_label(app, to)),
+        RotationEventKind::Blocked { account_id, .. } => EventText::default()
+            .account(&account_label(app, account_id))
+            .plain(" blocked"),
+        RotationEventKind::Draining { account_id } => EventText::default()
+            .account(&account_label(app, account_id))
+            .plain(" reached 0% and is draining"),
+        RotationEventKind::AuthNeeded { account_id } => EventText::default()
+            .account(&account_label(app, account_id))
+            .plain(" needs sign-in"),
+        RotationEventKind::Waiting { thread_id } => EventText::default()
+            .plain("Thread ")
+            .thread(thread_id.as_str())
+            .plain(" is waiting"),
         RotationEventKind::Resumed {
             thread_id,
             account_id,
-        } => format!(
-            "Thread {} resumed on {}",
-            thread_id.as_str(),
-            account_label(app, account_id)
-        ),
-        RotationEventKind::RouterFailure => "Router failure recorded".into(),
+        } => EventText::default()
+            .plain("Thread ")
+            .thread(thread_id.as_str())
+            .plain(" resumed on ")
+            .account(&account_label(app, account_id)),
+        RotationEventKind::RouterFailure => EventText::default().plain("Router failure recorded"),
     }
 }
+
+#[cfg(test)]
+#[path = "events_tests.rs"]
+mod tests;

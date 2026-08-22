@@ -7,6 +7,7 @@ mod http;
 mod inbound;
 mod lease;
 mod protocol;
+mod reset_ack;
 mod types;
 mod websocket;
 
@@ -18,7 +19,7 @@ use anyhow::{Context, Result};
 use axum::body::Body;
 use axum::extract::{FromRequestParts, Request, State, WebSocketUpgrade};
 use axum::http::{header, Response, StatusCode, Uri};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 
 use crate::accounts::AccountId;
@@ -125,6 +126,10 @@ pub async fn serve(runtime: RouterRuntimeHandle) -> Result<()> {
 fn app(state: ProxyState) -> Router {
     Router::new()
         .route("/health", get(|| async { HEALTH_BODY }))
+        .route(
+            "/banked-reset-consumed",
+            post(reset_ack::banked_reset_consumed),
+        )
         .fallback(dispatch)
         .with_state(state)
 }

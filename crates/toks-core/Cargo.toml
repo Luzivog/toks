@@ -27,6 +27,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 hmac = "0.12"
 getrandom = "0.3"
+uuid = { version = "1", features = ["v4"] }
 toml_edit = "0.22"
 
 [[bin]]

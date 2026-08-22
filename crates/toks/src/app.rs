@@ -11,10 +11,12 @@ use crate::{
 
 mod account_operations;
 mod account_removals;
+pub(crate) mod banked_reset_operations;
 mod history_task;
 mod rotation_operations;
 pub(crate) use account_operations::AccountOperations;
 pub(crate) use account_removals::{request_removal, AccountRemovals, RemovalStatus};
+use banked_reset_operations::BankedResetOperations;
 pub(crate) use rotation_operations::{RotationServiceAction, RotationUiState, SettingsAction};
 
 const LIMITS_REFRESH: Duration = Duration::from_secs(15);
@@ -59,8 +61,7 @@ impl Page {
         }
     }
 
-    /// The neighbor `delta` steps away in sidebar order, clamped to the ends
-    /// instead of wrapping around.
+    /// The neighbor `delta` steps away in sidebar order, clamped at the ends.
     pub fn shifted(self, delta: isize) -> Page {
         let index = Page::ALL.iter().position(|page| *page == self).unwrap_or(0) as isize;
         let next = (index + delta).clamp(0, Page::ALL.len() as isize - 1);
@@ -79,6 +80,7 @@ pub struct ToksApp {
     pub(crate) account_notice: Option<String>,
     pub(crate) account_operations: AccountOperations,
     pub(crate) account_removals: AccountRemovals,
+    pub(crate) banked_resets: BankedResetOperations,
     pub(crate) emails_hidden: bool,
     pub(crate) usage_tables: UsageTablesState,
     pub(crate) model_tables: ModelTablesState,
@@ -90,8 +92,7 @@ pub struct ToksApp {
 
 impl ToksApp {
     pub(super) fn new(cx: &mut Context<Self>) -> Self {
-        // Hydrate Toks's last-good snapshots before any provider request,
-        // then refresh live data independently in the background.
+        // Paint last-good snapshots before starting provider requests.
         cx.spawn(async move |this, cx| {
             let mut hydrated = cx
                 .background_spawn(async { toks_core::limits::hydrate_all() })
@@ -127,6 +128,7 @@ impl ToksApp {
                     .update(cx, |app, cx| {
                         app.account_removals.filter_refresh(&mut limits);
                         app.account_operations.reconcile(&mut limits, Utc::now());
+                        app.banked_resets.reconcile(&limits);
                         app.limits = limits;
                         app.limits_loaded = true;
                         cx.notify();
@@ -140,7 +142,6 @@ impl ToksApp {
         })
         .detach();
 
-        // Countdown labels advance even while a provider refresh is delayed.
         cx.spawn(async move |this, cx| loop {
             smol::Timer::after(LIMITS_REFRESH).await;
             if this
@@ -161,8 +162,7 @@ impl ToksApp {
         Self::from_snapshots(None, Vec::new(), Utc::now())
     }
 
-    /// Construct the render state without starting filesystem or network work.
-    /// Tests and headless renderers use deterministic snapshots instead.
+    /// Construct deterministic render state without filesystem or network work.
     pub fn from_snapshots(
         history: Option<HistorySnapshot>,
         limits: Vec<LimitSnapshot>,
@@ -186,6 +186,7 @@ impl ToksApp {
             account_notice: None,
             account_operations: AccountOperations::default(),
             account_removals: AccountRemovals::default(),
+            banked_resets: BankedResetOperations::default(),
             emails_hidden: false,
             usage_tables: UsageTablesState::new(),
             model_tables: ModelTablesState::new(),

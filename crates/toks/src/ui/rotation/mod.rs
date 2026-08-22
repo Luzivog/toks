@@ -1,5 +1,6 @@
 use gpui::{div, prelude::*, px};
-use gpui_component::{v_flex, ActiveTheme, StyledExt};
+use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
+use toks_core::Provider;
 
 use crate::ToksApp;
 
@@ -10,14 +11,33 @@ mod status;
 mod waiting;
 
 pub(super) fn rotation_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
+    let has_emails = app
+        .limits
+        .iter()
+        .any(|snapshot| snapshot.provider == Provider::Codex && snapshot.account.email.is_some());
+    let email_toggle = has_emails.then(|| {
+        super::account_email::email_visibility_button(
+            "rotation-toggle-account-emails",
+            app.emails_hidden,
+            cx,
+        )
+    });
     let mut page = v_flex()
         .debug_selector(|| "rotation-page".into())
+        .w_full()
+        .min_w_0()
         .p_6()
         .gap_5()
         .child(
             v_flex()
                 .gap_1()
-                .child(div().text_2xl().font_bold().child("Codex rotation"))
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(div().text_2xl().font_bold().child("Codex rotation"))
+                        .when_some(email_toggle, |title, toggle| title.child(toggle)),
+                )
                 .child(
                     div()
                         .text_sm()

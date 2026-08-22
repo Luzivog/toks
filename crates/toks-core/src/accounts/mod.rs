@@ -10,6 +10,7 @@ mod discovery;
 mod lifecycle;
 mod login;
 mod order;
+mod redemption;
 mod removal;
 mod storage;
 mod suppression;
@@ -26,6 +27,7 @@ pub use login::{
     begin_add_account, begin_reauthentication, cancel_login, login_outcome, LoginOutcome,
 };
 pub use order::{apply_saved_order, move_account_to, AccountOrderKey};
+pub use redemption::{redeem_banked_reset, BankedResetResult};
 pub use removal::remove_from_toks;
 pub use suppression::{hide_account, unhide_account, unhide_profile};
 pub use types::{

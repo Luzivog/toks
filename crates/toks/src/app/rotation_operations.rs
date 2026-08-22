@@ -26,8 +26,6 @@ pub(crate) enum RotationServiceAction {
 pub(crate) enum SettingsAction {
     Include(AccountId, bool),
     MoveAccount(AccountId, usize),
-    Prefer(AccountId),
-    ClearPreference,
     Cancel(ThreadId),
     MoveWaiting(ThreadId, usize),
     FastWhenDraining(bool),

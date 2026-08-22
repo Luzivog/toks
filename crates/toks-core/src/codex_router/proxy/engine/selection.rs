@@ -61,9 +61,8 @@ impl Engine {
             }
         }
         Ok(settings
-            .preferred()
-            .into_iter()
-            .chain(settings.priority())
+            .priority()
+            .iter()
             .find(|account| {
                 discovered.contains(account)
                     && !settings.excluded().contains(account)

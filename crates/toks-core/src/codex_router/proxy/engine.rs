@@ -131,6 +131,10 @@ impl Engine {
         self.auth_failed(account)
     }
 
+    pub fn banked_reset_consumed(&self, account: &AccountId) -> Result<()> {
+        self.mutate(|runtime| runtime.banked_reset_consumed(account))
+    }
+
     fn mutate(&self, change: impl FnOnce(&mut RotationRuntime) -> bool) -> Result<()> {
         let mut runtime = self.runtime.lock().expect("router runtime poisoned");
         if change(&mut runtime) {

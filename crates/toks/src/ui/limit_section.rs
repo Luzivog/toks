@@ -11,8 +11,8 @@ use crate::window::{icon_element, ToksIcon};
 use crate::ToksApp;
 
 use super::{
-    account_drop_target, account_error_rows, account_limits_group, account_limits_loading_content,
-    action_button, section_title,
+    account_drop_target, account_email::email_visibility_button, account_error_rows,
+    account_limits_group, account_limits_loading_content, action_button, section_title,
 };
 
 pub(super) fn account_limits_section(
@@ -25,24 +25,7 @@ pub(super) fn account_limits_section(
         .limits
         .iter()
         .any(|snapshot| snapshot.account.email.is_some());
-    let email_icon = if app.emails_hidden {
-        ToksIcon::EyeOff
-    } else {
-        ToksIcon::Eye
-    };
-    let email_tooltip = if app.emails_hidden {
-        "Show account emails"
-    } else {
-        "Hide account emails"
-    };
-    let toggle_emails = action_button("toggle-account-emails", cx)
-        .compact()
-        .child(icon_element(email_icon).size(px(14.)))
-        .tooltip(email_tooltip)
-        .on_click(cx.listener(|app, _, _, cx| {
-            app.emails_hidden = !app.emails_hidden;
-            cx.notify();
-        }));
+    let toggle_emails = email_visibility_button("toggle-account-emails", app.emails_hidden, cx);
     let add_account = action_button("add-account", cx)
         .compact()
         .child(icon_element(ToksIcon::Plus).size(px(13.)))

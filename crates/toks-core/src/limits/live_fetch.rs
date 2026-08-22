@@ -82,8 +82,18 @@ fn codex_request(
     token: &str,
     account_id: Option<&str>,
 ) -> reqwest::RequestBuilder {
+    codex_request_with_method(client, reqwest::Method::GET, url, token, account_id)
+}
+
+pub(super) fn codex_request_with_method(
+    client: &reqwest::Client,
+    method: reqwest::Method,
+    url: &str,
+    token: &str,
+    account_id: Option<&str>,
+) -> reqwest::RequestBuilder {
     let mut request = client
-        .get(url)
+        .request(method, url)
         .bearer_auth(token)
         .header("Accept", "application/json")
         .header(
@@ -121,7 +131,7 @@ fn with_profile_identity(mut snapshot: LimitSnapshot, profile: &AccountProfile) 
     snapshot
 }
 
-fn codex_tokens(profile: &AccountProfile) -> Option<(String, Option<String>)> {
+pub(super) fn codex_tokens(profile: &AccountProfile) -> Option<(String, Option<String>)> {
     let raw = std::fs::read_to_string(profile.config_dir.join("auth.json")).ok()?;
     let value = serde_json::from_str::<Value>(&raw).ok()?;
     let token = value.pointer("/tokens/access_token")?.as_str()?.to_string();

@@ -1,9 +1,7 @@
 //! Plan-limit snapshots for supported providers.
 //!
-//! Design rule: the set of limit windows is *discovered* from the data, never
-//! hardcoded. Providers map whatever windows their source exposes into the
-//! generic [`LimitWindow`], so new windows (monthly, per-model, promotional…)
-//! show up in the UI without code changes.
+//! Providers discover limit windows from source data and map them into the
+//! generic [`LimitWindow`], so new provider windows need no code update.
 
 pub mod claude;
 mod claude_auth;
@@ -34,7 +32,9 @@ use serde::{Deserialize, Serialize};
 
 pub use plan::PlanMultiplier;
 pub(crate) use plan::{read_claude_plan, PlanDetails};
-pub use reset_credits::{BankedResetCredit, BankedResetCreditStatus};
+pub use reset_credits::{
+    BankedResetAttempt, BankedResetCredit, BankedResetCreditStatus, BankedResetOutcome,
+};
 pub use status::{LimitIssue, LimitIssueKind, SnapshotFreshness, SnapshotStatus};
 
 pub(crate) fn forget_account_profile(

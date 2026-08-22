@@ -17,7 +17,6 @@ pub struct RotationSettings {
     enabled: bool,
     priority: Vec<AccountId>,
     excluded: BTreeSet<AccountId>,
-    preferred: Option<AccountId>,
     cancelled_threads: BTreeSet<ThreadId>,
     waiting_priority: Vec<ThreadId>,
     /// Serve threads already attached to a draining (0% remaining) account at
@@ -38,7 +37,6 @@ impl Default for RotationSettings {
             enabled: false,
             priority: Vec::new(),
             excluded: BTreeSet::new(),
-            preferred: None,
             cancelled_threads: BTreeSet::new(),
             waiting_priority: Vec::new(),
             fast_when_draining: enabled_by_default(),
@@ -59,10 +57,6 @@ impl RotationSettings {
         &self.excluded
     }
 
-    pub fn preferred(&self) -> Option<&AccountId> {
-        self.preferred.as_ref()
-    }
-
     pub fn fast_when_draining(&self) -> bool {
         self.fast_when_draining
     }
@@ -79,11 +73,7 @@ impl RotationSettings {
         if included {
             self.excluded.remove(account)
         } else {
-            let changed = self.excluded.insert(account.clone());
-            if self.preferred.as_ref() == Some(account) {
-                self.preferred = None;
-            }
-            changed
+            self.excluded.insert(account.clone())
         }
     }
 
@@ -104,21 +94,6 @@ impl RotationSettings {
         true
     }
 
-    pub fn use_now(&mut self, account: &AccountId) -> bool {
-        if !self.priority.contains(account) || self.excluded.contains(account) {
-            return false;
-        }
-        if self.preferred.as_ref() == Some(account) {
-            return false;
-        }
-        self.preferred = Some(account.clone());
-        true
-    }
-
-    pub fn clear_preferred(&mut self) -> bool {
-        self.preferred.take().is_some()
-    }
-
     /// Retain saved choices for known accounts and append newly discovered
     /// accounts in discovery order.
     pub fn reconcile(&mut self, discovered: &[AccountId]) -> bool {
@@ -133,13 +108,6 @@ impl RotationSettings {
             }
         }
         self.excluded.retain(|account| known.contains(account));
-        if self
-            .preferred
-            .as_ref()
-            .is_some_and(|id| !known.contains(id))
-        {
-            self.preferred = None;
-        }
         *self != before
     }
 
@@ -157,9 +125,8 @@ impl RotationSettings {
                 && !self.excluded.contains(account)
                 && runtime.is_available(account, now)
         };
-        self.preferred
+        self.priority
             .iter()
-            .chain(self.priority.iter())
             .find(|account| eligible(account))
             .cloned()
     }
@@ -172,12 +139,5 @@ impl RotationSettings {
         let mut seen = BTreeSet::new();
         self.priority.retain(|account| seen.insert(account.clone()));
         self.normalize_waiting();
-        if self
-            .preferred
-            .as_ref()
-            .is_some_and(|account| self.excluded.contains(account))
-        {
-            self.preferred = None;
-        }
     }
 }

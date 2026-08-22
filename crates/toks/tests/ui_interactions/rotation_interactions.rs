@@ -8,8 +8,8 @@ use gpui::{
 use gpui_component::TitleBar;
 use toks::{
     test_support::{
-        current_page, initialize, prepare_rotation_accounts, set_page, set_rotation_active_streams,
-        WindowFrame,
+        current_page, emails_hidden, initialize, prepare_rotation_accounts, set_page,
+        set_rotation_active_streams, set_rotation_blocked, WindowFrame,
     },
     Page, ToksApp,
 };
@@ -170,6 +170,65 @@ fn active_thread_counts_do_not_shift_account_meters(cx: &mut TestAppContext) {
         .expect("active account meter is rendered");
     assert_eq!(idle.left(), active.left());
     assert_eq!(idle.right(), active.right());
+}
+
+#[gpui::test]
+fn rotation_hides_emails_and_confirms_resets_without_spending_one(cx: &mut TestAppContext) {
+    initialize(cx);
+    let now = Utc
+        .with_ymd_and_hms(2026, 8, 22, 19, 0, 0)
+        .single()
+        .expect("valid fixture timestamp");
+    let app = cx.new(|_| {
+        let mut snapshot = limit_snapshot(now, "resettable", 100.0);
+        snapshot.banked_resets = 1;
+        let mut app = ToksApp::from_snapshots(None, vec![snapshot], now);
+        prepare_rotation_accounts(&mut app);
+        set_rotation_active_streams(&mut app, "resettable", 1);
+        set_rotation_blocked(&mut app, "resettable");
+        set_page(&mut app, Page::Rotation);
+        app
+    });
+    let content = app.clone();
+    let window = cx.update(|cx| {
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                    point(px(0.), px(0.)),
+                    size(px(1400.), px(800.)),
+                ))),
+                window_background: WindowBackgroundAppearance::Opaque,
+                window_decorations: Some(WindowDecorations::Client),
+                titlebar: Some(TitleBar::title_bar_options()),
+                ..Default::default()
+            },
+            |_, cx| cx.new(|_| WindowFrame::new(content)),
+        )
+        .expect("headless window opens")
+    });
+    let cx = VisualTestContext::from_window(*window.deref(), cx).into_mut();
+    cx.run_until_parked();
+
+    assert!(cx.debug_bounds("rotation-use-now-resettable").is_none());
+    let privacy = cx
+        .debug_bounds("rotation-toggle-account-emails")
+        .expect("rotation email privacy action renders")
+        .center();
+    cx.simulate_mouse_move(privacy, None::<MouseButton>, Modifiers::none());
+    cx.simulate_click(privacy, Modifiers::none());
+    cx.run_until_parked();
+    assert!(app.read_with(cx, |app, _| emails_hidden(app)));
+
+    let use_reset = cx
+        .debug_bounds("rotation-use-reset-resettable")
+        .expect("banked reset action renders only for the blocked account")
+        .center();
+    cx.simulate_mouse_move(use_reset, None::<MouseButton>, Modifiers::none());
+    cx.simulate_click(use_reset, Modifiers::none());
+    cx.run_until_parked();
+    assert!(cx
+        .debug_bounds("rotation-confirm-reset-resettable")
+        .is_some());
 }
 
 fn limit_snapshot(now: chrono::DateTime<Utc>, id: &str, percent_used: f64) -> LimitSnapshot {

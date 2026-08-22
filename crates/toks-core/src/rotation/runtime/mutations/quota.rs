@@ -7,6 +7,22 @@ use super::super::{QuotaExhaustionState, RotationEventKind, RotationRuntime, Uni
 const REPROBE_AFTER_MILLIS: i64 = 60_000;
 
 impl RotationRuntime {
+    /// A confirmed provider redemption overrides the router's old reset time.
+    pub fn banked_reset_consumed(&mut self, account: &AccountId) -> bool {
+        let Some(state) = self.accounts.get_mut(account) else {
+            return false;
+        };
+        let changed = state.blocked_until.take().is_some()
+            | state.block_confirmed
+            | state.block_reset_known
+            | state.quota_exhaustion.take().is_some()
+            | !state.grandfathered_threads.is_empty();
+        state.block_confirmed = false;
+        state.block_reset_known = false;
+        state.grandfathered_threads.clear();
+        changed
+    }
+
     pub fn replace_quota_exhaustion(
         &mut self,
         exhausted: &BTreeMap<AccountId, Option<UnixMillis>>,

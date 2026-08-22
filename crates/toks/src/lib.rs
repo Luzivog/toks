@@ -81,6 +81,10 @@ pub mod test_support {
         app.sidebar_open
     }
 
+    pub fn emails_hidden(app: &ToksApp) -> bool {
+        app.emails_hidden
+    }
+
     pub fn prepare_rotation_accounts(app: &mut ToksApp) {
         let accounts: Vec<_> = app
             .limits
@@ -105,6 +109,17 @@ pub mod test_support {
                 at,
             );
         }
+    }
+
+    pub fn set_rotation_blocked(app: &mut ToksApp, account: &str) {
+        let account = toks_core::accounts::AccountId::new(account);
+        let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+        app.rotation.runtime.block(
+            &account,
+            toks_core::rotation::UnixMillis::new(at.get() + 86_400_000),
+            true,
+            at,
+        );
     }
 }
 

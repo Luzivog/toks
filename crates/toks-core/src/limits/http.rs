@@ -69,6 +69,12 @@ pub(crate) fn get_json(build: impl FnOnce(&Client) -> RequestBuilder) -> Result<
 pub(crate) fn get_typed_json<T: DeserializeOwned>(
     build: impl FnOnce(&Client) -> RequestBuilder,
 ) -> Result<T, LiveError> {
+    request_typed_json(build)
+}
+
+pub(crate) fn request_typed_json<T: DeserializeOwned>(
+    build: impl FnOnce(&Client) -> RequestBuilder,
+) -> Result<T, LiveError> {
     let executor = executor()?;
     let request = build(&executor.client);
     executor.runtime.block_on(async move {

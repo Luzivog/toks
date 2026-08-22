@@ -4,6 +4,7 @@ mod codex_binary;
 mod codex_config;
 pub(crate) mod credentials;
 pub mod proxy;
+mod reset_ack;
 mod resume;
 mod systemd;
 
@@ -13,6 +14,11 @@ use std::path::{Path, PathBuf};
 
 pub const ROUTER_PORT: u16 = 47_837;
 pub const ROUTER_BASE_URL: &str = "http://127.0.0.1:47837/backend-api/codex";
+
+#[derive(Debug, Deserialize, Serialize)]
+struct BankedResetConsumed {
+    account_id: crate::accounts::AccountId,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RouterInstallStatus {
@@ -26,6 +32,14 @@ pub fn status() -> RouterInstallStatus {
         configured: codex_config::is_configured().unwrap_or(false),
         service_installed: systemd::unit_path().is_ok_and(|path| path.is_file()),
         service_active: systemd::is_active(),
+    }
+}
+
+pub(crate) fn acknowledge_banked_reset(account: &crate::accounts::AccountId) -> Result<()> {
+    if systemd::is_active() {
+        reset_ack::notify_router(account)
+    } else {
+        reset_ack::update_stored_runtime(account)
     }
 }
 

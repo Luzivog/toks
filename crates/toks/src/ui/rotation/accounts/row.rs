@@ -26,7 +26,6 @@ pub(super) fn account_row(
         .rotation
         .runtime
         .is_available(&id, UnixMillis::new(app.now.timestamp_millis()));
-    let preferred = app.rotation.settings.preferred() == Some(&id);
     let busy = app.rotation.busy.is_some();
     let state = account_state(app, snapshot, &id, cx);
     let active = app
@@ -59,19 +58,9 @@ pub(super) fn account_row(
                 .truncate()
                 .child(account_label(app, &id)),
         )
-        .child(
-            super::super::super::text_action(
-                format!("rotation-use-now-{id}"),
-                if preferred { "Using now" } else { "Use now" },
-                cx,
-            )
-            .disabled(!included || !available || preferred || busy)
-            .on_click(cx.listener({
-                let id = id.clone();
-                move |app, _, _, cx| {
-                    app.change_rotation_settings(SettingsAction::Prefer(id.clone()), cx);
-                }
-            })),
+        .when_some(
+            super::reset_action::banked_reset_action(app, snapshot, available, cx),
+            |identity, action| identity.child(action),
         )
         .child(
             h_flex()

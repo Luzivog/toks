@@ -28,15 +28,12 @@ fn settings_reconcile_and_user_mutations_preserve_a_total_priority_order() {
     assert!(!settings.set_enabled(true));
     assert!(settings.move_to(&c, 0));
     assert_eq!(settings.priority(), &[c.clone(), b.clone()]);
-    assert!(settings.use_now(&b));
-    assert_eq!(settings.preferred(), Some(&b));
     assert!(settings.set_included(&b, false));
-    assert_eq!(settings.preferred(), None);
     assert!(settings.excluded().contains(&b));
 }
 
 #[test]
-fn selection_honors_preference_and_skips_only_currently_unavailable_accounts() {
+fn selection_honors_priority_and_skips_only_currently_unavailable_accounts() {
     let a = account("a");
     let b = account("b");
     let c = account("c");
@@ -44,7 +41,7 @@ fn selection_honors_preference_and_skips_only_currently_unavailable_accounts() {
     let mut settings = RotationSettings::default();
     settings.reconcile(&discovered);
     settings.set_enabled(true);
-    settings.use_now(&c);
+    settings.move_to(&c, 0);
 
     let mut runtime = RotationRuntime::default();
     runtime.reconcile(&discovered, UnixMillis::new(0));
@@ -166,6 +163,21 @@ fn only_threads_attached_before_exhaustion_can_drain_until_a_hard_block() {
         }
     );
     assert!(!runtime.can_drain(&account, &existing, UnixMillis::new(23)));
+}
+
+#[test]
+fn confirmed_banked_reset_clears_the_old_hard_block() {
+    let account = account("a");
+    let mut runtime = RotationRuntime::default();
+    runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
+    runtime.block(&account, UnixMillis::new(10_000), true, UnixMillis::new(1));
+
+    assert!(runtime.banked_reset_consumed(&account));
+    assert_eq!(
+        runtime.accounts()[&account].availability(UnixMillis::new(2)),
+        AccountAvailability::Available
+    );
+    assert!(!runtime.banked_reset_consumed(&account));
 }
 
 #[test]
@@ -306,7 +318,7 @@ fn fast_when_draining_defaults_on_for_settings_written_without_it() {
     fs::create_dir_all(store.path().parent().unwrap()).unwrap();
     fs::write(
         store.path(),
-        br#"{"version":1,"enabled":true,"priority":[],"excluded":[],"preferred":null,"cancelledThreads":[],"waitingPriority":[]}"#,
+        br#"{"version":1,"enabled":true,"priority":[],"excluded":[],"preferred":"old-override","cancelledThreads":[],"waitingPriority":[]}"#,
     )
     .unwrap();
 
@@ -316,4 +328,7 @@ fn fast_when_draining_defaults_on_for_settings_written_without_it() {
     assert!(settings.set_fast_when_draining(false));
     store.save(&settings).unwrap();
     assert!(!store.load().unwrap().fast_when_draining());
+    assert!(!fs::read_to_string(store.path())
+        .unwrap()
+        .contains("preferred"));
 }

@@ -29,12 +29,6 @@ pub(super) fn change_settings(
         SettingsAction::MoveAccount(account, index) => {
             settings.move_to(&account, index);
         }
-        SettingsAction::Prefer(account) => {
-            settings.use_now(&account);
-        }
-        SettingsAction::ClearPreference => {
-            settings.clear_preferred();
-        }
         SettingsAction::Cancel(thread) => {
             settings.cancel_waiting(&thread);
         }

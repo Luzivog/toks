@@ -1,5 +1,37 @@
-use gpui::{div, prelude::*, px, App};
-use gpui_component::{box_shadow, ActiveTheme};
+use gpui::{div, prelude::*, px, App, Context, SharedString};
+use gpui_component::{box_shadow, button::Button, ActiveTheme};
+
+use crate::{
+    window::{icon_element, ToksIcon},
+    ToksApp,
+};
+
+use super::action_button;
+
+pub(super) fn email_visibility_button(
+    id: impl Into<SharedString>,
+    hidden: bool,
+    cx: &mut Context<ToksApp>,
+) -> Button {
+    let icon = if hidden {
+        ToksIcon::EyeOff
+    } else {
+        ToksIcon::Eye
+    };
+    let tooltip = if hidden {
+        "Show account emails"
+    } else {
+        "Hide account emails"
+    };
+    action_button(id, cx)
+        .compact()
+        .child(icon_element(icon).size(px(14.)))
+        .tooltip(tooltip)
+        .on_click(cx.listener(|app, _, _, cx| {
+            app.emails_hidden = !app.emails_hidden;
+            cx.notify();
+        }))
+}
 
 pub(super) fn account_email(
     email: &str,
