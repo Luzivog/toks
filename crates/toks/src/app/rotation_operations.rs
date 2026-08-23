@@ -19,7 +19,6 @@ use io::{change_settings, load_rotation, run_service_action, LoadedRotation};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RotationServiceAction {
     Enable,
-    Bypass,
     Disable,
 }
 
@@ -116,7 +115,6 @@ impl ToksApp {
             .then(|| self.codex_rotation_account_ids());
         let generation = self.begin_rotation_work(match action {
             RotationServiceAction::Enable => "Enabling routing",
-            RotationServiceAction::Bypass => "Bypassing routing",
             RotationServiceAction::Disable => "Disabling routing",
         });
         cx.spawn(async move |this, cx| {

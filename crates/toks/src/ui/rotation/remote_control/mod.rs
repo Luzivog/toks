@@ -1,186 +1,118 @@
 use gpui::{div, prelude::*, px};
-use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
-use toks_core::remote_control::{RemoteConnectionStatus, RemoteControlFailureKind};
+use gpui_component::{h_flex, ActiveTheme, StyledExt};
+use toks_core::{
+    accounts::CredentialProfileKind, remote_control::RemoteConnectionStatus, LimitSnapshot,
+    Provider,
+};
 
 use crate::ToksApp;
 
-mod account;
-mod controls;
-mod devices;
-mod pairing;
-
-pub(super) use crate::app::remote_control_operations::{RemoteOperation, RemotePanel};
-
-pub(super) fn remote_control_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
-    let remote = &app.rotation.remote;
-    let status = remote.snapshot.connection.status;
-    let mut card = super::card("Remote control", status_label(status).into(), cx)
-        .debug_selector(|| "rotation-remote-control-card".into())
+pub(super) fn row(app: &ToksApp, cx: &gpui::App) -> gpui::Div {
+    let status = app.rotation.remote.snapshot.connection.status;
+    h_flex()
+        .debug_selector(|| "rotation-remote-control-row".into())
+        .items_center()
+        .gap_3()
+        .px_4()
+        .py_2()
+        .border_t_1()
+        .border_color(cx.theme().border)
         .child(
             h_flex()
-                .debug_selector(|| "rotation-remote-status".into())
                 .items_center()
-                .gap_3()
-                .px_4()
-                .py_3()
-                .border_t_1()
-                .border_color(cx.theme().border)
+                .gap_1p5()
+                .flex_shrink_0()
                 .child(
                     div()
-                        .size(px(7.))
+                        .size(px(6.))
                         .rounded_full()
                         .bg(status_color(status, cx)),
                 )
+                .child(div().text_sm().font_medium().child("Remote control"))
                 .child(
-                    v_flex()
-                        .min_w_0()
-                        .flex_1()
-                        .child(
-                            div()
-                                .debug_selector(|| "rotation-remote-server".into())
-                                .text_sm()
-                                .font_medium()
-                                .child(server_label(app)),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(description(status)),
-                        ),
+                    div()
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("·"),
                 )
-                .child(controls::controls(app, cx)),
+                .child(
+                    div()
+                        .debug_selector(|| "rotation-remote-control-status".into())
+                        .text_xs()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(status_label(status)),
+                ),
         )
         .child(
-            v_flex()
-                .px_4()
-                .pb_3()
-                .child(account::identity_rows(app, cx)),
-        );
-    if let Some(issue) = &remote.action_issue {
-        card = card.child(
-            div()
-                .debug_selector(|| "rotation-remote-action-error".into())
-                .px_4()
-                .py_2()
-                .border_t_1()
-                .border_color(cx.theme().danger.opacity(0.5))
-                .text_xs()
-                .text_color(cx.theme().danger)
-                .child(issue_message(issue)),
-        );
-    }
-    if let Some(issue) = &remote.status_issue {
-        card = card.child(
-            div()
-                .debug_selector(|| "rotation-remote-status-error".into())
-                .px_4()
-                .py_2()
-                .border_t_1()
-                .border_color(cx.theme().danger.opacity(0.5))
-                .text_xs()
-                .text_color(cx.theme().danger)
-                .child(status_issue_message(issue)),
-        );
-    }
-    if remote.panel == RemotePanel::Pairing {
-        if let Some(panel) = pairing::pairing_panel(app, cx) {
-            card = card.child(panel);
-        }
-    } else if remote.snapshot.environment_id.is_some() {
-        card = card.child(devices::devices_panel(app, cx));
-    }
-    card
+            h_flex()
+                .min_w_0()
+                .flex_1()
+                .justify_end()
+                .child(control_identity(app, control_account(app), cx)),
+        )
 }
 
 fn status_label(status: RemoteConnectionStatus) -> &'static str {
     match status {
         RemoteConnectionStatus::Off => "Off",
         RemoteConnectionStatus::Connecting => "Connecting",
-        RemoteConnectionStatus::Connected => "Connected",
-        RemoteConnectionStatus::Errored => "Connection error",
-    }
-}
-
-fn server_label(app: &ToksApp) -> String {
-    app.rotation
-        .remote
-        .snapshot
-        .connection
-        .server_name
-        .clone()
-        .unwrap_or_else(|| "This computer".into())
-}
-
-fn description(status: RemoteConnectionStatus) -> &'static str {
-    match status {
-        RemoteConnectionStatus::Off => "Turn on to start and continue Codex tasks from your phone.",
-        RemoteConnectionStatus::Connecting => "The secure relay is connecting.",
-        RemoteConnectionStatus::Connected => {
-            "Phone messages reach this computer; model work follows account priority."
-        }
-        RemoteConnectionStatus::Errored => {
-            "This host could not connect. Another session may already be using Remote Control."
-        }
+        RemoteConnectionStatus::Connected => "On",
+        RemoteConnectionStatus::Managed(_) => "On via ChatGPT",
+        RemoteConnectionStatus::Errored => "Unavailable",
     }
 }
 
 fn status_color(status: RemoteConnectionStatus, cx: &gpui::App) -> gpui::Hsla {
     match status {
-        RemoteConnectionStatus::Connected => gpui::rgb(0x10_a3_7f).into(),
+        RemoteConnectionStatus::Connected | RemoteConnectionStatus::Managed(_) => {
+            gpui::rgb(0x10_a3_7f).into()
+        }
         RemoteConnectionStatus::Connecting => cx.theme().warning,
         RemoteConnectionStatus::Errored => cx.theme().danger,
         RemoteConnectionStatus::Off => cx.theme().muted_foreground,
     }
 }
 
-fn issue_label(kind: RemoteControlFailureKind) -> &'static str {
-    match kind {
-        RemoteControlFailureKind::SignInRequired => "Sign in to ChatGPT, then try again.",
-        RemoteControlFailureKind::VerificationRequired => {
-            "Complete account verification in ChatGPT, then try again."
-        }
-        RemoteControlFailureKind::DisabledByAdministrator => {
-            "Remote Control is disabled by your workspace administrator."
-        }
-        RemoteControlFailureKind::CodexUnavailable => "Install or update Codex, then try again.",
-        RemoteControlFailureKind::DaemonUnavailable => "The Codex background host is unavailable.",
-        RemoteControlFailureKind::Retryable => "Codex is busy. Try again in a moment.",
-        RemoteControlFailureKind::Other => "Remote Control could not complete this action.",
+fn control_identity(app: &ToksApp, account: Option<&LimitSnapshot>, cx: &gpui::App) -> gpui::Div {
+    let Some(account) = account else {
+        return div().text_sm().child("Sign in to ChatGPT");
+    };
+    match account.account.email.as_deref() {
+        Some(email) => super::super::account_email::styled_account_email(
+            email,
+            app.emails_hidden,
+            "remote",
+            account.account.id.as_str(),
+            div().min_w_0().truncate().text_sm(),
+            cx,
+        ),
+        None => div().text_sm().child("Current ChatGPT account"),
     }
 }
 
-fn issue_message(issue: &crate::app::remote_control_operations::RemoteIssue) -> String {
-    issue_label(issue.kind).into()
-}
-
-fn status_issue_message(
-    issue: &crate::app::remote_control_operations::RemoteIssue,
-) -> &'static str {
-    match issue.kind {
-        RemoteControlFailureKind::DaemonUnavailable => {
-            "Toks could not reach the Codex background host."
-        }
-        _ => "Toks could not read the Remote Control connection.",
-    }
+fn control_account(app: &ToksApp) -> Option<&LimitSnapshot> {
+    app.limits.iter().find(|snapshot| {
+        snapshot.provider == Provider::Codex
+            && snapshot
+                .account
+                .sources
+                .iter()
+                .any(|source| source.kind == CredentialProfileKind::Current)
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use toks_core::remote_control::RemoteControlFailureKind;
-
-    use super::issue_message;
-    use crate::app::remote_control_operations::RemoteIssue;
+    use super::status_label;
+    use toks_core::remote_control::{RemoteConnectionStatus, RemoteControlOwner};
 
     #[test]
-    fn unknown_action_failures_have_stable_user_copy() {
-        let issue = RemoteIssue {
-            kind: RemoteControlFailureKind::Other,
-        };
-
+    fn desktop_ownership_has_compact_copy() {
         assert_eq!(
-            issue_message(&issue),
-            "Remote Control could not complete this action."
+            status_label(RemoteConnectionStatus::Managed(
+                RemoteControlOwner::ChatGptDesktop
+            )),
+            "On via ChatGPT"
         );
     }
 }

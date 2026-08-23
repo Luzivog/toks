@@ -1,9 +1,15 @@
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteControlOwner {
+    ChatGptDesktop,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RemoteConnectionStatus {
     #[default]
     Off,
     Connecting,
     Connected,
+    Managed(RemoteControlOwner),
     Errored,
 }
 

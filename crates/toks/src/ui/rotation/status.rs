@@ -5,7 +5,7 @@ use crate::ToksApp;
 
 mod controls;
 mod state;
-use controls::service_controls;
+use controls::routing_controls;
 use state::{health_label, selected_account, SelectedAccount};
 
 pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
@@ -33,6 +33,7 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
     };
 
     v_flex()
+        .debug_selector(|| "rotation-status-card".into())
         .w_full()
         .overflow_hidden()
         .rounded_xl()
@@ -81,7 +82,7 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
                         )
                         .child(h_flex().min_w_0().flex_1().child(selected)),
                 )
-                .child(service_controls(app, busy, cx))
+                .child(routing_controls(app, busy, cx))
                 .when_some(app.rotation.busy, |row, label| {
                     row.child(
                         div()
@@ -92,6 +93,7 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
                     )
                 }),
         )
+        .child(super::remote_control::row(app, cx))
         .when(!install.configured, |panel| {
             panel.child(
                 div()

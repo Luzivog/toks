@@ -47,7 +47,6 @@ pub(super) fn rotation_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
                 ),
         )
         .child(status::service_card(app, cx))
-        .child(remote_control::remote_control_card(app, cx))
         .child(accounts::accounts_card(app, cx))
         .child(waiting::waiting_card(app, cx))
         .child(events::events_card(app, cx));

@@ -140,7 +140,6 @@ pub mod test_support {
     pub fn set_remote_control(
         app: &mut ToksApp,
         status: toks_core::remote_control::RemoteConnectionStatus,
-        devices: Vec<toks_core::remote_control::RemoteDevice>,
     ) {
         app.rotation.remote.snapshot = toks_core::remote_control::RemoteControlSnapshot {
             connection: toks_core::remote_control::RemoteConnection {
@@ -148,18 +147,8 @@ pub mod test_support {
                 server_name: Some("test-computer".into()),
             },
             environment_id: Some("test-environment".into()),
-            devices: toks_core::remote_control::RemoteDevices::Loaded(devices),
+            devices: toks_core::remote_control::RemoteDevices::NotLoaded,
         };
-    }
-
-    pub fn show_remote_pairing(app: &mut ToksApp, now_seconds: i64) {
-        app.rotation.remote.panel = crate::app::remote_control_operations::RemotePanel::Pairing;
-        app.rotation.remote.pairing = Some(toks_core::remote_control::RemotePairing::new(
-            "opaque-test-code".into(),
-            "ABCD-EFGH".into(),
-            "test-environment".into(),
-            now_seconds + 300,
-        ));
     }
 }
 

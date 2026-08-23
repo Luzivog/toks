@@ -70,7 +70,6 @@ pub(super) fn run_service_action(action: RotationServiceAction) -> Result<()> {
             let router = codex_router::router_executable_for(&app)?;
             codex_router::enable(&router)
         }
-        RotationServiceAction::Bypass => codex_router::bypass(),
         RotationServiceAction::Disable => codex_router::disable(),
     }
 }

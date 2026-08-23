@@ -58,11 +58,6 @@ pub fn enable(router_executable: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Stop routing Codex traffic while leaving the startup unit available.
-pub fn bypass() -> Result<()> {
-    codex_config::restore()
-}
-
 /// Restore Codex configuration and remove the background user service.
 pub fn disable() -> Result<()> {
     codex_config::restore()?;

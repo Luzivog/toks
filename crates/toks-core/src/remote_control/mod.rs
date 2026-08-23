@@ -1,5 +1,6 @@
 mod commands;
 mod devices;
+mod ownership;
 mod reconnect;
 mod rpc;
 mod runtime;
@@ -17,7 +18,7 @@ use wire::StatusResponse;
 
 pub use types::{
     RemoteConnection, RemoteConnectionStatus, RemoteControlFailure, RemoteControlFailureKind,
-    RemoteControlSnapshot, RemoteDevice, RemoteDevices, RemotePairing,
+    RemoteControlOwner, RemoteControlSnapshot, RemoteDevice, RemoteDevices, RemotePairing,
 };
 
 pub type RemoteControlResult<T> = std::result::Result<T, RemoteControlFailure>;
@@ -27,6 +28,10 @@ pub async fn status() -> RemoteControlResult<RemoteControlSnapshot> {
 }
 
 async fn status_inner() -> Result<RemoteControlSnapshot> {
+    let codex_home = crate::limits::codex::codex_home().context("no Codex home directory")?;
+    if let Some(snapshot) = ownership::desktop_snapshot(&codex_home) {
+        return Ok(snapshot);
+    }
     let account = control_account_id();
     let stored_environment = account
         .as_ref()
@@ -60,6 +65,9 @@ pub async fn enable() -> RemoteControlResult<RemoteControlSnapshot> {
 }
 
 async fn enable_inner() -> Result<RemoteControlSnapshot> {
+    if let Some(snapshot) = desktop_snapshot()? {
+        return Ok(snapshot);
+    }
     let (connection, environment_id) = commands::enable().await?;
     if let (Some(account), Some(environment)) = (control_account_id(), &environment_id) {
         store::remember(&account, environment)?;
@@ -80,6 +88,9 @@ pub async fn reconnect() -> RemoteControlResult<RemoteControlSnapshot> {
 }
 
 async fn disable_inner() -> Result<RemoteControlSnapshot> {
+    if let Some(snapshot) = desktop_snapshot()? {
+        return Ok(snapshot);
+    }
     commands::disable().await?;
     let environment_id = control_account_id()
         .as_ref()
@@ -97,6 +108,9 @@ pub async fn start_pairing() -> RemoteControlResult<RemotePairing> {
 }
 
 async fn start_pairing_inner() -> Result<RemotePairing> {
+    if desktop_snapshot()?.is_some() {
+        anyhow::bail!("Manage paired devices in ChatGPT Desktop");
+    }
     let pairing = commands::pair().await?;
     if let Some(account) = control_account_id() {
         store::remember(&account, &pairing.environment_id)?;
@@ -152,6 +166,11 @@ fn socket_path() -> Result<PathBuf> {
     Ok(home
         .join("app-server-control")
         .join("app-server-control.sock"))
+}
+
+fn desktop_snapshot() -> Result<Option<RemoteControlSnapshot>> {
+    let home = crate::limits::codex::codex_home().context("no Codex home directory")?;
+    Ok(ownership::desktop_snapshot(&home))
 }
 
 pub fn control_account_id() -> Option<crate::accounts::AccountId> {
