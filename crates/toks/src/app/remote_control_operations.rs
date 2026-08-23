@@ -13,7 +13,8 @@ pub(crate) use state::{RemoteControlUiState, RemoteIssue, RemoteOperation, Remot
 struct PollResult {
     snapshot: RemoteControlSnapshot,
     pairing_claimed: bool,
-    paired_devices: Option<Vec<toks_core::remote_control::RemoteDevice>>,
+    paired_devices:
+        Option<remote_control::RemoteControlResult<Vec<toks_core::remote_control::RemoteDevice>>>,
 }
 
 pub(super) fn spawn(cx: &mut Context<ToksApp>) {
@@ -22,10 +23,16 @@ pub(super) fn spawn(cx: &mut Context<ToksApp>) {
             .update(cx, |app, _| {
                 app.rotation.remote.expire_pairing(app.now.timestamp());
                 app.rotation.remote.busy.is_none().then(|| {
+                    let pairing = app.rotation.remote.pairing_poll();
                     (
                         app.rotation.remote.generation(),
-                        app.rotation.remote.pairing_poll(),
+                        pairing.clone(),
                         app.rotation.remote.snapshot.environment_id.clone(),
+                        pairing.is_some()
+                            || !matches!(
+                                app.rotation.remote.snapshot.devices,
+                                RemoteDevices::Loaded(_)
+                            ),
                     )
                 })
             })
@@ -33,10 +40,10 @@ pub(super) fn spawn(cx: &mut Context<ToksApp>) {
             .flatten();
         let pairing_active = request
             .as_ref()
-            .is_some_and(|(_, pairing, _)| pairing.is_some());
-        if let Some((generation, pairing, environment)) = request {
+            .is_some_and(|(_, pairing, _, _)| pairing.is_some());
+        if let Some((generation, pairing, environment, load_devices)) = request {
             let result = cx
-                .background_spawn(async move { poll(pairing, environment).await })
+                .background_spawn(async move { poll(pairing, environment, load_devices).await })
                 .await;
             if this
                 .update(cx, |app, cx| {
@@ -61,20 +68,17 @@ pub(super) fn spawn(cx: &mut Context<ToksApp>) {
 async fn poll(
     pairing: Option<remote_control::RemotePairing>,
     environment: Option<String>,
+    load_devices: bool,
 ) -> remote_control::RemoteControlResult<PollResult> {
     let snapshot = remote_control::status().await?;
     let pairing_claimed = match &pairing {
         Some(pairing) => remote_control::pairing_claimed(pairing).await?,
         None => false,
     };
-    let paired_devices = if pairing_claimed {
-        let environment = snapshot.environment_id.as_ref().or(environment.as_ref());
-        match environment {
-            Some(environment) => Some(remote_control::devices(environment).await?),
-            None => None,
-        }
-    } else {
-        None
+    let environment = snapshot.environment_id.as_ref().or(environment.as_ref());
+    let paired_devices = match (load_devices, environment) {
+        (true, Some(environment)) => Some(remote_control::devices(environment).await),
+        (false, _) | (_, None) => None,
     };
     Ok(PollResult {
         snapshot,
@@ -96,10 +100,15 @@ fn apply_poll(
             state.apply_snapshot(result.snapshot);
             if result.pairing_claimed {
                 state.pairing = None;
-                state.panel = RemotePanel::Devices;
-                if let Some(devices) = result.paired_devices {
-                    state.snapshot.devices = RemoteDevices::Loaded(devices);
+                state.panel = RemotePanel::Summary;
+            }
+            match result.paired_devices {
+                Some(Ok(devices)) => state.snapshot.devices = RemoteDevices::Loaded(devices),
+                Some(Err(_)) if !matches!(state.snapshot.devices, RemoteDevices::Loaded(_)) => {
+                    state.snapshot.devices =
+                        RemoteDevices::Failed("Paired devices could not be loaded.".into());
                 }
+                Some(Err(_)) | None => {}
             }
         }
         Err(failure) => state.fail_status(failure),

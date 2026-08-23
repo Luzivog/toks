@@ -10,7 +10,7 @@ use toks::{
     test_support::{
         emails_hidden, exclude_rotation_account, initialize, prepare_rotation_accounts, set_page,
         set_remote_control, set_rotation_active_threads, set_rotation_service_active,
-        show_remote_devices, show_remote_pairing, WindowFrame,
+        show_remote_pairing, WindowFrame,
     },
     Page, ToksApp,
 };
@@ -35,7 +35,6 @@ fn remote_control_keeps_connection_identity_separate_and_private(cx: &mut TestAp
         exclude_rotation_account(&mut app, "control");
         set_rotation_active_threads(&mut app, "worker", 1);
         set_remote_control(&mut app, RemoteConnectionStatus::Connected, vec![phone()]);
-        show_remote_devices(&mut app);
         set_page(&mut app, Page::Rotation);
         app
     });
@@ -47,11 +46,13 @@ fn remote_control_keeps_connection_identity_separate_and_private(cx: &mut TestAp
         "rotation-remote-control-account",
         "rotation-remote-model-account",
         "rotation-remote-add-device",
-        "rotation-remote-manage-devices",
+        "rotation-remote-devices-panel",
         "rotation-remote-device-phone",
     ] {
         assert!(cx.debug_bounds(selector).is_some(), "missing {selector}");
     }
+    assert!(cx.debug_bounds("rotation-remote-manage-devices").is_none());
+    assert!(cx.debug_bounds("rotation-remote-close-devices").is_none());
     let connection_before = bounds(cx, "account-email-remote-control");
     click(cx, "rotation-toggle-account-emails");
     assert!(app.read_with(cx, |app, _| emails_hidden(app)));
@@ -124,7 +125,6 @@ fn paired_device_text_stays_inside_its_row(cx: &mut TestAppContext) {
         );
         prepare_rotation_accounts(&mut app);
         set_remote_control(&mut app, RemoteConnectionStatus::Errored, vec![device]);
-        show_remote_devices(&mut app);
         set_page(&mut app, Page::Rotation);
         app
     });

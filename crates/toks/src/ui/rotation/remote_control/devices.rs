@@ -13,19 +13,7 @@ pub(super) fn devices_panel(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
         .py_3()
         .border_t_1()
         .border_color(cx.theme().border)
-        .child(
-            h_flex()
-                .justify_between()
-                .child(div().text_sm().font_medium().child("Paired devices"))
-                .child(
-                    super::super::super::text_action("rotation-remote-close-devices", "Done", cx)
-                        .on_click(cx.listener(|app, _, _, cx| {
-                            app.rotation.remote.panel = super::RemotePanel::Summary;
-                            app.rotation.remote.pending_revoke = None;
-                            cx.notify();
-                        })),
-                ),
-        );
+        .child(div().text_sm().font_medium().child("Paired devices"));
     panel = match &app.rotation.remote.snapshot.devices {
         RemoteDevices::NotLoaded => panel.child(notice("Loading devices…", cx)),
         RemoteDevices::Failed(error) => panel.child(notice(error, cx)),

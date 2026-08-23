@@ -7,7 +7,6 @@ use toks_core::remote_control::{
 pub(crate) enum RemotePanel {
     Summary,
     Pairing,
-    Devices,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -16,7 +15,6 @@ pub(crate) enum RemoteOperation {
     Reconnecting,
     Disabling,
     Pairing,
-    LoadingDevices,
     Revoking(String),
 }
 

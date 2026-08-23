@@ -1,6 +1,6 @@
 use gpui::{div, prelude::*, SharedString};
 use gpui_component::{h_flex, switch::Switch, ActiveTheme, Disableable, Sizable};
-use toks_core::remote_control::{RemoteConnectionStatus, RemoteDevices};
+use toks_core::remote_control::RemoteConnectionStatus;
 
 use crate::{app::remote_control_operations::RemoteAction, ToksApp};
 
@@ -49,20 +49,6 @@ pub(super) fn controls(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::
                 })),
         );
     }
-    if remote.snapshot.environment_id.is_some() {
-        let count = match &remote.snapshot.devices {
-            RemoteDevices::Loaded(devices) => format!("Devices {}", devices.len()),
-            _ => "Devices".into(),
-        };
-        row = row.child(
-            super::super::super::text_action("rotation-remote-manage-devices", count, cx)
-                .disabled(busy)
-                .on_click(cx.listener(|app, _, _, cx| {
-                    app.rotation.remote.panel = super::RemotePanel::Devices;
-                    app.run_remote_action(RemoteAction::LoadDevices, cx);
-                })),
-        );
-    }
     row.when_some(remote.busy.as_ref(), |row, operation| {
         row.child(
             div()
@@ -79,7 +65,6 @@ fn operation_label(operation: &super::RemoteOperation) -> &'static str {
         super::RemoteOperation::Reconnecting => "Reconnecting",
         super::RemoteOperation::Disabling => "Turning off",
         super::RemoteOperation::Pairing => "Creating code",
-        super::RemoteOperation::LoadingDevices => "Loading devices",
         super::RemoteOperation::Revoking(_) => "Removing device",
     }
 }

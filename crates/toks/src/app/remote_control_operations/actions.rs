@@ -10,7 +10,6 @@ pub(crate) enum RemoteAction {
     Reconnect,
     Disable,
     Pair,
-    LoadDevices,
     Revoke(String),
 }
 
@@ -62,13 +61,9 @@ impl ToksApp {
             Ok(Outcome::Devices(devices)) => {
                 self.rotation.remote.snapshot.devices = RemoteDevices::Loaded(devices);
                 self.rotation.remote.pending_revoke = None;
-                self.rotation.remote.panel = RemotePanel::Devices;
             }
             Err(failure) => {
                 let devices_message = match operation.as_ref() {
-                    Some(RemoteOperation::LoadingDevices) => {
-                        Some("Paired devices could not be loaded.")
-                    }
                     Some(RemoteOperation::Revoking(_)) => Some("The device could not be removed."),
                     _ => None,
                 };
@@ -87,7 +82,6 @@ fn operation(action: &RemoteAction) -> RemoteOperation {
         RemoteAction::Reconnect => RemoteOperation::Reconnecting,
         RemoteAction::Disable => RemoteOperation::Disabling,
         RemoteAction::Pair => RemoteOperation::Pairing,
-        RemoteAction::LoadDevices => RemoteOperation::LoadingDevices,
         RemoteAction::Revoke(client) => RemoteOperation::Revoking(client.clone()),
     }
 }
@@ -101,9 +95,6 @@ async fn perform(
         RemoteAction::Reconnect => remote_control::reconnect().await.map(Outcome::Snapshot),
         RemoteAction::Disable => remote_control::disable().await.map(Outcome::Snapshot),
         RemoteAction::Pair => remote_control::start_pairing().await.map(Outcome::Pairing),
-        RemoteAction::LoadDevices => remote_control::devices(required_environment(environment)?)
-            .await
-            .map(Outcome::Devices),
         RemoteAction::Revoke(client) => {
             let environment = required_environment(environment)?;
             remote_control::revoke_device(environment, &client).await?;

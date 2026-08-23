@@ -87,7 +87,7 @@ pub(super) fn remote_control_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>
         if let Some(panel) = pairing::pairing_panel(app, cx) {
             card = card.child(panel);
         }
-    } else if remote.panel == RemotePanel::Devices {
+    } else if remote.snapshot.environment_id.is_some() {
         card = card.child(devices::devices_panel(app, cx));
     }
     card

@@ -152,10 +152,6 @@ pub mod test_support {
         };
     }
 
-    pub fn show_remote_devices(app: &mut ToksApp) {
-        app.rotation.remote.panel = crate::app::remote_control_operations::RemotePanel::Devices;
-    }
-
     pub fn show_remote_pairing(app: &mut ToksApp, now_seconds: i64) {
         app.rotation.remote.panel = crate::app::remote_control_operations::RemotePanel::Pairing;
         app.rotation.remote.pairing = Some(toks_core::remote_control::RemotePairing::new(

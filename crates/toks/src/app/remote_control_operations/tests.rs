@@ -3,7 +3,7 @@ use toks_core::remote_control::{
     RemoteControlSnapshot, RemoteDevice, RemoteDevices, RemotePairing,
 };
 
-use super::{RemoteControlUiState, RemotePanel};
+use super::{apply_poll, PollResult, RemoteControlUiState, RemotePanel};
 
 #[test]
 fn expired_pairing_returns_to_the_summary_without_touching_a_backend() {
@@ -65,6 +65,26 @@ fn relay_updates_preserve_devices_and_do_not_overwrite_action_feedback() {
     assert!(state.action_issue.is_none());
 }
 
+#[test]
+fn the_default_poll_populates_paired_devices_without_opening_a_panel() {
+    let mut state = RemoteControlUiState::default();
+    let mut incoming = snapshot(RemoteConnectionStatus::Connected);
+    incoming.devices = RemoteDevices::NotLoaded;
+
+    apply_poll(
+        &mut state,
+        0,
+        Ok(PollResult {
+            snapshot: incoming,
+            pairing_claimed: false,
+            paired_devices: Some(Ok(vec![device()])),
+        }),
+    );
+
+    assert!(matches!(state.snapshot.devices, RemoteDevices::Loaded(_)));
+    assert_eq!(state.panel, RemotePanel::Summary);
+}
+
 fn failure(kind: RemoteControlFailureKind, detail: &str) -> RemoteControlFailure {
     RemoteControlFailure {
         kind,
@@ -79,15 +99,19 @@ fn snapshot(status: RemoteConnectionStatus) -> RemoteControlSnapshot {
             server_name: Some("workstation".into()),
         },
         environment_id: Some("environment".into()),
-        devices: RemoteDevices::Loaded(vec![RemoteDevice {
-            client_id: "phone".into(),
-            display_name: None,
-            device_type: None,
-            platform: None,
-            os_version: None,
-            device_model: None,
-            app_version: None,
-            last_seen_at: None,
-        }]),
+        devices: RemoteDevices::Loaded(vec![device()]),
+    }
+}
+
+fn device() -> RemoteDevice {
+    RemoteDevice {
+        client_id: "phone".into(),
+        display_name: None,
+        device_type: None,
+        platform: None,
+        os_version: None,
+        device_model: None,
+        app_version: None,
+        last_seen_at: None,
     }
 }
