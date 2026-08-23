@@ -30,7 +30,11 @@ pub(super) fn usage_block(status: u16, payload: &[u8]) -> Option<UsageBlock> {
 pub(super) fn websocket_usage_block(payload: &str) -> Option<UsageBlock> {
     // Real upstream usage-limit frames carry no top-level `status`, so the
     // stream detector keys off the frame shape and message instead.
-    let value: Value = serde_json::from_str(payload).ok()?;
+    stream_usage_block(payload.as_bytes())
+}
+
+pub(super) fn stream_usage_block(payload: &[u8]) -> Option<UsageBlock> {
+    let value: Value = serde_json::from_slice(payload).ok()?;
     usage_limit(&value)
 }
 
@@ -110,6 +114,19 @@ pub(super) fn is_response_create(payload: &str) -> bool {
         .is_some_and(|value| value.get("type").and_then(Value::as_str) == Some("response.create"))
 }
 
+/// Whether an upstream text frame establishes that this response has started.
+/// Known session/control events do not; unknown text is conservative because
+/// replaying after forwarding an unrecognized response frame could duplicate work.
+pub(super) fn starts_response_delivery(payload: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(payload) else {
+        return true;
+    };
+    let Some(kind) = value.get("type").and_then(Value::as_str) else {
+        return true;
+    };
+    kind.starts_with("response.") || is_error_frame(&value)
+}
+
 /// The model a `response.create` frame asks for. `model` sits at the top level
 /// of the frame, alongside `instructions`, `service_tier` and `client_metadata`.
 pub(super) fn requested_model(payload: &str) -> Option<String> {
@@ -140,23 +157,6 @@ pub(super) fn with_service_tier(payload: &str, tier: &str) -> Option<String> {
     }
     object.insert("service_tier".into(), Value::String(tier.to_owned()));
     serde_json::to_string(&value).ok()
-}
-
-pub(super) fn model_visible_output(payload: &str) -> bool {
-    let Some(kind) = event_type(payload) else {
-        return false;
-    };
-    kind.starts_with("response.")
-        && !matches!(
-            kind.as_str(),
-            "response.created" | "response.in_progress" | "response.queued"
-        )
-        && kind != "response.completed"
-}
-
-fn event_type(payload: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(payload).ok()?;
-    value.get("type")?.as_str().map(str::to_owned)
 }
 
 fn epoch_millis(value: &Value) -> Option<UnixMillis> {

@@ -4,6 +4,7 @@ use super::{
     RotationEventKind, RotationRuntime, RouterHealth, ThreadId, UnixMillis, WaitingThread,
 };
 
+mod limits;
 mod quota;
 
 impl RotationRuntime {
@@ -31,10 +32,16 @@ impl RotationRuntime {
             attachment.connections = 0;
         }
         attachment.connections = attachment.connections.saturating_add(1);
-        let mut persisted_changed = false;
+        let mut persisted_changed = self
+            .accounts
+            .get_mut(account)
+            .is_some_and(|state| state.provisional_threads.remove(thread));
+        persisted_changed |= self.release_reservation(account, thread);
         for (candidate, state) in &mut self.accounts {
             if candidate != account {
                 persisted_changed |= state.grandfathered_threads.remove(thread);
+                persisted_changed |= state.provisional_threads.remove(thread);
+                persisted_changed |= state.thread_usage.remove(thread).is_some();
             }
         }
         persisted_changed
@@ -54,37 +61,6 @@ impl RotationRuntime {
         }
         self.attached_threads.remove(thread);
         self.cancel_active_thread(account, thread)
-    }
-
-    pub fn block(
-        &mut self,
-        account: &AccountId,
-        until: UnixMillis,
-        reset_known: bool,
-        at: UnixMillis,
-    ) -> bool {
-        let state = self.accounts.entry(account.clone()).or_default();
-        if state.blocked_until == Some(until)
-            && state.block_confirmed
-            && state.block_reset_known == reset_known
-            && state.quota_exhaustion.is_none()
-            && state.grandfathered_threads.is_empty()
-        {
-            return false;
-        }
-        state.blocked_until = Some(until);
-        state.block_confirmed = true;
-        state.block_reset_known = reset_known;
-        state.quota_exhaustion = None;
-        state.grandfathered_threads.clear();
-        self.push_event(
-            at,
-            RotationEventKind::Blocked {
-                account_id: account.clone(),
-                until,
-            },
-        );
-        true
     }
 
     pub fn auth_failed(&mut self, account: &AccountId, at: UnixMillis) -> bool {

@@ -123,10 +123,11 @@ pub mod test_support {
     pub fn set_rotation_blocked(app: &mut ToksApp, account: &str) {
         let account = toks_core::accounts::AccountId::new(account);
         let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
-        app.rotation.runtime.block(
+        app.rotation.runtime.block_admission(
             &account,
-            toks_core::rotation::UnixMillis::new(at.get() + 86_400_000),
-            true,
+            toks_core::rotation::BlockWindow::known(toks_core::rotation::UnixMillis::new(
+                at.get() + 86_400_000,
+            )),
             at,
         );
     }

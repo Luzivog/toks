@@ -58,31 +58,18 @@ fn rotation_sidebar_entry_opens_the_private_dashboard(cx: &mut TestAppContext) {
         .debug_bounds("rotation-router-controls")
         .expect("router controls are rendered");
     assert!(router_controls.size.height <= px(48.));
-    for selector in ["rotation-routing-toggle", "rotation-fast-drain-toggle"] {
-        assert!(
-            cx.debug_bounds(selector).is_some(),
-            "{selector} should render as a switch"
-        );
-    }
+    assert!(cx.debug_bounds("rotation-routing-toggle").is_some());
+    assert!(cx.debug_bounds("rotation-fast-drain-toggle").is_none());
     assert!(cx.debug_bounds("rotation-service-toggle").is_none());
 
-    for (selector, tooltip_selector) in [
-        ("rotation-routing-toggle", "rotation-routing-toggle-tooltip"),
-        (
-            "rotation-fast-drain-toggle",
-            "rotation-fast-drain-toggle-tooltip",
-        ),
-    ] {
-        let control = cx.debug_bounds(selector).expect("control is rendered");
-        let label = point(control.right() - px(2.), control.center().y);
-        cx.simulate_mouse_move(label, None::<MouseButton>, Modifiers::none());
-        cx.executor().advance_clock(Duration::from_secs(1));
-        cx.run_until_parked();
-        assert!(
-            cx.debug_bounds(tooltip_selector).is_some(),
-            "{selector} label should show its tooltip"
-        );
-    }
+    let control = cx
+        .debug_bounds("rotation-routing-toggle")
+        .expect("control is rendered");
+    let label = point(control.right() - px(2.), control.center().y);
+    cx.simulate_mouse_move(label, None::<MouseButton>, Modifiers::none());
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.run_until_parked();
+    assert!(cx.debug_bounds("rotation-routing-toggle-tooltip").is_some());
 }
 
 #[gpui::test]

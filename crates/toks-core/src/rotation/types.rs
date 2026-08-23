@@ -16,6 +16,48 @@ impl UnixMillis {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlockWindow {
+    until: UnixMillis,
+    reset_known: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FastLimitDisposition {
+    RetryingStandard,
+    NextRequestUsesStandard,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FastLimitOutcome {
+    UseStandard,
+    AlreadyBlocked,
+}
+
+impl BlockWindow {
+    pub const fn known(until: UnixMillis) -> Self {
+        Self {
+            until,
+            reset_known: true,
+        }
+    }
+
+    pub const fn reprobe_at(until: UnixMillis) -> Self {
+        Self {
+            until,
+            reset_known: false,
+        }
+    }
+
+    pub const fn until(self) -> UnixMillis {
+        self.until
+    }
+
+    pub const fn reset_known(self) -> bool {
+        self.reset_known
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ThreadId(String);
@@ -45,6 +87,19 @@ pub enum RotationEventKind {
     Blocked {
         account_id: AccountId,
         until: UnixMillis,
+    },
+    ThreadBlocked {
+        thread_id: ThreadId,
+        account_id: AccountId,
+        until: UnixMillis,
+    },
+    FastFallback {
+        thread_id: ThreadId,
+        account_id: AccountId,
+    },
+    FastUnavailable {
+        thread_id: ThreadId,
+        account_id: AccountId,
     },
     Draining {
         account_id: AccountId,

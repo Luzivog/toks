@@ -35,9 +35,6 @@ pub(super) fn change_settings(
         SettingsAction::MoveWaiting(thread, index) => {
             settings.move_waiting_to(&thread, index);
         }
-        SettingsAction::FastWhenDraining(fast) => {
-            settings.set_fast_when_draining(fast);
-        }
     }
     store.save(&settings)?;
     load_rotation(accounts)

@@ -28,7 +28,6 @@ pub(crate) enum SettingsAction {
     MoveAccount(AccountId, usize),
     Cancel(ThreadId),
     MoveWaiting(ThreadId, usize),
-    FastWhenDraining(bool),
 }
 
 #[derive(Debug, Clone)]

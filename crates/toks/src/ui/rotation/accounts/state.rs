@@ -56,9 +56,9 @@ pub(super) fn account_state(
             }
             AccountAvailability::Draining { until, reset_known } => {
                 let label = if reset_known {
-                    "Draining at 0%"
+                    "Draining at 1%"
                 } else {
-                    "Draining at 0%, rechecking"
+                    "Draining at 1%, rechecking"
                 };
                 return state(
                     label,

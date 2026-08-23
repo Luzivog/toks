@@ -3,12 +3,13 @@ use std::sync::Arc;
 use crate::accounts::AccountId;
 use crate::rotation::ThreadId;
 
-use super::engine::Engine;
+use super::engine::{Engine, RouteTier};
 
 pub(super) struct StreamLease {
     engine: Arc<Engine>,
     account: AccountId,
     thread: ThreadId,
+    tier: RouteTier,
     continues: bool,
 }
 
@@ -23,14 +24,21 @@ impl StreamLease {
         engine: Arc<Engine>,
         account: &AccountId,
         thread: &ThreadId,
-    ) -> anyhow::Result<Self> {
-        engine.route(account, thread)?;
-        Ok(Self {
+    ) -> anyhow::Result<Option<Self>> {
+        let Some(tier) = engine.route(account, thread)? else {
+            return Ok(None);
+        };
+        Ok(Some(Self {
             engine,
             account: account.clone(),
             thread: thread.clone(),
+            tier,
             continues: false,
-        })
+        }))
+    }
+
+    pub fn tier(&self) -> RouteTier {
+        self.tier
     }
 
     pub fn continue_after_response(&mut self) {
@@ -43,13 +51,15 @@ impl ThreadAttachment {
         engine: Arc<Engine>,
         account: &AccountId,
         thread: &ThreadId,
-    ) -> anyhow::Result<Self> {
-        engine.attach(account, thread)?;
-        Ok(Self {
+    ) -> anyhow::Result<Option<Self>> {
+        if !engine.attach(account, thread)? {
+            return Ok(None);
+        }
+        Ok(Some(Self {
             engine,
             account: account.clone(),
             thread: thread.clone(),
-        })
+        }))
     }
 
     pub fn matches(&self, thread: &ThreadId) -> bool {

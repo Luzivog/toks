@@ -1,17 +1,13 @@
 use gpui::{div, prelude::*, SharedString};
 use gpui_component::{h_flex, switch::Switch, tooltip::Tooltip, Disableable, Sizable};
 
-use crate::{
-    app::{RotationServiceAction, SettingsAction},
-    ToksApp,
-};
+use crate::{app::RotationServiceAction, ToksApp};
 
 pub(super) fn routing_controls(
     app: &ToksApp,
     disabled: bool,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
-    let fast = app.rotation.settings.fast_when_draining();
     let handle = cx.entity().downgrade();
 
     let routing = toggle(
@@ -34,25 +30,11 @@ pub(super) fn routing_controls(
             }
         },
     );
-    let fast_drain = toggle(
-        "rotation-fast-drain-toggle",
-        "Fast drain",
-        fast,
-        disabled,
-        "Use the Fast tier to finish existing threads on a spent account instead of waiting for its reset",
-        move |checked, _, cx| {
-            let _ = handle.update(cx, |app, cx| {
-                app.change_rotation_settings(SettingsAction::FastWhenDraining(*checked), cx);
-            });
-        },
-    );
-
     h_flex()
         .gap_4()
         .flex_shrink_0()
         .items_center()
         .child(routing)
-        .child(fast_drain)
 }
 
 fn toggle(

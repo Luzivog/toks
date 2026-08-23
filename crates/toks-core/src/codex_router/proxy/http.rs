@@ -2,15 +2,16 @@ use std::collections::BTreeSet;
 
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, Response, StatusCode};
-use futures_util::{stream, StreamExt};
 
-use crate::accounts::AccountId;
-
-use super::headers::{response_headers, upstream_headers};
+use super::headers::upstream_headers;
 use super::lease::StreamLease;
-use super::protocol::{thread_id, usage_block, ResponseLifecycle, ResponseLifecycleEnd};
+use super::protocol::thread_id;
 use super::types::RouteCredential;
 use super::ProxyState;
+use attempt::{classify_response, request_body, Attempt};
+
+mod attempt;
+mod stream;
 
 const MAX_REQUEST_BYTES: usize = 128 * 1024 * 1024;
 
@@ -24,7 +25,11 @@ pub(super) async fn forward(state: ProxyState, request: Request<Body>) -> Respon
         super::protocol::thread_id_from_headers(&parts.headers).or_else(|| thread_id(&body));
     let mut skipped = BTreeSet::new();
     loop {
-        let credential = match state.engine.select(&skipped).await {
+        let credential = match state
+            .engine
+            .select_for_thread(thread.as_ref(), &skipped)
+            .await
+        {
             Ok(Some(credential)) => credential,
             Ok(None) => {
                 if let Some(thread) = &thread {
@@ -39,6 +44,7 @@ pub(super) async fn forward(state: ProxyState, request: Request<Body>) -> Respon
             Attempt::TryNext(account) => {
                 skipped.insert(account);
             }
+            Attempt::RetrySameAccountAtStandardTier => {}
             Attempt::Failed => return plain(StatusCode::BAD_GATEWAY, "OpenAI is unavailable"),
         }
     }
@@ -53,82 +59,83 @@ async fn send(
 ) -> Attempt {
     let mut refreshed = false;
     loop {
-        let lease = thread.as_ref().and_then(|thread| {
-            StreamLease::open(state.engine.clone(), &credential.account_id, thread).ok()
-        });
+        let lease = match thread {
+            Some(thread) => {
+                match StreamLease::open(state.engine.clone(), &credential.account_id, thread) {
+                    Ok(Some(lease)) => Some(lease),
+                    Ok(None) => return Attempt::TryNext(credential.account_id),
+                    Err(_) => return Attempt::Failed,
+                }
+            }
+            None => None,
+        };
+        let (attempt_body, forced_fast) = request_body(
+            state,
+            lease
+                .as_ref()
+                .map_or(super::engine::RouteTier::Original, StreamLease::tier),
+            thread,
+            body.clone(),
+        );
         let request = state
             .http
             .request(parts.method.clone(), state.upstream.http_url(&parts.uri))
             .headers(upstream_headers(&parts.headers, &credential, false))
-            .body(body.clone());
+            .body(attempt_body);
         let response = match request.send().await {
             Ok(response) => response,
             Err(_) => return Attempt::Failed,
         };
         if response.status() == StatusCode::UNAUTHORIZED {
-            drop(lease);
             if refreshed {
+                drop(lease);
                 let _ = state.engine.permanent_auth_failure(&credential.account_id);
                 return Attempt::TryNext(credential.account_id);
             }
+            if let Some(thread) = thread {
+                if state
+                    .engine
+                    .reserve_retry(&credential.account_id, thread)
+                    .is_err()
+                {
+                    return Attempt::Failed;
+                }
+            }
+            drop(lease);
             refreshed = true;
             match state.engine.refresh(&credential.account_id).await {
                 Ok(Some(updated)) => credential = updated,
-                Ok(None) => return Attempt::TryNext(credential.account_id),
-                Err(_) => return Attempt::Failed,
+                Ok(None) => {
+                    release_retry(state, thread, &credential.account_id);
+                    return Attempt::TryNext(credential.account_id);
+                }
+                Err(_) => {
+                    release_retry(state, thread, &credential.account_id);
+                    return Attempt::Failed;
+                }
             }
             continue;
         }
-        return classify_response(state, response, credential.account_id, thread, lease).await;
+        return classify_response(
+            state,
+            response,
+            credential.account_id,
+            thread,
+            lease,
+            forced_fast,
+        )
+        .await;
     }
 }
 
-async fn classify_response(
+fn release_retry(
     state: &ProxyState,
-    response: reqwest::Response,
-    account: AccountId,
     thread: &Option<crate::rotation::ThreadId>,
-    lease: Option<StreamLease>,
-) -> Attempt {
-    let status = response.status();
-    let headers = response_headers(response.headers());
-    if status == StatusCode::TOO_MANY_REQUESTS {
-        let body = response.bytes().await.unwrap_or_default();
-        if let Some(block) = usage_block(status.as_u16(), &body) {
-            let _ = state.engine.block(&account, block.resets_at);
-            drop(lease);
-            if state.engine.eligible_account().ok().flatten().is_some() {
-                return Attempt::TryNext(account);
-            }
-            if let Some(thread) = thread {
-                let _ = state.engine.waiting(thread);
-            }
-        }
-        return Attempt::Response(build_response(status, headers, Body::from(body)));
+    account: &crate::accounts::AccountId,
+) {
+    if let Some(thread) = thread {
+        let _ = state.engine.release_reservation(account, thread);
     }
-    let stream = stream::unfold(
-        (response.bytes_stream(), lease, ResponseLifecycle::default()),
-        |(mut body, mut lease, mut lifecycle)| async move {
-            let chunk = body.next().await?;
-            let end = chunk
-                .as_ref()
-                .ok()
-                .and_then(|bytes| lifecycle.observe_sse(bytes));
-            match end {
-                Some(ResponseLifecycleEnd::Continue) => {
-                    if let Some(mut active) = lease.take() {
-                        active.continue_after_response();
-                    }
-                }
-                Some(ResponseLifecycleEnd::Finish) => {
-                    lease.take();
-                }
-                None => {}
-            }
-            Some((chunk, (body, lease, lifecycle)))
-        },
-    );
-    Attempt::Response(build_response(status, headers, Body::from_stream(stream)))
 }
 
 fn build_response(
@@ -157,10 +164,4 @@ fn usage_unavailable() -> Response<Body> {
         headers,
         Body::from(super::protocol::ALL_UNAVAILABLE_FRAME),
     )
-}
-
-enum Attempt {
-    Response(Response<Body>),
-    TryNext(AccountId),
-    Failed,
 }

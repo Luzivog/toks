@@ -7,14 +7,18 @@ use crate::rotation::ThreadId;
 
 use super::super::lease::{StreamLease, ThreadAttachment};
 use super::super::protocol::{
-    is_response_create, model_visible_output, requested_model, thread_id, websocket_usage_block,
-    with_service_tier, ResponseLifecycle, ResponseLifecycleEnd, ALL_UNAVAILABLE_FRAME, RETRY_FRAME,
+    is_response_create, requested_model, thread_id, with_service_tier, ResponseLifecycle,
+    ALL_UNAVAILABLE_FRAME, RETRY_FRAME,
 };
-use super::super::Engine;
+use super::super::{engine::RouteTier, Engine};
 use super::connect::UpstreamSocket;
-use message::{to_client, to_server};
+use message::to_server;
 
 mod message;
+mod server;
+mod turn;
+mod usage_limit;
+use turn::Turn;
 
 pub(super) async fn run(
     mut client: WebSocket,
@@ -23,15 +27,21 @@ pub(super) async fn run(
     account: AccountId,
     initial_thread: Option<ThreadId>,
 ) {
-    let attachment = initial_thread
-        .as_ref()
-        .and_then(|thread| ThreadAttachment::open(engine.clone(), &account, thread).ok());
+    let attachment = match initial_thread.as_ref() {
+        Some(thread) => match ThreadAttachment::open(engine.clone(), &account, thread) {
+            Ok(Some(attachment)) => Some(attachment),
+            Ok(None) => return,
+            Err(_) => return,
+        },
+        None => None,
+    };
     let mut turn = Turn {
         active: false,
-        visible: false,
+        delivered: false,
         thread: initial_thread,
         attachment,
         lease: None,
+        forced_fast_request: None,
         lifecycle: ResponseLifecycle::default(),
     };
     loop {
@@ -45,21 +55,19 @@ pub(super) async fn run(
             }
             server_message = upstream.next() => {
                 let Some(Ok(message)) = server_message else { break };
-                if handle_server(&mut client, &engine, &account, &mut turn, message).await.is_err() {
+                if server::handle(
+                    &mut client,
+                    &mut upstream,
+                    &engine,
+                    &account,
+                    &mut turn,
+                    message,
+                ).await.is_err() {
                     break;
                 }
             }
         }
     }
-}
-
-struct Turn {
-    active: bool,
-    visible: bool,
-    thread: Option<ThreadId>,
-    attachment: Option<ThreadAttachment>,
-    lease: Option<StreamLease>,
-    lifecycle: ResponseLifecycle,
 }
 
 async fn handle_client(
@@ -78,11 +86,12 @@ async fn handle_client(
                     .as_ref()
                     .is_some_and(|attached| !attached.matches(thread))
             });
-            let draining = requested_thread
-                .as_ref()
-                .is_some_and(|thread| engine.drains_in_place(account, thread));
-            if (!turn.active || changes_thread) && !draining {
-                match engine.eligible_account().ok().flatten() {
+            if !turn.active || changes_thread {
+                let eligible = requested_thread.as_ref().map_or_else(
+                    || engine.eligible_account(),
+                    |thread| engine.eligible_account_for_thread(thread),
+                );
+                match eligible.ok().flatten() {
                     Some(selected) if &selected != account => {
                         client
                             .send(ClientMessage::Text(RETRY_FRAME.into()))
@@ -91,7 +100,7 @@ async fn handle_client(
                         return Err(());
                     }
                     None => {
-                        wait(engine, &turn.thread);
+                        usage_limit::wait(engine, &requested_thread);
                         client
                             .send(ClientMessage::Text(ALL_UNAVAILABLE_FRAME.into()))
                             .await
@@ -108,25 +117,61 @@ async fn handle_client(
                     .is_none_or(|attached| !attached.matches(thread))
                 {
                     turn.attachment = None;
-                    turn.attachment = ThreadAttachment::open(engine.clone(), account, thread).ok();
+                    match ThreadAttachment::open(engine.clone(), account, thread) {
+                        Ok(Some(attachment)) => turn.attachment = Some(attachment),
+                        Ok(None) => {
+                            client
+                                .send(ClientMessage::Text(RETRY_FRAME.into()))
+                                .await
+                                .map_err(|_| ())?;
+                            return Err(());
+                        }
+                        Err(_) => return Err(()),
+                    }
                 }
             }
             turn.thread = requested_thread;
             if turn.lease.is_none() {
                 if let Some(id) = turn.thread.as_ref() {
-                    turn.lease = StreamLease::open(engine.clone(), account, id).ok();
+                    turn.lease = match StreamLease::open(engine.clone(), account, id) {
+                        Ok(Some(lease)) => Some(lease),
+                        Ok(None) => {
+                            client
+                                .send(ClientMessage::Text(RETRY_FRAME.into()))
+                                .await
+                                .map_err(|_| ())?;
+                            return Err(());
+                        }
+                        Err(_) => return Err(()),
+                    };
                 }
             }
             turn.active = true;
-            turn.visible = false;
+            turn.delivered = false;
+            turn.forced_fast_request = None;
             turn.lifecycle.reset();
             // Burn the remainder fast, for the models that offer it.
-            let upgraded = draining
-                .then(|| requested_model(text))
-                .flatten()
-                .and_then(|model| engine.fast_tier(&model))
-                .and_then(|tier| with_service_tier(text, tier));
-            if let Some(upgraded) = upgraded {
+            let upgraded = match turn
+                .lease
+                .as_ref()
+                .map_or(RouteTier::Original, StreamLease::tier)
+            {
+                RouteTier::Original => None,
+                RouteTier::Standard => with_service_tier(text, "default").map(|body| (body, None)),
+                RouteTier::Fast => requested_model(text)
+                    .and_then(|model| engine.fast_tier_for(&model))
+                    .and_then(|tier| with_service_tier(text, tier))
+                    .map(|body| {
+                        let fallback = (body != text.as_str()).then(|| {
+                            with_service_tier(text, "default").unwrap_or_else(|| text.to_string())
+                        });
+                        (body, fallback)
+                    }),
+            };
+            if let Some((upgraded, fallback)) = upgraded {
+                if fallback.is_some() {
+                    turn.forced_fast_request = fallback;
+                }
                 return upstream
                     .send(ServerMessage::Text(upgraded.as_str().into()))
                     .await
@@ -135,58 +180,4 @@ async fn handle_client(
         }
     }
     upstream.send(to_server(message)).await.map_err(|_| ())
-}
-
-async fn handle_server(
-    client: &mut WebSocket,
-    engine: &std::sync::Arc<Engine>,
-    account: &AccountId,
-    turn: &mut Turn,
-    message: ServerMessage,
-) -> Result<(), ()> {
-    if let ServerMessage::Text(text) = &message {
-        if let Some(block) = websocket_usage_block(text) {
-            turn.active = false;
-            turn.lease.take();
-            let _ = engine.block(account, block.resets_at);
-            if turn.visible {
-                client.send(to_client(message)).await.map_err(|_| ())?;
-                if engine.eligible_account().ok().flatten().is_none() {
-                    wait(engine, &turn.thread);
-                }
-                return Ok(());
-            }
-            if engine.eligible_account().ok().flatten().is_some() {
-                client
-                    .send(ClientMessage::Text(RETRY_FRAME.into()))
-                    .await
-                    .map_err(|_| ())?;
-            } else {
-                wait(engine, &turn.thread);
-                client.send(to_client(message)).await.map_err(|_| ())?;
-            }
-            return Err(());
-        }
-        turn.visible |= model_visible_output(text);
-        match turn.lifecycle.observe_json(text.as_bytes()) {
-            Some(ResponseLifecycleEnd::Continue) => {
-                turn.active = false;
-                if let Some(mut lease) = turn.lease.take() {
-                    lease.continue_after_response();
-                }
-            }
-            Some(ResponseLifecycleEnd::Finish) => {
-                turn.active = false;
-                turn.lease.take();
-            }
-            None => {}
-        }
-    }
-    client.send(to_client(message)).await.map_err(|_| ())
-}
-
-fn wait(engine: &Engine, thread: &Option<ThreadId>) {
-    if let Some(thread) = thread {
-        let _ = engine.waiting(thread);
-    }
 }

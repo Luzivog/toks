@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 
 use crate::accounts::AccountId;
 use crate::rotation::{
-    RotationEventKind, RotationRuntime, RotationRuntimeStore, RotationSettingsStore, ThreadId,
-    UnixMillis, WaitingThread,
+    RotationRuntime, RotationRuntimeStore, RotationSettingsStore, ThreadId, UnixMillis,
+    WaitingThread,
 };
 
 use super::catalogue::Catalogue;
@@ -13,6 +13,14 @@ use super::types::{CredentialFailure, RouteCredential, SharedCredentials};
 
 mod quota;
 mod selection;
+pub(crate) use quota::{AttemptedTier, ResponseDelivery, UsageLimitAction};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RouteTier {
+    Original,
+    Fast,
+    Standard,
+}
 
 pub(super) struct Engine {
     credentials: SharedCredentials,
@@ -73,25 +81,16 @@ impl Engine {
         self.mutate(|runtime| runtime.waiting(thread, now()))
     }
 
-    pub fn route(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+    pub fn release_reservation(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        self.mutate(|runtime| runtime.release_reservation(account, thread))
+    }
+
+    pub fn reserve_retry(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
         let at = now();
-        let mut runtime = self.runtime.lock().expect("router runtime poisoned");
-        let previous = runtime
-            .events()
-            .iter()
-            .find_map(|event| match &event.event {
-                RotationEventKind::Routed {
-                    thread_id,
-                    account_id,
-                } if thread_id == thread => Some(account_id.clone()),
-                _ => None,
-            });
-        if let Some(previous) = previous.filter(|previous| previous != account) {
-            runtime.rotated(thread, &previous, account, at);
-        }
-        runtime.resumed(thread, account, at);
-        runtime.connection_opened(account, thread, at);
-        self.runtime_store.save(&runtime)
+        self.mutate(|runtime| {
+            runtime.reserve_thread(account, thread, at);
+            true
+        })
     }
 
     pub fn close(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
@@ -100,10 +99,6 @@ impl Engine {
 
     pub fn continue_response(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
         self.mutate(|runtime| runtime.connection_continues(account, thread, now()))
-    }
-
-    pub fn attach(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
-        self.mutate(|runtime| runtime.thread_attached(account, thread))
     }
 
     pub fn detach(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
@@ -141,10 +136,16 @@ impl Engine {
 
     fn mutate(&self, change: impl FnOnce(&mut RotationRuntime) -> bool) -> Result<()> {
         let mut runtime = self.runtime.lock().expect("router runtime poisoned");
+        let before = runtime.clone();
         if change(&mut runtime) {
-            self.runtime_store
+            if let Err(error) = self
+                .runtime_store
                 .save(&runtime)
-                .context("saving router runtime")?;
+                .context("saving router runtime")
+            {
+                *runtime = before;
+                return Err(error);
+            }
         }
         Ok(())
     }

@@ -42,6 +42,7 @@ pub(super) async fn upstream(
                 Ok(connected) => return Ok(Some(connected)),
                 Err(WsError::Http(response)) if response.status() == StatusCode::UNAUTHORIZED => {
                     if refreshed {
+                        release(state, thread, &credential.account_id);
                         let _ = state.engine.permanent_auth_failure(&credential.account_id);
                         skipped.insert(credential.account_id);
                         break;
@@ -50,10 +51,14 @@ pub(super) async fn upstream(
                     match state.engine.refresh(&credential.account_id).await {
                         Ok(Some(updated)) => credential = updated,
                         Ok(None) => {
+                            release(state, thread, &credential.account_id);
                             skipped.insert(credential.account_id);
                             break;
                         }
-                        Err(_) => return Err(ConnectFailure::Upstream),
+                        Err(_) => {
+                            release(state, thread, &credential.account_id);
+                            return Err(ConnectFailure::Upstream);
+                        }
                     }
                 }
                 Err(WsError::Http(response))
@@ -64,21 +69,35 @@ pub(super) async fn upstream(
                             .and_then(|body| usage_block(response.status().as_u16(), body))
                             .is_some() =>
                 {
+                    release(state, thread, &credential.account_id);
                     let block = response
                         .body()
                         .as_deref()
                         .and_then(|body| usage_block(response.status().as_u16(), body))
                         .expect("guard classified usage block");
-                    let _ = state.engine.block(&credential.account_id, block.resets_at);
+                    state
+                        .engine
+                        .block_admission(&credential.account_id, block.resets_at)
+                        .map_err(|_| ConnectFailure::Upstream)?;
                     skipped.insert(credential.account_id);
                     break;
                 }
                 Err(WsError::Http(response)) => {
-                    return Err(ConnectFailure::Http(response.status()))
+                    release(state, thread, &credential.account_id);
+                    return Err(ConnectFailure::Http(response.status()));
                 }
-                Err(_) => return Err(ConnectFailure::Upstream),
+                Err(_) => {
+                    release(state, thread, &credential.account_id);
+                    return Err(ConnectFailure::Upstream);
+                }
             }
         }
+    }
+}
+
+fn release(state: &ProxyState, thread: Option<&ThreadId>, account: &crate::accounts::AccountId) {
+    if let Some(thread) = thread {
+        let _ = state.engine.release_reservation(account, thread);
     }
 }
 

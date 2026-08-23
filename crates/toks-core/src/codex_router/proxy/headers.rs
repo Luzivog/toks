@@ -41,6 +41,7 @@ pub(super) fn response_headers(incoming: &HeaderMap) -> HeaderMap {
 fn excluded(name: &HeaderName, websocket: bool) -> bool {
     name == header::AUTHORIZATION
         || name == header::HOST
+        || name == header::CONTENT_LENGTH
         || name == ACCOUNT_HEADER
         || hop_header(name)
         || (websocket && name.as_str().starts_with("sec-websocket-"))

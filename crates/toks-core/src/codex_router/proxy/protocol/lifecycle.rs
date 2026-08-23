@@ -1,11 +1,21 @@
 use serde_json::Value;
 
+use super::{stream_usage_block, UsageBlock};
+
 const MAX_PENDING_EVENT_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResponseLifecycleEnd {
     Continue,
     Finish,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct SseObservation {
+    pub end: Option<ResponseLifecycleEnd>,
+    pub usage: Option<UsageBlock>,
+    pub events: usize,
+    pub usage_after_prior_event: bool,
 }
 
 #[derive(Debug, Default)]
@@ -50,21 +60,28 @@ impl ResponseLifecycle {
         }
     }
 
-    pub fn observe_sse(&mut self, chunk: &[u8]) -> Option<ResponseLifecycleEnd> {
+    pub fn observe_sse(&mut self, chunk: &[u8]) -> SseObservation {
         if self.ended {
-            return None;
+            return SseObservation::default();
         }
         if self.pending_sse.len().saturating_add(chunk.len()) > MAX_PENDING_EVENT_BYTES {
             self.pending_sse.clear();
-            return None;
+            return SseObservation::default();
         }
         self.pending_sse.extend_from_slice(chunk);
-        let mut observed = None;
+        let mut observed = SseObservation::default();
         while let Some((at, delimiter_len)) = event_boundary(&self.pending_sse) {
             let event = self.pending_sse.drain(..at).collect::<Vec<_>>();
             self.pending_sse.drain(..delimiter_len);
             if let Some(data) = event_data(&event) {
-                observed = self.observe_json(&data).or(observed);
+                if observed.usage.is_none() {
+                    if let Some(usage) = stream_usage_block(&data) {
+                        observed.usage = Some(usage);
+                        observed.usage_after_prior_event = observed.events > 0;
+                    }
+                }
+                observed.end = self.observe_json(&data).or(observed.end);
+                observed.events += 1;
             }
         }
         observed
@@ -137,13 +154,13 @@ mod tests {
         assert_eq!(
             lifecycle.observe_sse(
                 b"event: response.output_item.done\r\ndata: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"custom_tool_call\"}}\r\n"
-            ),
-            None
+            ).end,
+            None,
         );
         assert_eq!(
             lifecycle.observe_sse(
                 b"\r\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{}}\n\n"
-            ),
+            ).end,
             Some(ResponseLifecycleEnd::Continue)
         );
     }
@@ -161,5 +178,17 @@ mod tests {
             lifecycle.observe_json(br#"{"type":"response.failed"}"#),
             Some(ResponseLifecycleEnd::Finish)
         );
+    }
+
+    #[test]
+    fn split_sse_usage_failures_are_classified_only_after_the_event_is_complete() {
+        let mut lifecycle = ResponseLifecycle::default();
+        let first = lifecycle.observe_sse(
+            b"data: {\"type\":\"turn.failed\",\"error\":{\"message\":\"You've hit your usage",
+        );
+        assert!(first.usage.is_none());
+
+        let second = lifecycle.observe_sse(b" limit.\"}}\n\n");
+        assert!(second.usage.is_some());
     }
 }

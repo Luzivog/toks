@@ -46,6 +46,61 @@ fn thread_and_account_identity_use_distinct_semantic_tones() {
     );
 }
 
+#[test]
+fn drain_and_thread_limit_events_explain_the_routing_decision() {
+    let account_id = "account-a";
+    let app = ToksApp::from_snapshots(None, vec![snapshot(account_id)], Utc::now());
+    let event = |kind| RotationEvent {
+        at: UnixMillis::new(1),
+        event: kind,
+    };
+
+    assert_eq!(
+        event_text(
+            &app,
+            &event(RotationEventKind::Draining {
+                account_id: account_id.into(),
+            }),
+        )
+        .text,
+        "person@example.test reached 1% remaining and is draining"
+    );
+    assert_eq!(
+        event_text(
+            &app,
+            &event(RotationEventKind::FastFallback {
+                thread_id: ThreadId::new("thread-123"),
+                account_id: account_id.into(),
+            }),
+        )
+        .text,
+        "Thread thread-123 switched to Standard on person@example.test"
+    );
+    assert_eq!(
+        event_text(
+            &app,
+            &event(RotationEventKind::FastUnavailable {
+                thread_id: ThreadId::new("thread-123"),
+                account_id: account_id.into(),
+            }),
+        )
+        .text,
+        "Thread thread-123 will use Standard after Fast ran out on person@example.test"
+    );
+    assert_eq!(
+        event_text(
+            &app,
+            &event(RotationEventKind::ThreadBlocked {
+                thread_id: ThreadId::new("thread-123"),
+                account_id: account_id.into(),
+                until: UnixMillis::new(10),
+            }),
+        )
+        .text,
+        "Thread thread-123 blocked on person@example.test"
+    );
+}
+
 fn snapshot(id: &str) -> LimitSnapshot {
     LimitSnapshot {
         provider: Provider::Codex,

@@ -9,6 +9,7 @@ use super::{RotationEvent, RotationEventKind, ThreadId, UnixMillis};
 mod account;
 mod active_threads;
 mod mutations;
+mod reconcile;
 
 pub(super) const RUNTIME_VERSION: u8 = 1;
 const EVENT_LIMIT: usize = 100;
@@ -30,16 +31,20 @@ pub struct AccountRuntime {
     block_confirmed: bool,
     #[serde(default)]
     block_reset_known: bool,
-    #[serde(default)]
-    quota_exhaustion: Option<QuotaExhaustionState>,
+    #[serde(default, rename = "quotaExhaustion")]
+    quota_drain: Option<QuotaDrainState>,
     #[serde(default)]
     grandfathered_threads: BTreeSet<ThreadId>,
+    #[serde(default)]
+    provisional_threads: BTreeSet<ThreadId>,
+    #[serde(default)]
+    thread_usage: BTreeMap<ThreadId, account::ThreadUsage>,
     needs_sign_in: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct QuotaExhaustionState {
+struct QuotaDrainState {
     until: UnixMillis,
     reset_known: bool,
 }
@@ -122,6 +127,15 @@ impl RotationRuntime {
         &self.events
     }
 
+    pub fn active_threads(&self, account: &AccountId) -> u32 {
+        self.active_threads
+            .values()
+            .filter(|thread| &thread.account_id == account)
+            .count()
+            .try_into()
+            .unwrap_or(u32::MAX)
+    }
+
     pub fn is_available(&self, account: &AccountId, now: UnixMillis) -> bool {
         self.accounts
             .get(account)
@@ -134,28 +148,22 @@ impl RotationRuntime {
             .is_some_and(|state| state.can_drain(thread, now))
     }
 
+    pub fn requires_standard_tier(
+        &self,
+        account: &AccountId,
+        thread: &ThreadId,
+        now: UnixMillis,
+    ) -> bool {
+        self.accounts
+            .get(account)
+            .is_some_and(|state| state.requires_standard_tier(thread, now))
+    }
+
     pub fn draining_account(&self, thread: &ThreadId, now: UnixMillis) -> Option<AccountId> {
         self.accounts
             .iter()
             .find(|(_, state)| state.can_drain(thread, now))
             .map(|(account, _)| account.clone())
-    }
-
-    /// Drop vanished accounts, create state for new accounts, and clear
-    /// elapsed blocks. This mutation never touches waiting threads.
-    pub fn reconcile(&mut self, discovered: &[AccountId], now: UnixMillis) -> bool {
-        let before = self.accounts.clone();
-        let known: BTreeSet<_> = discovered.iter().cloned().collect();
-        self.accounts.retain(|account, _| known.contains(account));
-        for account in discovered {
-            let state = self.accounts.entry(account.clone()).or_default();
-            if state.blocked_until.is_some_and(|until| until <= now) {
-                state.blocked_until = None;
-                state.block_confirmed = false;
-                state.block_reset_known = false;
-            }
-        }
-        self.accounts != before || self.reconcile_active_threads(&known, now)
     }
 
     pub(super) fn push_event(&mut self, at: UnixMillis, event: RotationEventKind) {
@@ -168,8 +176,10 @@ impl RotationRuntime {
         self.waiting_threads
             .retain(|waiting| seen.insert(waiting.thread_id.clone()));
         for state in self.accounts.values_mut() {
-            if state.quota_exhaustion.is_none() {
+            if state.quota_drain.is_none() && !state.block_confirmed {
                 state.grandfathered_threads.clear();
+                state.provisional_threads.clear();
+                state.thread_usage.clear();
             }
         }
         self.attached_threads.clear();

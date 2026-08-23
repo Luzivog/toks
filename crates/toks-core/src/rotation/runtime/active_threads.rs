@@ -8,40 +8,41 @@ use super::{RotationEventKind, RotationRuntime, ThreadId, UnixMillis};
 
 const ABANDONED_FOLLOW_UP_MILLIS: i64 = 24 * 60 * 60 * 1_000;
 
+mod reservations;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ActiveThread {
     pub(super) account_id: AccountId,
     streams: u32,
+    #[serde(default)]
+    reservations: u32,
     awaiting_follow_up: bool,
     last_activity_at: UnixMillis,
 }
 
 impl RotationRuntime {
-    pub fn active_threads(&self, account: &AccountId) -> u32 {
-        self.active_threads
-            .values()
-            .filter(|thread| &thread.account_id == account)
-            .count()
-            .try_into()
-            .unwrap_or(u32::MAX)
-    }
-
     pub fn connection_opened(&mut self, account: &AccountId, thread: &ThreadId, at: UnixMillis) {
         self.accounts.entry(account.clone()).or_default();
+        if let Some(state) = self.accounts.get_mut(account) {
+            state.provisional_threads.remove(thread);
+        }
         let active = self
             .active_threads
             .entry(thread.clone())
             .or_insert_with(|| ActiveThread {
                 account_id: account.clone(),
                 streams: 0,
+                reservations: 0,
                 awaiting_follow_up: false,
                 last_activity_at: at,
             });
         if &active.account_id != account {
             active.account_id = account.clone();
             active.streams = 0;
+            active.reservations = 0;
         }
+        active.reservations = active.reservations.saturating_sub(1);
         active.awaiting_follow_up = false;
         active.streams = active.streams.saturating_add(1);
         active.last_activity_at = at;
@@ -72,7 +73,7 @@ impl RotationRuntime {
         };
         active.streams = streams;
         active.last_activity_at = at;
-        if streams == 0 {
+        if streams == 0 && active.reservations == 0 && !active.awaiting_follow_up {
             self.active_threads.remove(thread);
         }
         true
@@ -102,17 +103,23 @@ impl RotationRuntime {
 
     pub fn reset_connections(&mut self, _at: UnixMillis) -> bool {
         let changed = !self.attached_threads.is_empty() || !self.active_threads.is_empty();
+        let changed = self.clear_abandoned_reservations() | changed;
         self.attached_threads.clear();
-        self.active_threads.clear();
+        self.active_threads.retain(|_, active| {
+            if !active.awaiting_follow_up {
+                return false;
+            }
+            active.streams = 0;
+            active.reservations = 0;
+            true
+        });
         changed
     }
 
     pub(super) fn cancel_active_thread(&mut self, account: &AccountId, thread: &ThreadId) -> bool {
-        if self
-            .active_threads
-            .get(thread)
-            .is_some_and(|active| &active.account_id == account)
-        {
+        if self.active_threads.get(thread).is_some_and(|active| {
+            &active.account_id == account && active.streams == 0 && active.reservations == 0
+        }) {
             self.active_threads.remove(thread);
             true
         } else {
@@ -126,9 +133,11 @@ impl RotationRuntime {
         now: UnixMillis,
     ) -> bool {
         let before = self.active_threads.clone();
+        let reservations_changed = self.expire_reservations(now);
         self.active_threads.retain(|_, thread| {
             known.contains(&thread.account_id)
                 && (thread.streams > 0
+                    || thread.reservations > 0
                     || (thread.awaiting_follow_up
                         && thread
                             .last_activity_at
@@ -136,6 +145,6 @@ impl RotationRuntime {
                             .saturating_add(ABANDONED_FOLLOW_UP_MILLIS)
                             > now.get()))
         });
-        self.active_threads != before
+        reservations_changed | (self.active_threads != before)
     }
 }

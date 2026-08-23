@@ -117,9 +117,34 @@ pub(super) fn event_text(app: &ToksApp, event: &RotationEvent) -> EventText {
         RotationEventKind::Blocked { account_id, .. } => EventText::default()
             .account(&account_name(app, account_id), account_id)
             .plain(" blocked"),
+        RotationEventKind::ThreadBlocked {
+            thread_id,
+            account_id,
+            ..
+        } => EventText::default()
+            .plain("Thread ")
+            .thread(thread_id.as_str())
+            .plain(" blocked on ")
+            .account(&account_name(app, account_id), account_id),
+        RotationEventKind::FastFallback {
+            thread_id,
+            account_id,
+        } => EventText::default()
+            .plain("Thread ")
+            .thread(thread_id.as_str())
+            .plain(" switched to Standard on ")
+            .account(&account_name(app, account_id), account_id),
+        RotationEventKind::FastUnavailable {
+            thread_id,
+            account_id,
+        } => EventText::default()
+            .plain("Thread ")
+            .thread(thread_id.as_str())
+            .plain(" will use Standard after Fast ran out on ")
+            .account(&account_name(app, account_id), account_id),
         RotationEventKind::Draining { account_id } => EventText::default()
             .account(&account_name(app, account_id), account_id)
-            .plain(" reached 0% and is draining"),
+            .plain(" reached 1% remaining and is draining"),
         RotationEventKind::AuthNeeded { account_id } => EventText::default()
             .account(&account_name(app, account_id), account_id)
             .plain(" needs sign-in"),

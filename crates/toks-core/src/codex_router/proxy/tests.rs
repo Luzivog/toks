@@ -21,7 +21,12 @@ use super::protocol::{usage_block, websocket_usage_block, RETRY_FRAME};
 use super::types::{CredentialFailure, CredentialSource, RouteCredential, SharedCredentials};
 use super::{app, InboundTokens, ProxyState, RouterRuntimeHandle, Upstream};
 
+mod auth_refresh;
+mod control_frames;
 mod fast_drain;
+mod fast_failover;
+mod fixtures;
+mod http_failover;
 mod inbound;
 mod remote_control;
 
@@ -30,6 +35,12 @@ struct FakeCredentials {
     credentials: Mutex<BTreeMap<AccountId, RouteCredential>>,
     incoming: Mutex<BTreeMap<String, AccountId>>,
     refreshes: Mutex<BTreeMap<AccountId, RouteCredential>>,
+    refresh_gate: Mutex<
+        Option<(
+            tokio::sync::mpsc::UnboundedSender<()>,
+            Arc<tokio::sync::Notify>,
+        )>,
+    >,
 }
 
 impl CredentialSource for FakeCredentials {
@@ -60,6 +71,11 @@ impl CredentialSource for FakeCredentials {
         account: &'a AccountId,
     ) -> BoxFuture<'a, Result<RouteCredential, CredentialFailure>> {
         Box::pin(async move {
+            let gate = self.refresh_gate.lock().unwrap().clone();
+            if let Some((started, proceed)) = gate {
+                let _ = started.send(());
+                proceed.notified().await;
+            }
             let refreshed = self
                 .refreshes
                 .lock()
@@ -118,6 +134,7 @@ impl Harness {
                     .collect(),
             ),
             refreshes: Mutex::new(BTreeMap::new()),
+            refresh_gate: Mutex::new(None),
         });
         let settings_store = RotationSettingsStore::for_data_dir(directory.path());
         let mut settings = RotationSettings::default();
@@ -218,6 +235,7 @@ fn upstream_headers_replace_identity_and_drop_hop_headers() {
     incoming.insert("authorization", "Bearer caller".parse().unwrap());
     incoming.insert("chatgpt-account-id", "caller-account".parse().unwrap());
     incoming.insert("connection", "keep-alive".parse().unwrap());
+    incoming.insert("content-length", "7".parse().unwrap());
     incoming.insert("x-codex-test", "kept".parse().unwrap());
     let account = AccountId::new("a");
     let outgoing = upstream_headers(
@@ -233,6 +251,7 @@ fn upstream_headers_replace_identity_and_drop_hop_headers() {
     assert_eq!(outgoing["chatgpt-account-id"], "selected-account");
     assert_eq!(outgoing["x-codex-test"], "kept");
     assert!(!outgoing.contains_key("connection"));
+    assert!(!outgoing.contains_key("content-length"));
 }
 
 #[tokio::test]
@@ -357,7 +376,7 @@ async fn idle_websocket_fails_back_when_higher_priority_account_resets() {
     harness
         .runtime
         .engine
-        .block(
+        .block_admission(
             &AccountId::new("a"),
             Some(crate::rotation::UnixMillis::new(
                 chrono::Utc::now().timestamp_millis() + 50,

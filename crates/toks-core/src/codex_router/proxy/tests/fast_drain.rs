@@ -1,8 +1,11 @@
 use super::*;
 
 use super::super::protocol::{requested_model, with_service_tier};
-use crate::accounts::ProviderAccount;
-use crate::limits::{LimitSnapshot, LimitWindow, Provider};
+use super::super::{
+    engine::{AttemptedTier, ResponseDelivery, RouteTier},
+    lease::StreamLease,
+};
+use super::fixtures::one_percent_snapshot;
 
 #[test]
 fn service_tier_upgrade_preserves_faster_requests_and_the_rest_of_the_turn() {
@@ -22,7 +25,82 @@ fn service_tier_upgrade_preserves_faster_requests_and_the_rest_of_the_turn() {
 }
 
 #[tokio::test]
-async fn only_a_thread_attached_before_exhaustion_drains_in_place() {
+async fn selection_reserves_affinity_before_the_drain_snapshot() {
+    let harness = Harness::new(&[("a", "token-a"), ("b", "token-b")]);
+    let thread = crate::rotation::ThreadId::new("threshold-race");
+    let selected = harness
+        .runtime
+        .engine
+        .select_for_thread(Some(&thread), &std::collections::BTreeSet::new())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(selected.account_id, AccountId::new("a"));
+
+    harness
+        .runtime
+        .engine
+        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .unwrap();
+
+    let lease = StreamLease::open(
+        harness.runtime.engine.clone(),
+        &AccountId::new("a"),
+        &thread,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(lease.tier(), RouteTier::Fast);
+}
+
+#[tokio::test]
+async fn a_lease_rejects_a_selection_that_became_stale_during_credentials() {
+    let harness = Harness::new(&[("a", "token-a"), ("b", "token-b")]);
+    let thread = crate::rotation::ThreadId::new("stale-selection");
+    let selected = harness
+        .runtime
+        .engine
+        .select_for_thread(Some(&thread), &std::collections::BTreeSet::new())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(selected.account_id, AccountId::new("a"));
+    harness
+        .runtime
+        .engine
+        .request_usage_limited(
+            &AccountId::new("a"),
+            Some(&thread),
+            AttemptedTier::Other,
+            ResponseDelivery::NothingDelivered,
+            Some(crate::rotation::UnixMillis::new(2_000_000_000_000)),
+        )
+        .unwrap();
+
+    assert!(StreamLease::open(
+        harness.runtime.engine.clone(),
+        &AccountId::new("a"),
+        &thread,
+    )
+    .unwrap()
+    .is_none());
+    let reselected = harness
+        .runtime
+        .engine
+        .select_for_thread(Some(&thread), &std::collections::BTreeSet::new())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reselected.account_id, AccountId::new("b"));
+    harness
+        .runtime
+        .engine
+        .release_reservation(&AccountId::new("b"), &thread)
+        .unwrap();
+}
+
+#[tokio::test]
+async fn only_a_thread_attached_before_the_threshold_drains_in_place() {
     let upstream = Router::new().fallback(any(echo_turn));
     let origin = spawn(upstream).await;
     let harness = Harness::new(&[("a", "token-a"), ("b", "token-b")]);
@@ -43,7 +121,7 @@ async fn only_a_thread_attached_before_exhaustion_drains_in_place() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[drained_snapshot("a")], chrono::Utc::now())
+        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     socket
         .send(response_frame("existing", "gpt-5.6-sol", "default").into())
@@ -116,7 +194,7 @@ async fn a_grandfathered_thread_reconnects_to_its_draining_account() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[drained_snapshot("a")], chrono::Utc::now())
+        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     drop(first);
 
@@ -131,7 +209,51 @@ async fn a_grandfathered_thread_reconnects_to_its_draining_account() {
 }
 
 #[tokio::test]
-async fn unsupported_models_stay_standard_and_the_toggle_is_live() {
+async fn a_body_only_thread_id_cannot_steal_drain_affinity() {
+    let upstream = Router::new().fallback(any(echo_turn));
+    let origin = spawn(upstream).await;
+    let harness = Harness::new(&[("a", "token-a"), ("b", "token-b")]);
+    let proxy = spawn(app(
+        harness.state(origin.clone(), origin.replacen("http://", "ws://", 1))
+    ))
+    .await;
+    let ws = proxy.replacen("http://", "ws://", 1);
+    let first = connect(&ws, "token-a", Some("existing")).await;
+    harness
+        .runtime
+        .engine
+        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .unwrap();
+    drop(first);
+
+    let mut headerless = connect(&ws, "token-b", None).await;
+    headerless
+        .send(response_frame("existing", "gpt-5.6-sol", "default").into())
+        .await
+        .unwrap();
+    assert_eq!(
+        headerless
+            .next()
+            .await
+            .unwrap()
+            .unwrap()
+            .into_text()
+            .unwrap(),
+        RETRY_FRAME
+    );
+
+    let mut reconnected = connect(&ws, "token-b", Some("existing")).await;
+    reconnected
+        .send(response_frame("existing", "gpt-5.6-sol", "default").into())
+        .await
+        .unwrap();
+    let response = next_json(&mut reconnected).await;
+    assert_eq!(response["account"], "chatgpt-a");
+    assert_eq!(response["tier"], "priority");
+}
+
+#[tokio::test]
+async fn unsupported_models_stay_standard_and_supported_models_use_fast() {
     let upstream = Router::new().fallback(any(echo_turn));
     let origin = spawn(upstream).await;
     let harness = Harness::new(&[("a", "token-a")]);
@@ -144,7 +266,7 @@ async fn unsupported_models_stay_standard_and_the_toggle_is_live() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[drained_snapshot("a")], chrono::Utc::now())
+        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     socket
@@ -154,19 +276,49 @@ async fn unsupported_models_stay_standard_and_the_toggle_is_live() {
     assert_eq!(next_json(&mut socket).await["tier"], "default");
     assert_eq!(next_json(&mut socket).await["type"], "response.completed");
 
-    let store = RotationSettingsStore::for_data_dir(harness._directory.path());
-    let mut settings = store.load().unwrap();
-    settings.set_fast_when_draining(false);
-    store.save(&settings).unwrap();
     socket
         .send(response_frame("existing", "gpt-5.6-sol", "default").into())
         .await
         .unwrap();
-    let unavailable = socket.next().await.unwrap().unwrap().into_text().unwrap();
-    assert!(
-        unavailable.contains("usage_limit_reached"),
-        "got {unavailable}"
-    );
+    let response = next_json(&mut socket).await;
+    assert_eq!(response["account"], "chatgpt-a");
+    assert_eq!(response["tier"], "priority");
+}
+
+#[tokio::test]
+async fn a_delivered_response_preamble_is_never_replayed() {
+    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+    let upstream_calls = calls.clone();
+    let upstream = Router::new().fallback(any(move |ws| {
+        preamble_then_fast_limit(ws, upstream_calls.clone())
+    }));
+    let origin = spawn(upstream).await;
+    let harness = Harness::new(&[("a", "token-a")]);
+    let proxy = spawn(app(
+        harness.state(origin.clone(), origin.replacen("http://", "ws://", 1))
+    ))
+    .await;
+    let ws = proxy.replacen("http://", "ws://", 1);
+    let mut socket = connect(&ws, "token-a", Some("existing")).await;
+    harness
+        .runtime
+        .engine
+        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .unwrap();
+
+    socket
+        .send(response_frame("existing", "gpt-5.6-sol", "default").into())
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "response.created");
+    assert_eq!(next_json(&mut socket).await["type"], "turn.failed");
+    assert_eq!(*calls.lock().unwrap(), ["priority"]);
+
+    socket
+        .send(response_frame("existing", "gpt-5.6-sol", "default").into())
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["tier"], "default");
 }
 
 async fn echo_turn(ws: WebSocketUpgrade, headers: HeaderMap) -> impl IntoResponse {
@@ -183,6 +335,39 @@ async fn echo_turn(ws: WebSocketUpgrade, headers: HeaderMap) -> impl IntoRespons
                 ))
                 .await
                 .unwrap();
+        }
+    })
+}
+
+async fn preamble_then_fast_limit(
+    ws: WebSocketUpgrade,
+    calls: Arc<Mutex<Vec<String>>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |mut socket| async move {
+        while let Some(Ok(Message::Text(text))) = socket.next().await {
+            let frame: serde_json::Value = serde_json::from_str(&text).unwrap();
+            let tier = frame["service_tier"]
+                .as_str()
+                .unwrap_or("default")
+                .to_owned();
+            calls.lock().unwrap().push(tier.clone());
+            if tier == "priority" {
+                socket
+                    .send(Message::Text(
+                        json!({"type":"response.created"}).to_string().into(),
+                    ))
+                    .await
+                    .unwrap();
+                socket
+                    .send(Message::Text(usage_error().into()))
+                    .await
+                    .unwrap();
+            } else {
+                socket
+                    .send(Message::Text(json!({"tier":tier}).to_string().into()))
+                    .await
+                    .unwrap();
+            }
         }
     })
 }
@@ -260,26 +445,4 @@ fn response_frame(thread: &str, model: &str, tier: &str) -> String {
         "client_metadata":{"thread_id":thread}
     })
     .to_string()
-}
-
-fn drained_snapshot(id: &str) -> LimitSnapshot {
-    LimitSnapshot {
-        windows: vec![LimitWindow {
-            id: "weekly".into(),
-            label: "Weekly".into(),
-            percent_used: 100.0,
-            resets_at: Some(chrono::Utc::now() + chrono::Duration::hours(3)),
-            severity: None,
-            scope: None,
-            is_active: true,
-            raw: json!({}),
-        }],
-        ..LimitSnapshot::loading_account(
-            Provider::Codex,
-            ProviderAccount {
-                id: AccountId::new(id),
-                ..ProviderAccount::unidentified_for(Provider::Codex)
-            },
-        )
-    }
 }
