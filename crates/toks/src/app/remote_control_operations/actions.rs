@@ -7,6 +7,7 @@ use super::{RemoteOperation, RemotePanel};
 
 pub(crate) enum RemoteAction {
     Enable,
+    Reconnect,
     Disable,
     Pair,
     LoadDevices,
@@ -64,14 +65,17 @@ impl ToksApp {
                 self.rotation.remote.panel = RemotePanel::Devices;
             }
             Err(failure) => {
-                if matches!(
-                    operation,
-                    Some(RemoteOperation::LoadingDevices | RemoteOperation::Revoking(_))
-                ) {
-                    self.rotation.remote.snapshot.devices =
-                        RemoteDevices::Failed(failure.detail.clone());
+                let devices_message = match operation.as_ref() {
+                    Some(RemoteOperation::LoadingDevices) => {
+                        Some("Paired devices could not be loaded.")
+                    }
+                    Some(RemoteOperation::Revoking(_)) => Some("The device could not be removed."),
+                    _ => None,
+                };
+                if let Some(message) = devices_message {
+                    self.rotation.remote.snapshot.devices = RemoteDevices::Failed(message.into());
                 }
-                self.rotation.remote.fail(failure);
+                self.rotation.remote.fail_action(failure);
             }
         }
     }
@@ -80,6 +84,7 @@ impl ToksApp {
 fn operation(action: &RemoteAction) -> RemoteOperation {
     match action {
         RemoteAction::Enable => RemoteOperation::Enabling,
+        RemoteAction::Reconnect => RemoteOperation::Reconnecting,
         RemoteAction::Disable => RemoteOperation::Disabling,
         RemoteAction::Pair => RemoteOperation::Pairing,
         RemoteAction::LoadDevices => RemoteOperation::LoadingDevices,
@@ -93,6 +98,7 @@ async fn perform(
 ) -> remote_control::RemoteControlResult<Outcome> {
     match action {
         RemoteAction::Enable => remote_control::enable().await.map(Outcome::Snapshot),
+        RemoteAction::Reconnect => remote_control::reconnect().await.map(Outcome::Snapshot),
         RemoteAction::Disable => remote_control::disable().await.map(Outcome::Snapshot),
         RemoteAction::Pair => remote_control::start_pairing().await.map(Outcome::Pairing),
         RemoteAction::LoadDevices => remote_control::devices(required_environment(environment)?)

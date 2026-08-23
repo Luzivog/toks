@@ -57,10 +57,10 @@ pub(super) fn remote_control_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>
                 .pb_3()
                 .child(account::identity_rows(app, cx)),
         );
-    if let Some(issue) = &remote.issue {
+    if let Some(issue) = &remote.action_issue {
         card = card.child(
             div()
-                .debug_selector(|| "rotation-remote-error".into())
+                .debug_selector(|| "rotation-remote-action-error".into())
                 .px_4()
                 .py_2()
                 .border_t_1()
@@ -68,6 +68,19 @@ pub(super) fn remote_control_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>
                 .text_xs()
                 .text_color(cx.theme().danger)
                 .child(issue_message(issue)),
+        );
+    }
+    if let Some(issue) = &remote.status_issue {
+        card = card.child(
+            div()
+                .debug_selector(|| "rotation-remote-status-error".into())
+                .px_4()
+                .py_2()
+                .border_t_1()
+                .border_color(cx.theme().danger.opacity(0.5))
+                .text_xs()
+                .text_color(cx.theme().danger)
+                .child(status_issue_message(issue)),
         );
     }
     if remote.panel == RemotePanel::Pairing {
@@ -107,7 +120,7 @@ fn description(status: RemoteConnectionStatus) -> &'static str {
             "Phone messages reach this computer; model work follows account priority."
         }
         RemoteConnectionStatus::Errored => {
-            "The local host is enabled, but the relay needs attention."
+            "This host could not connect. Another session may already be using Remote Control."
         }
     }
 }
@@ -138,9 +151,36 @@ fn issue_label(kind: RemoteControlFailureKind) -> &'static str {
 }
 
 fn issue_message(issue: &crate::app::remote_control_operations::RemoteIssue) -> String {
-    if issue.kind == RemoteControlFailureKind::Other {
-        issue.detail.clone()
-    } else {
-        issue_label(issue.kind).into()
+    issue_label(issue.kind).into()
+}
+
+fn status_issue_message(
+    issue: &crate::app::remote_control_operations::RemoteIssue,
+) -> &'static str {
+    match issue.kind {
+        RemoteControlFailureKind::DaemonUnavailable => {
+            "Toks could not reach the Codex background host."
+        }
+        _ => "Toks could not read the Remote Control connection.",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use toks_core::remote_control::RemoteControlFailureKind;
+
+    use super::issue_message;
+    use crate::app::remote_control_operations::RemoteIssue;
+
+    #[test]
+    fn unknown_action_failures_have_stable_user_copy() {
+        let issue = RemoteIssue {
+            kind: RemoteControlFailureKind::Other,
+        };
+
+        assert_eq!(
+            issue_message(&issue),
+            "Remote Control could not complete this action."
+        );
     }
 }

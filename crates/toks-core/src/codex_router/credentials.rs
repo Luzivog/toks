@@ -31,10 +31,11 @@ pub(crate) fn account_ids() -> Vec<AccountId> {
     ids
 }
 
-pub(crate) fn incoming_token_is_enrolled(token: &str) -> bool {
-    profiles().iter().any(|profile| {
+pub(crate) fn incoming_token_account(token: &str) -> Option<AccountId> {
+    profiles().into_iter().find_map(|profile| {
         read_auth(&profile.config_dir.join("auth.json"))
             .is_ok_and(|auth| auth.access_token == token)
+            .then_some(profile.account.id)
     })
 }
 

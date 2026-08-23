@@ -11,6 +11,7 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(100);
 #[derive(Clone, Copy)]
 enum Operation {
     Enable,
+    Reconnect,
     Disable,
     Pair,
 }
@@ -48,6 +49,11 @@ pub(super) async fn enable() -> Result<(RemoteConnection, Option<String>)> {
 
 pub(super) async fn disable() -> Result<()> {
     run(arguments(Operation::Disable)).await?;
+    Ok(())
+}
+
+pub(super) async fn reconnect() -> Result<()> {
+    run(arguments(Operation::Reconnect)).await?;
     Ok(())
 }
 
@@ -95,6 +101,7 @@ pub(super) async fn run_at(executable: &Path, args: &[&str]) -> Result<Vec<u8>> 
 fn arguments(operation: Operation) -> &'static [&'static str] {
     match operation {
         Operation::Enable => &["remote-control", "--json", "start"],
+        Operation::Reconnect => &["app-server", "daemon", "restart"],
         Operation::Disable => &["app-server", "daemon", "disable-remote-control"],
         Operation::Pair => &["remote-control", "--json", "pair"],
     }
@@ -164,6 +171,10 @@ mod tests {
         assert_eq!(
             arguments(Operation::Enable),
             ["remote-control", "--json", "start"]
+        );
+        assert_eq!(
+            arguments(Operation::Reconnect),
+            ["app-server", "daemon", "restart"]
         );
         assert_eq!(
             arguments(Operation::Disable),

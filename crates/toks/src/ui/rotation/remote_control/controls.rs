@@ -42,10 +42,10 @@ pub(super) fn controls(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::
     }
     if status == RemoteConnectionStatus::Errored {
         row = row.child(
-            super::super::super::text_action("rotation-remote-retry", "Retry", cx)
+            super::super::super::text_action("rotation-remote-reconnect", "Reconnect", cx)
                 .disabled(busy)
                 .on_click(cx.listener(|app, _, _, cx| {
-                    app.run_remote_action(RemoteAction::Enable, cx);
+                    app.run_remote_action(RemoteAction::Reconnect, cx);
                 })),
         );
     }
@@ -76,6 +76,7 @@ pub(super) fn controls(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::
 fn operation_label(operation: &super::RemoteOperation) -> &'static str {
     match operation {
         super::RemoteOperation::Enabling => "Turning on",
+        super::RemoteOperation::Reconnecting => "Reconnecting",
         super::RemoteOperation::Disabling => "Turning off",
         super::RemoteOperation::Pairing => "Creating code",
         super::RemoteOperation::LoadingDevices => "Loading devices",

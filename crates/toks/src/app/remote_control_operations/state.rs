@@ -13,6 +13,7 @@ pub(crate) enum RemotePanel {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum RemoteOperation {
     Enabling,
+    Reconnecting,
     Disabling,
     Pairing,
     LoadingDevices,
@@ -22,7 +23,6 @@ pub(crate) enum RemoteOperation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RemoteIssue {
     pub kind: RemoteControlFailureKind,
-    pub detail: String,
 }
 
 #[derive(Clone, Debug)]
@@ -30,7 +30,8 @@ pub(crate) struct RemoteControlUiState {
     pub snapshot: RemoteControlSnapshot,
     pub panel: RemotePanel,
     pub pairing: Option<RemotePairing>,
-    pub issue: Option<RemoteIssue>,
+    pub action_issue: Option<RemoteIssue>,
+    pub status_issue: Option<RemoteIssue>,
     pub pending_revoke: Option<String>,
     pub busy: Option<RemoteOperation>,
     generation: u64,
@@ -42,7 +43,8 @@ impl Default for RemoteControlUiState {
             snapshot: Default::default(),
             panel: RemotePanel::Summary,
             pairing: None,
-            issue: None,
+            action_issue: None,
+            status_issue: None,
             pending_revoke: None,
             busy: None,
             generation: 0,
@@ -57,7 +59,7 @@ impl RemoteControlUiState {
         }
         self.generation = self.generation.wrapping_add(1);
         self.busy = Some(operation);
-        self.issue = None;
+        self.action_issue = None;
         Some(self.generation)
     }
 
@@ -76,6 +78,7 @@ impl RemoteControlUiState {
     }
 
     pub fn apply_snapshot(&mut self, mut snapshot: RemoteControlSnapshot) {
+        let status_changed = snapshot.connection.status != self.snapshot.connection.status;
         if snapshot.environment_id.is_none() {
             snapshot
                 .environment_id
@@ -87,14 +90,18 @@ impl RemoteControlUiState {
             snapshot.devices.clone_from(&self.snapshot.devices);
         }
         self.snapshot = snapshot;
-        self.issue = None;
+        self.status_issue = None;
+        if status_changed {
+            self.action_issue = None;
+        }
     }
 
-    pub fn fail(&mut self, failure: RemoteControlFailure) {
-        self.issue = Some(RemoteIssue {
-            kind: failure.kind,
-            detail: failure.detail,
-        });
+    pub fn fail_action(&mut self, failure: RemoteControlFailure) {
+        self.action_issue = Some(RemoteIssue { kind: failure.kind });
+    }
+
+    pub fn fail_status(&mut self, failure: RemoteControlFailure) {
+        self.status_issue = Some(RemoteIssue { kind: failure.kind });
     }
 
     pub fn expire_pairing(&mut self, now_seconds: i64) {

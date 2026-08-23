@@ -145,6 +145,22 @@ fn paired_device_text_stays_inside_its_row(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn errored_remote_control_offers_reconnect_instead_of_start(cx: &mut TestAppContext) {
+    let now = fixture_time();
+    let app = cx.new(|_| {
+        let mut app = ToksApp::from_snapshots(None, vec![account(now, "control", true)], now);
+        prepare_rotation_accounts(&mut app);
+        set_remote_control(&mut app, RemoteConnectionStatus::Errored, vec![phone()]);
+        set_page(&mut app, Page::Rotation);
+        app
+    });
+    let cx = harness(cx, &app, 1000.);
+
+    assert!(cx.debug_bounds("rotation-remote-reconnect").is_some());
+    assert!(cx.debug_bounds("rotation-remote-retry").is_none());
+}
+
+#[gpui::test]
 fn pairing_code_is_inline_and_expiring(cx: &mut TestAppContext) {
     let now = fixture_time();
     let app = cx.new(|_| {

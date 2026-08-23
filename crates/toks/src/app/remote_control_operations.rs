@@ -102,8 +102,7 @@ fn apply_poll(
                 }
             }
         }
-        Err(failure) if state.issue.is_none() => state.fail(failure),
-        Err(_) => {}
+        Err(failure) => state.fail_status(failure),
     }
 }
 

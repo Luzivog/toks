@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::{Message, WebSocketUpgrade};
@@ -22,12 +22,13 @@ use super::types::{CredentialFailure, CredentialSource, RouteCredential, SharedC
 use super::{app, InboundTokens, ProxyState, RouterRuntimeHandle, Upstream};
 
 mod fast_drain;
+mod inbound;
 mod remote_control;
 
 struct FakeCredentials {
     ids: Vec<AccountId>,
     credentials: Mutex<BTreeMap<AccountId, RouteCredential>>,
-    incoming: Mutex<BTreeSet<String>>,
+    incoming: Mutex<BTreeMap<String, AccountId>>,
     refreshes: Mutex<BTreeMap<AccountId, RouteCredential>>,
 }
 
@@ -36,8 +37,8 @@ impl CredentialSource for FakeCredentials {
         self.ids.clone()
     }
 
-    fn accepts_incoming(&self, token: &str) -> bool {
-        self.incoming.lock().unwrap().contains(token)
+    fn incoming_account(&self, token: &str) -> Option<AccountId> {
+        self.incoming.lock().unwrap().get(token).cloned()
     }
 
     fn credential<'a>(
@@ -110,7 +111,12 @@ impl Harness {
                     })
                     .collect(),
             ),
-            incoming: Mutex::new(accounts.iter().map(|(_, token)| (*token).into()).collect()),
+            incoming: Mutex::new(
+                accounts
+                    .iter()
+                    .map(|(id, token)| ((*token).into(), AccountId::new(*id)))
+                    .collect(),
+            ),
             refreshes: Mutex::new(BTreeMap::new()),
         });
         let settings_store = RotationSettingsStore::for_data_dir(directory.path());

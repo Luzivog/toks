@@ -19,7 +19,7 @@ pub(super) enum CredentialFailure {
 
 pub(super) trait CredentialSource: Send + Sync {
     fn account_ids(&self) -> Vec<AccountId>;
-    fn accepts_incoming(&self, token: &str) -> bool;
+    fn incoming_account(&self, token: &str) -> Option<AccountId>;
     fn credential<'a>(
         &'a self,
         account: &'a AccountId,
@@ -39,8 +39,8 @@ impl CredentialSource for LocalCredentials {
         super::super::credentials::account_ids()
     }
 
-    fn accepts_incoming(&self, token: &str) -> bool {
-        super::super::credentials::incoming_token_is_enrolled(token)
+    fn incoming_account(&self, token: &str) -> Option<AccountId> {
+        super::super::credentials::incoming_token_account(token)
     }
 
     fn credential<'a>(

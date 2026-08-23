@@ -1,5 +1,6 @@
 mod commands;
 mod devices;
+mod reconnect;
 mod rpc;
 mod runtime;
 mod store;
@@ -72,6 +73,10 @@ async fn enable_inner() -> Result<RemoteControlSnapshot> {
 
 pub async fn disable() -> RemoteControlResult<RemoteControlSnapshot> {
     disable_inner().await.map_err(Into::into)
+}
+
+pub async fn reconnect() -> RemoteControlResult<RemoteControlSnapshot> {
+    reconnect::run().await.map_err(Into::into)
 }
 
 async fn disable_inner() -> Result<RemoteControlSnapshot> {
