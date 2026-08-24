@@ -6,7 +6,7 @@ crates/toks-ingest/src/bucket_tz.rs	661	1	0
 crates/toks-ingest/src/clients.rs	1723	1	0
 crates/toks-ingest/src/content_extractor.rs	549	1	0
 crates/toks-ingest/src/lib.rs	12514	0	3
-crates/toks-ingest/src/message_cache.rs	4252	1	0
+crates/toks-ingest/src/message_cache.rs	1995	0	0
 crates/toks-ingest/src/model_alias.rs	299	1	0
 crates/toks-ingest/src/opencode_model_name.rs	484	0	0
 crates/toks-ingest/src/parser.rs	268	1	0
