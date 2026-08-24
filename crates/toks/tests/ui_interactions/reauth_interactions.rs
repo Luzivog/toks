@@ -1,26 +1,15 @@
 #![cfg(feature = "test-support")]
 
-use std::ops::Deref;
-
 use chrono::{TimeZone, Utc};
-use gpui::{
-    point, px, size, AppContext, Bounds, TestAppContext, VisualTestContext,
-    WindowBackgroundAppearance, WindowBounds, WindowDecorations, WindowOptions,
-};
-use gpui_component::TitleBar;
-use toks::test_support::{initialize, WindowFrame};
+use gpui::{px, size, TestAppContext};
 use toks::ToksApp;
-use toks_core::limits::{
-    LimitIssue, LimitIssueKind, LimitWindow, SnapshotFreshness, SnapshotStatus,
-};
-use toks_core::{
-    accounts::{AccountIdentityKind, AccountSource, CredentialProfileKind},
-    LimitSnapshot, Provider, ProviderAccount,
-};
+use toks_core::limits::LimitIssueKind;
+use toks_core::Provider;
+
+use super::support::{failed_snapshot, Harness};
 
 #[gpui::test]
 fn only_authentication_issues_offer_exact_account_sign_in(cx: &mut TestAppContext) {
-    initialize(cx);
     let now = Utc
         .with_ymd_and_hms(2026, 8, 18, 12, 0, 0)
         .single()
@@ -53,31 +42,13 @@ fn only_authentication_issues_offer_exact_account_sign_in(cx: &mut TestAppContex
             failed_snapshot(Provider::Claude, &format!("other-{index}"), kind, now)
         }),
     );
-    let app = cx.new(|_| ToksApp::from_snapshots(None, limits, now));
-    let content = app.clone();
-    let window = cx.update(|cx| {
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                    point(px(0.), px(0.)),
-                    size(px(1400.), px(900.)),
-                ))),
-                window_background: WindowBackgroundAppearance::Opaque,
-                window_decorations: Some(WindowDecorations::Client),
-                titlebar: Some(TitleBar::title_bar_options()),
-                ..Default::default()
-            },
-            |_, cx| cx.new(|_| WindowFrame::new(content)),
-        )
-        .expect("headless window opens")
-    });
-    let cx = VisualTestContext::from_window(*window.deref(), cx).into_mut();
-    cx.run_until_parked();
+    let app = ToksApp::from_snapshots(None, limits, now);
+    let mut harness = Harness::open(cx, app, size(px(1400.), px(900.)));
 
-    assert!(has(cx, "reauthenticate-claude-auth-claude"));
-    assert!(has(cx, "reauthenticate-codex-auth-codex"));
-    assert!(has(cx, "quota-row-weekly-auth-claude"));
-    assert!(has(cx, "quota-row-weekly-auth-codex"));
+    assert!(harness.has("reauthenticate-claude-auth-claude"));
+    assert!(harness.has("reauthenticate-codex-auth-codex"));
+    assert!(harness.has("quota-row-weekly-auth-claude"));
+    assert!(harness.has("quota-row-weekly-auth-codex"));
     for selector in [
         "reauthenticate-claude-other-0",
         "reauthenticate-claude-other-1",
@@ -85,59 +56,6 @@ fn only_authentication_issues_offer_exact_account_sign_in(cx: &mut TestAppContex
         "reauthenticate-claude-other-3",
         "reauthenticate-claude-other-4",
     ] {
-        assert!(!has(cx, selector));
-    }
-}
-
-fn has(cx: &mut VisualTestContext, selector: &'static str) -> bool {
-    cx.debug_bounds(selector).is_some()
-}
-
-fn failed_snapshot(
-    provider: Provider,
-    id: &str,
-    kind: LimitIssueKind,
-    now: chrono::DateTime<Utc>,
-) -> LimitSnapshot {
-    LimitSnapshot {
-        provider,
-        account: ProviderAccount {
-            id: id.into(),
-            identity_kind: AccountIdentityKind::ProviderPrincipal,
-            email: Some(format!("{id}@example.test")),
-            sources: vec![AccountSource {
-                profile_id: id.into(),
-                kind: CredentialProfileKind::Managed,
-                primary: true,
-            }],
-        },
-        plan: Some("Max".into()),
-        plan_multiplier: None,
-        banked_resets: 0,
-        banked_reset_credits: None,
-        windows: vec![LimitWindow {
-            id: format!("weekly-{id}"),
-            label: "Weekly".into(),
-            percent_used: 42.0,
-            resets_at: Some(now + chrono::Duration::days(6)),
-            severity: None,
-            scope: None,
-            is_active: true,
-            raw: Default::default(),
-        }],
-        extras: Vec::new(),
-        fetched_at: Some(now - chrono::Duration::minutes(2)),
-        source: "cache".into(),
-        issue: None,
-        status: SnapshotStatus {
-            freshness: SnapshotFreshness::Cached,
-            last_attempted_at: Some(now),
-            issue: Some(LimitIssue {
-                kind,
-                message: "failed".into(),
-                attempted_at: now,
-                retry_at: None,
-            }),
-        },
+        assert!(!harness.has(selector));
     }
 }
