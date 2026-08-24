@@ -5,24 +5,30 @@ use toks_core::codex_router::{RouterGenerationRole, RouterGenerationSummary};
 use crate::ToksApp;
 
 pub(super) fn rows(app: &ToksApp, cx: &gpui::App) -> Option<gpui::Div> {
-    if !app.rotation.install.service_installed || app.rotation.deployment.generations.is_empty() {
+    if !app.rotation.install.service_installed {
+        return None;
+    }
+    let generations = app
+        .rotation
+        .deployment
+        .generations
+        .iter()
+        .filter_map(|generation| role_label(generation.role).map(|label| (generation, label)))
+        .collect::<Vec<_>>();
+    if generations.is_empty() {
         return None;
     }
     let waiting_generation = if app.rotation.deployment.update_waiting {
-        app.rotation
-            .deployment
-            .generations
+        generations
             .iter()
-            .find(|generation| generation.role == RouterGenerationRole::Draining)
+            .find(|(generation, _)| generation.role == RouterGenerationRole::Draining)
             .or_else(|| {
-                app.rotation
-                    .deployment
-                    .generations
+                generations
                     .iter()
-                    .find(|generation| generation.role == RouterGenerationRole::Pending)
+                    .find(|(generation, _)| generation.role == RouterGenerationRole::Pending)
             })
-            .or_else(|| app.rotation.deployment.generations.first())
-            .map(|generation| generation.generation)
+            .or_else(|| generations.first())
+            .map(|(generation, _)| generation.generation)
     } else {
         None
     };
@@ -30,10 +36,11 @@ pub(super) fn rows(app: &ToksApp, cx: &gpui::App) -> Option<gpui::Div> {
         .debug_selector(|| "rotation-router-generations".into())
         .border_t_1()
         .border_color(cx.theme().border);
-    for generation in &app.rotation.deployment.generations {
+    for (generation, label) in generations {
         rows = rows.child(generation_row(
             app,
             generation,
+            label,
             waiting_generation == Some(generation.generation),
             cx,
         ));
@@ -44,6 +51,7 @@ pub(super) fn rows(app: &ToksApp, cx: &gpui::App) -> Option<gpui::Div> {
 fn generation_row(
     app: &ToksApp,
     generation: &RouterGenerationSummary,
+    role_label: &'static str,
     update_waiting: bool,
     cx: &gpui::App,
 ) -> gpui::Div {
@@ -65,18 +73,14 @@ fn generation_row(
                 .size(px(6.))
                 .flex_shrink_0()
                 .rounded_full()
-                .bg(role_color(
-                    generation.role,
-                    app.rotation.install.service_active,
-                    cx,
-                )),
+                .bg(role_color(app.rotation.install.service_active, cx)),
         )
         .child(
             div()
                 .flex_shrink_0()
                 .text_xs()
                 .font_medium()
-                .child(role_label(generation.role)),
+                .child(role_label),
         )
         .child(
             div()
@@ -124,22 +128,19 @@ fn generation_row(
         )
 }
 
-fn role_label(role: RouterGenerationRole) -> &'static str {
+fn role_label(role: RouterGenerationRole) -> Option<&'static str> {
     match role {
-        RouterGenerationRole::Active => "Active build",
-        RouterGenerationRole::Pending => "Pending build",
-        RouterGenerationRole::Draining => "Draining build",
+        RouterGenerationRole::Active => None,
+        RouterGenerationRole::Pending => Some("Pending build"),
+        RouterGenerationRole::Draining => Some("Draining build"),
     }
 }
 
-fn role_color(role: RouterGenerationRole, service_active: bool, cx: &gpui::App) -> gpui::Hsla {
+fn role_color(service_active: bool, cx: &gpui::App) -> gpui::Hsla {
     if !service_active {
         return cx.theme().muted_foreground;
     }
-    match role {
-        RouterGenerationRole::Active => gpui::rgb(0x10_a3_7f).into(),
-        RouterGenerationRole::Pending | RouterGenerationRole::Draining => cx.theme().warning,
-    }
+    cx.theme().warning
 }
 
 fn workload_label(app: &ToksApp, generation: &RouterGenerationSummary) -> String {

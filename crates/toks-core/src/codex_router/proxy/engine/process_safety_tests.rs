@@ -366,7 +366,7 @@ fn cold_reconciliation_preserves_only_surviving_worker_connections() {
         .unwrap();
 
     let runtime = engines.store.load().unwrap();
-    assert_eq!(runtime.active_threads(&account), 2);
+    assert_eq!(runtime.active_threads(&account), 1);
     assert!(!runtime.can_drain(&account, &dead_stream, UnixMillis::new(11)));
     assert!(runtime.can_drain(&account, &follow_up, UnixMillis::new(11)));
     assert!(runtime.can_drain(&account, &surviving_stream, UnixMillis::new(11)));

@@ -18,7 +18,7 @@ use toks_core::{
 };
 
 #[gpui::test]
-fn active_and_draining_builds_stay_compact_in_the_status_card(cx: &mut TestAppContext) {
+fn only_pending_and_draining_builds_render_in_the_status_card(cx: &mut TestAppContext) {
     let now = Utc
         .with_ymd_and_hms(2026, 8, 24, 12, 0, 0)
         .single()
@@ -31,11 +31,18 @@ fn active_and_draining_builds_stay_compact_in_the_status_card(cx: &mut TestAppCo
             RouterDeploymentStatus {
                 generations: vec![
                     RouterGenerationSummary {
-                        generation: 2,
+                        generation: 3,
                         build: "new-build-0123456789".into(),
                         role: RouterGenerationRole::Active,
                         task_count: 1,
                         oldest_task_at: Some(UnixMillis::new(now.timestamp_millis() - 60_000)),
+                    },
+                    RouterGenerationSummary {
+                        generation: 2,
+                        build: "next-build-0123456789".into(),
+                        role: RouterGenerationRole::Pending,
+                        task_count: 0,
+                        oldest_task_at: None,
                     },
                     RouterGenerationSummary {
                         generation: 1,
@@ -55,17 +62,22 @@ fn active_and_draining_builds_stay_compact_in_the_status_card(cx: &mut TestAppCo
 
     let card = bounds(cx, "rotation-status-card");
     let controls = bounds(cx, "rotation-router-controls");
-    let active = bounds(cx, "rotation-router-generation-2");
+    let pending = bounds(cx, "rotation-router-generation-2");
     let draining = bounds(cx, "rotation-router-generation-1");
+    let update_waiting = bounds(cx, "rotation-router-update-waiting");
     let remote = bounds(cx, "rotation-remote-control-row");
-    assert!(card.contains(&active.center()));
+    assert!(cx.debug_bounds("rotation-router-generation-3").is_none());
+    assert!(card.contains(&pending.center()));
     assert!(card.contains(&draining.center()));
-    assert!(controls.bottom() <= active.top());
-    assert!(active.bottom() <= draining.top());
+    assert!(controls.bottom() <= pending.top());
+    assert!(pending.bottom() <= draining.top());
     assert!(draining.bottom() <= remote.top());
-    assert!(active.size.height <= px(40.));
+    assert!(pending.size.height <= px(40.));
     assert!(draining.size.height <= px(40.));
-    assert!(cx.debug_bounds("rotation-router-update-waiting").is_some());
+    assert!(draining.contains(&update_waiting.center()));
+    for selector in ["rotation-router-build-3", "rotation-router-workload-3"] {
+        assert!(cx.debug_bounds(selector).is_none(), "rendered {selector}");
+    }
     for selector in [
         "rotation-router-build-2",
         "rotation-router-workload-2",
@@ -73,6 +85,43 @@ fn active_and_draining_builds_stay_compact_in_the_status_card(cx: &mut TestAppCo
         "rotation-router-workload-1",
     ] {
         assert!(cx.debug_bounds(selector).is_some(), "missing {selector}");
+    }
+}
+
+#[gpui::test]
+fn active_build_alone_keeps_the_generation_section_hidden(cx: &mut TestAppContext) {
+    let now = Utc
+        .with_ymd_and_hms(2026, 8, 24, 12, 0, 0)
+        .single()
+        .unwrap();
+    let app = cx.new(|_| {
+        let mut app = ToksApp::from_snapshots(None, Vec::new(), now);
+        set_rotation_service_active(&mut app);
+        set_router_deployment(
+            &mut app,
+            RouterDeploymentStatus {
+                generations: vec![RouterGenerationSummary {
+                    generation: 7,
+                    build: "steady-build".into(),
+                    role: RouterGenerationRole::Active,
+                    task_count: 1,
+                    oldest_task_at: Some(UnixMillis::new(now.timestamp_millis() - 60_000)),
+                }],
+                update_waiting: false,
+            },
+        );
+        set_page(&mut app, Page::Rotation);
+        app
+    });
+    let cx = harness(cx, &app);
+
+    for selector in [
+        "rotation-router-generations",
+        "rotation-router-generation-7",
+        "rotation-router-build-7",
+        "rotation-router-workload-7",
+    ] {
+        assert!(cx.debug_bounds(selector).is_none(), "rendered {selector}");
     }
 }
 

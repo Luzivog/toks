@@ -26,6 +26,8 @@ pub use types::{
 pub(crate) use types::{FastLimitDisposition, FastLimitOutcome};
 
 #[cfg(test)]
+mod runtime_active_thread_tests;
+#[cfg(test)]
 mod runtime_limit_tests;
 #[cfg(test)]
 mod runtime_quota_observation_tests;

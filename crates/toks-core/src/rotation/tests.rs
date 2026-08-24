@@ -244,7 +244,7 @@ fn runtime_tracks_threads_waiting_and_metadata_events_idempotently() {
 }
 
 #[test]
-fn active_count_is_unique_per_thread_and_survives_tool_follow_ups() {
+fn live_count_is_unique_per_thread_and_ignores_follow_up_retention() {
     let account = account("a");
     let first = ThreadId::new("thread-1");
     let second = ThreadId::new("thread-2");
@@ -263,7 +263,7 @@ fn active_count_is_unique_per_thread_and_survives_tool_follow_ups() {
 
     assert!(runtime.connection_closed(&account, &first, UnixMillis::new(4)));
     assert!(runtime.connection_continues(&account, &first, UnixMillis::new(5)));
-    assert_eq!(runtime.active_threads(&account), 2);
+    assert_eq!(runtime.active_threads(&account), 1);
 
     runtime
         .connection_opened(&account, &first, UnixMillis::new(6))
@@ -274,7 +274,7 @@ fn active_count_is_unique_per_thread_and_survives_tool_follow_ups() {
     runtime.thread_attached(&account, &second).unwrap();
     assert!(runtime.connection_continues(&account, &second, UnixMillis::new(8)));
     assert!(runtime.thread_detached(&account, &second));
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.active_threads(&account), 0);
     runtime
         .connection_opened(&account, &second, UnixMillis::new(9))
         .unwrap();

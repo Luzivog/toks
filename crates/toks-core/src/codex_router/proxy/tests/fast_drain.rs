@@ -163,7 +163,7 @@ async fn only_a_thread_attached_before_the_threshold_drains_in_place() {
 }
 
 #[tokio::test]
-async fn tool_follow_ups_stay_active_until_the_final_response() {
+async fn tool_follow_ups_keep_affinity_without_counting_as_live() {
     let upstream = Router::new().fallback(any(tool_then_final));
     let origin = spawn(upstream).await;
     let harness = Harness::new(&[("a", "token-a")]);
@@ -183,7 +183,7 @@ async fn tool_follow_ups_stay_active_until_the_final_response() {
         "response.output_item.done"
     );
     assert_eq!(next_json(&mut socket).await["type"], "response.completed");
-    assert_eq!(active_threads(&harness, "a"), 1);
+    assert_eq!(active_threads(&harness, "a"), 0);
 
     socket
         .send(response_frame("tool-thread", "gpt-5.6-sol", "default").into())

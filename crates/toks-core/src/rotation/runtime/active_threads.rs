@@ -33,6 +33,12 @@ pub(super) struct ActiveThread {
     last_activity_at: UnixMillis,
 }
 
+impl ActiveThread {
+    pub(super) fn is_live(&self) -> bool {
+        self.stream_count() > 0 || self.reservations > 0
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct GenerationWorkload {
     pub(crate) task_count: u32,

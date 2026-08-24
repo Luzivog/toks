@@ -141,7 +141,7 @@ impl RotationRuntime {
     pub fn active_threads(&self, account: &AccountId) -> u32 {
         self.active_threads
             .values()
-            .filter(|thread| &thread.account_id == account)
+            .filter(|thread| &thread.account_id == account && thread.is_live())
             .count()
             .try_into()
             .unwrap_or(u32::MAX)

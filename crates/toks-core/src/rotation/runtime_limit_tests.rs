@@ -245,7 +245,7 @@ fn router_restart_preserves_a_task_awaiting_follow_up() {
         UnixMillis::new(31),
     );
 
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.active_threads(&account), 0);
     assert!(runtime.can_drain(&account, &thread, UnixMillis::new(32)));
 }
 
@@ -415,7 +415,7 @@ fn legacy_connection_fields_load_and_clear_without_losing_follow_up_state() {
     let mut runtime: RotationRuntime = serde_json::from_value(value).unwrap();
 
     assert!(runtime.reconcile_connection_owners(&Default::default()));
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.active_threads(&account), 0);
     runtime.apply_quota_observations(
         &draining(&account, Some(UnixMillis::new(100))),
         UnixMillis::new(20),
