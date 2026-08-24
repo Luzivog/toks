@@ -144,7 +144,7 @@ async fn current_worker_is_reactivated_while_the_prior_plan_is_recovered() {
         fixture(PriorPhase::StageTarget).await;
     let (channel, peer) = channel_pair();
     coordinator.workers.insert(
-        previous.get(),
+        previous,
         WorkerSlot {
             registration: 1,
             instance: WorkerInstanceId::new(7).unwrap(),
@@ -165,7 +165,7 @@ async fn current_worker_is_reactivated_while_the_prior_plan_is_recovered() {
     ));
     coordinator
         .handle_message(
-            previous.get(),
+            previous,
             Control::Accepting {
                 generation: crate::codex_router::handoff::GenerationId::new(previous.get()),
             },

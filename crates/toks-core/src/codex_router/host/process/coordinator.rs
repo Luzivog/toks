@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 use crate::codex_router::handoff::{HandoffListener, Received};
-use crate::codex_router::host::COORDINATOR_SHUTDOWN_DRAIN_TIMEOUT;
+use crate::codex_router::host::{GenerationId, COORDINATOR_SHUTDOWN_DRAIN_TIMEOUT};
 use crate::codex_router::proxy::RouterRuntimeHandle;
 
 use super::activated::systemd_listener;
@@ -166,7 +166,7 @@ fn spawn_handshake(
                 return;
             }
             let _ = events.send(WorkerEvent::Connected {
-                generation: generation.raw(),
+                generation: GenerationId::from_raw(generation.raw()),
                 instance,
                 pid: channel.peer_identity().pid,
                 channel,

@@ -29,7 +29,7 @@ async fn periodic_retry_converges_after_lost_prepare_and_commit_acks() {
     assert!(retried_prepare.duplicate);
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionAck {
                 handoff_id: first.handoff_id,
             },
@@ -50,7 +50,7 @@ async fn periodic_retry_converges_after_lost_prepare_and_commit_acks() {
     assert!(retried_commit.duplicate);
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionCommitAck {
                 handoff_id: first.handoff_id,
             },
@@ -65,7 +65,7 @@ async fn periodic_retry_converges_after_lost_prepare_and_commit_acks() {
     assert!(!coordinator.pending.is_empty());
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionFinalizedAck {
                 handoff_id: first.handoff_id,
             },
@@ -85,7 +85,7 @@ async fn lost_finalization_ack_is_retried_after_same_epoch_reconnect() {
     };
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionCommitAck {
                 handoff_id: connection.handoff_id,
             },
@@ -101,8 +101,8 @@ async fn lost_finalization_ack_is_retried_after_same_epoch_reconnect() {
     let (replacement, replacement_peer) = channel_pair();
     coordinator
         .workers
-        .insert(generation.get(), worker_slot(replacement));
-    coordinator.retry_pending(generation.get()).await.unwrap();
+        .insert(generation, worker_slot(replacement));
+    coordinator.retry_pending(generation).await.unwrap();
     assert!(matches!(
         replacement_peer.receive().await.unwrap(),
         Received::Control(Control::ConnectionFinalized { handoff_id })
@@ -110,7 +110,7 @@ async fn lost_finalization_ack_is_retried_after_same_epoch_reconnect() {
     ));
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionFinalizedAck {
                 handoff_id: connection.handoff_id,
             },
@@ -167,7 +167,7 @@ async fn stalled_finalization_retry_cannot_monopolize_the_coordinator() {
         .begin_finalizing(WireGenerationId::new(generation.get()), id));
     coordinator
         .workers
-        .get(&generation.get())
+        .get(&generation)
         .unwrap()
         .channel
         .fill_send_buffer();
@@ -245,7 +245,7 @@ async fn a_handoff_reaped_mid_commit_still_tells_the_worker_to_forget_it() {
     };
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionAck {
                 handoff_id: connection.handoff_id,
             },
@@ -283,7 +283,7 @@ async fn a_reaped_finalization_still_tells_the_worker_to_drop_its_tombstone() {
     };
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionCommitAck {
                 handoff_id: connection.handoff_id,
             },
@@ -312,7 +312,7 @@ async fn a_reaped_finalization_still_tells_the_worker_to_drop_its_tombstone() {
     // The worker's late acknowledgement of that notification is a no-op.
     coordinator
         .handle_message(
-            generation.get(),
+            generation,
             Control::ConnectionFinalizedAck {
                 handoff_id: connection.handoff_id,
             },
@@ -341,9 +341,7 @@ async fn fixture() -> (
     let mut coordinator = Coordinator::new(listener, paths, deployment).unwrap();
     let (channel, peer) = channel_pair();
     coordinator.active = Some(generation);
-    coordinator
-        .workers
-        .insert(generation.get(), worker_slot(channel));
+    coordinator.workers.insert(generation, worker_slot(channel));
     (directory, coordinator, peer, generation)
 }
 

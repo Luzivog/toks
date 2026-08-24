@@ -64,7 +64,7 @@ async fn deployment_phases_advance_only_after_worker_acknowledgements() {
 
     coordinator
         .handle_message(
-            previous.get(),
+            previous,
             Control::AdmissionsPaused {
                 generation: WireGenerationId::new(previous.get()),
             },
@@ -77,7 +77,7 @@ async fn deployment_phases_advance_only_after_worker_acknowledgements() {
     );
     coordinator
         .handle_message(
-            target.get(),
+            target,
             Control::Accepting {
                 generation: WireGenerationId::new(target.get()),
             },

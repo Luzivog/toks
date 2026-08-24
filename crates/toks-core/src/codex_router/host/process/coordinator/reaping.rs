@@ -1,6 +1,7 @@
 use tokio::time::Instant;
 
 use crate::codex_router::handoff::Control;
+use crate::codex_router::host::GenerationId;
 
 use super::core::Coordinator;
 use super::pending::{AbandonedStage, HANDOFF_SETTLE_TIMEOUT};
@@ -35,7 +36,8 @@ impl Coordinator {
             if handoff.stage == AbandonedStage::Queued {
                 continue;
             }
-            let Some(generation) = self.host_generation(handoff.generation.raw()) else {
+            let generation = GenerationId::from_raw(handoff.generation.raw());
+            let Some(generation) = self.host_generation(generation) else {
                 continue;
             };
             let remaining = deadline.saturating_duration_since(Instant::now());

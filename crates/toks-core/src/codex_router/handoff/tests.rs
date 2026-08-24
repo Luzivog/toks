@@ -254,7 +254,7 @@ fn control_packet_with_fd_is_rejected() {
     sender
         .send(
             WireMessage::Control(Control::Ready {
-                generation: GenerationId(2),
+                generation: GenerationId::new(2),
             }),
             &[transferred.as_raw_fd()],
         )

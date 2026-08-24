@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use crate::codex_router::handoff::{Control, GenerationId as WireGenerationId, HandoffId};
+use crate::codex_router::handoff::{Control, HandoffId};
 use crate::codex_router::host::{GenerationId, GenerationStatus};
 
 use super::core::Coordinator;
@@ -9,8 +9,8 @@ use super::wait::WaitKey;
 const PENDING_RETRY_BUDGET: std::time::Duration = std::time::Duration::from_millis(100);
 
 enum Retry {
-    Connection(u64, HandoffId),
-    Finalization(u64, HandoffId),
+    Connection(GenerationId, HandoffId),
+    Finalization(GenerationId, HandoffId),
 }
 
 impl Coordinator {
@@ -21,22 +21,22 @@ impl Coordinator {
             }
             let accepting = self
                 .workers
-                .get(&generation.id.get())
+                .get(&generation.id)
                 .is_some_and(|worker| worker.accepting);
             let draining = self
                 .workers
-                .get(&generation.id.get())
+                .get(&generation.id)
                 .is_some_and(|worker| worker.draining);
             let (control, wait) = match generation.status {
                 GenerationStatus::Active if !accepting => (
                     Some(Control::Activate {
-                        generation: wire(generation.id),
+                        generation: generation.id.into(),
                     }),
                     Some(WaitKey::TargetAccepting(generation.id)),
                 ),
                 GenerationStatus::Draining if !draining => (
                     Some(Control::Drain {
-                        generation: wire(generation.id),
+                        generation: generation.id.into(),
                     }),
                     Some(WaitKey::AdmissionsPaused(generation.id)),
                 ),
@@ -58,15 +58,15 @@ impl Coordinator {
         Ok(())
     }
 
-    pub(super) async fn retry_pending(&mut self, generation: u64) -> Result<()> {
+    pub(super) async fn retry_pending(&mut self, generation: GenerationId) -> Result<()> {
         let mut deliveries = self
             .pending
-            .matching(WireGenerationId::new(generation))
+            .matching(generation.into())
             .map(|(id, _)| Retry::Connection(generation, id))
             .collect::<Vec<_>>();
         deliveries.extend(
             self.pending
-                .finalizing(WireGenerationId::new(generation))
+                .finalizing(generation.into())
                 .map(|id| Retry::Finalization(generation, id)),
         );
         self.retry_deliveries(deliveries).await;
@@ -83,12 +83,12 @@ impl Coordinator {
         for generation in generations {
             deliveries.extend(
                 self.pending
-                    .matching(WireGenerationId::new(generation))
+                    .matching(generation.into())
                     .map(|(id, _)| Retry::Connection(generation, id)),
             );
             deliveries.extend(
                 self.pending
-                    .finalizing(WireGenerationId::new(generation))
+                    .finalizing(generation.into())
                     .map(|id| Retry::Finalization(generation, id)),
             );
         }
@@ -132,7 +132,7 @@ impl Coordinator {
     pub(super) async fn send(&self, generation: GenerationId, control: Control) -> Result<()> {
         let channel = self
             .workers
-            .get(&generation.get())
+            .get(&generation)
             .context("worker disconnected")?
             .channel
             .clone();
@@ -147,19 +147,15 @@ impl Coordinator {
 
     pub(super) fn worker_ready(&self, generation: GenerationId) -> bool {
         self.workers
-            .get(&generation.get())
+            .get(&generation)
             .is_some_and(|worker| worker.ready)
     }
 
-    pub(super) fn host_generation(&self, raw: u64) -> Option<GenerationId> {
+    pub(super) fn host_generation(&self, generation: GenerationId) -> Option<GenerationId> {
         self.deployment
             .snapshot()
             .generations
             .into_iter()
-            .find_map(|generation| (generation.id.get() == raw).then_some(generation.id))
+            .find_map(|found| (found.id == generation).then_some(found.id))
     }
-}
-
-pub(super) fn wire(generation: GenerationId) -> WireGenerationId {
-    WireGenerationId::new(generation.get())
 }

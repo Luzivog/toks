@@ -23,7 +23,7 @@ async fn delayed_old_zero_cannot_retire_a_newer_connection() {
         coordinator_epoch: Mutex::new(None),
     });
     let generation = GenerationId::from_raw(41);
-    let wire_generation = WireGenerationId::new(generation.get());
+    let wire_generation = generation.into();
     let instance = WorkerInstanceId::new(91).unwrap();
     let service: Service = Arc::new(|_, _| async {}.boxed());
     let state_for_session = state.clone();

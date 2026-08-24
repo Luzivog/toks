@@ -3,9 +3,7 @@ use futures_util::future::BoxFuture;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
-use crate::codex_router::handoff::{
-    Connection, GenerationId as WireGenerationId, HandoffId, WorkerInstanceId,
-};
+use crate::codex_router::handoff::{Connection, HandoffId, WorkerInstanceId};
 use crate::codex_router::host::{BuildId, DeploymentState, GenerationId, GenerationStatus};
 
 use super::super::channel::AsyncChannel;
@@ -41,7 +39,7 @@ pub(in crate::codex_router::host::process) struct Coordinator {
     pub(in crate::codex_router::host::process) deployment: DeploymentState,
     pub(super) build: BuildId,
     pub(super) pending: Pending,
-    pub(super) workers: HashMap<u64, WorkerSlot>,
+    pub(super) workers: HashMap<GenerationId, WorkerSlot>,
     pub(in crate::codex_router::host::process) active: Option<GenerationId>,
     pub(super) worker_command: WorkerCommand,
     pub(super) worker_inventory: WorkerInventory,
@@ -141,7 +139,7 @@ impl Coordinator {
                 )
             })
             .map(|generation| {
-                let worker = self.workers.get(&generation.id.get())?;
+                let worker = self.workers.get(&generation.id)?;
                 worker
                     .ready
                     .then_some((generation.id.get(), worker.instance.raw()))
@@ -153,19 +151,22 @@ impl Coordinator {
         let generation = self
             .active
             .ok_or_else(|| anyhow::anyhow!("no active worker"))?;
-        let wire_generation = WireGenerationId::new(generation.get());
-        let id = self.pending.insert(wire_generation, stream)?;
-        self.send_pending(generation.get(), id).await
+        let id = self.pending.insert(generation.into(), stream)?;
+        self.send_pending(generation, id).await
     }
 
-    pub(super) async fn send_pending(&mut self, generation: u64, id: HandoffId) -> Result<()> {
+    pub(super) async fn send_pending(
+        &mut self,
+        generation: GenerationId,
+        id: HandoffId,
+    ) -> Result<()> {
         let channel = self
             .workers
             .get(&generation)
             .ok_or_else(|| anyhow::anyhow!("worker disconnected"))?
             .channel
             .clone();
-        let wire_generation = WireGenerationId::new(generation);
+        let wire_generation = generation.into();
         let (stream, duplicate) = self
             .pending
             .delivery(wire_generation, id)

@@ -23,7 +23,7 @@ async fn stale_connection_ack_never_commits_an_unknown_handoff() {
     fixture
         .coordinator
         .handle_message(
-            fixture.generation.get(),
+            fixture.generation,
             Control::ConnectionAck {
                 handoff_id: HandoffId::new(44, 1),
             },
@@ -51,16 +51,11 @@ async fn normal_ack_order_commits_without_retransferring_the_descriptor() {
     let coordinator_channel = fixture
         .coordinator
         .workers
-        .get(&fixture.generation.get())
+        .get(&fixture.generation)
         .unwrap()
         .channel
         .clone();
-    spawn_reader(
-        fixture.generation.get(),
-        1,
-        coordinator_channel,
-        events.clone(),
-    );
+    spawn_reader(fixture.generation, 1, coordinator_channel, events.clone());
     fixture
         .peer
         .send_control(&Control::ConnectionAck {
@@ -110,23 +105,19 @@ async fn graceful_shutdown_waits_through_prepared_worker_reconnect() {
         tokio::time::Instant::now(),
     ));
 
-    drop(fixture.coordinator.workers.remove(&generation.get()));
+    drop(fixture.coordinator.workers.remove(&generation));
     drop(first);
     let adopted = accept_worker(&listener, generation, 0, 51).await;
     activate(&adopted, generation).await;
     fixture.insert_worker(adopted.clone(), 2);
-    fixture
-        .coordinator
-        .retry_pending(generation.get())
-        .await
-        .unwrap();
+    fixture.coordinator.retry_pending(generation).await.unwrap();
     assert!(matches!(
         receive(&adopted).await,
         Received::Control(Control::ConnectionAck { handoff_id: found }) if found == handoff_id
     ));
     fixture
         .coordinator
-        .handle_message(generation.get(), Control::ConnectionAck { handoff_id })
+        .handle_message(generation, Control::ConnectionAck { handoff_id })
         .await
         .unwrap();
     assert!(matches!(
@@ -135,10 +126,7 @@ async fn graceful_shutdown_waits_through_prepared_worker_reconnect() {
     ));
     fixture
         .coordinator
-        .handle_message(
-            generation.get(),
-            Control::ConnectionCommitAck { handoff_id },
-        )
+        .handle_message(generation, Control::ConnectionCommitAck { handoff_id })
         .await
         .unwrap();
 
@@ -149,10 +137,7 @@ async fn graceful_shutdown_waits_through_prepared_worker_reconnect() {
     ));
     fixture
         .coordinator
-        .handle_message(
-            generation.get(),
-            Control::ConnectionFinalizedAck { handoff_id },
-        )
+        .handle_message(generation, Control::ConnectionFinalizedAck { handoff_id })
         .await
         .unwrap();
 
@@ -281,7 +266,7 @@ impl CoordinatorFixture {
         let mut coordinator = Coordinator::new(listener, paths, deployment).unwrap();
         coordinator.active = Some(generation);
         coordinator.workers.insert(
-            generation.get(),
+            generation,
             WorkerSlot {
                 registration: 1,
                 instance: WorkerInstanceId::new(1).unwrap(),
@@ -302,7 +287,7 @@ impl CoordinatorFixture {
 
     fn insert_worker(&mut self, channel: Arc<AsyncChannel>, registration: u64) {
         self.coordinator.workers.insert(
-            self.generation.get(),
+            self.generation,
             WorkerSlot {
                 registration,
                 instance: WorkerInstanceId::new(1).unwrap(),

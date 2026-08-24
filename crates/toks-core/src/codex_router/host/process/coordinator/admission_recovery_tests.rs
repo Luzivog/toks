@@ -22,10 +22,10 @@ async fn delayed_pause_ack_never_reopens_the_previous_worker() {
     let (target_channel, _target_peer) = channel_pair();
     coordinator
         .workers
-        .insert(previous.get(), ready_worker(previous_channel, true, 1));
+        .insert(previous, ready_worker(previous_channel, true, 1));
     coordinator
         .workers
-        .insert(target.get(), ready_worker(target_channel, false, 2));
+        .insert(target, ready_worker(target_channel, false, 2));
 
     coordinator.advance().await.unwrap();
     assert!(matches!(
@@ -141,7 +141,7 @@ async fn crash_after_recording_previous_failure_resumes_from_durable_state() {
     let (target_channel, target_peer) = channel_pair();
     recovered
         .workers
-        .insert(target.get(), ready_worker(target_channel, false, 2));
+        .insert(target, ready_worker(target_channel, false, 2));
 
     recovered.advance().await.unwrap();
 
@@ -163,7 +163,7 @@ async fn cold_start_reestablishes_bounded_control_absence_before_takeover() {
     let (target_channel, target_peer) = channel_pair();
     coordinator
         .workers
-        .insert(target.get(), ready_worker(target_channel, false, 2));
+        .insert(target, ready_worker(target_channel, false, 2));
 
     coordinator.advance().await.unwrap();
     expire_previous_ready(&mut coordinator, previous).await;
@@ -253,18 +253,18 @@ async fn disconnect_previous_while_pausing(
     let (target_channel, target_peer) = channel_pair();
     coordinator
         .workers
-        .insert(previous.get(), ready_worker(previous_channel, true, 1));
+        .insert(previous, ready_worker(previous_channel, true, 1));
     coordinator
         .workers
-        .insert(target.get(), ready_worker(target_channel, false, 2));
+        .insert(target, ready_worker(target_channel, false, 2));
     coordinator.advance().await.unwrap();
     assert!(matches!(
         previous_peer.receive().await.unwrap(),
         Received::Control(Control::Drain { .. })
     ));
-    coordinator.workers.remove(&previous.get());
+    coordinator.workers.remove(&previous);
     coordinator.deployment_wait.clear_generation(previous);
-    coordinator.worker_disconnected(previous.get()).unwrap();
+    coordinator.worker_disconnected(previous).unwrap();
     coordinator.advance().await.unwrap();
     target_peer
 }

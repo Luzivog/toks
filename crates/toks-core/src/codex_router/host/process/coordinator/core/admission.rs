@@ -16,7 +16,7 @@ impl Coordinator {
         let Some(generation) = self.active else {
             return Some("no generation is active");
         };
-        match self.workers.get(&generation.get()) {
+        match self.workers.get(&generation) {
             None => Some("the active generation has no registered worker"),
             Some(worker) if !worker.ready => Some("the active worker is not ready"),
             Some(worker) if !worker.accepting => Some("the active worker is not accepting"),

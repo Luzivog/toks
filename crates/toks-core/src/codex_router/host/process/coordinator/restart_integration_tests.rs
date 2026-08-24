@@ -163,7 +163,7 @@ async fn attach(
         .await
         .unwrap();
     coordinator.workers.insert(
-        generation.get(),
+        generation,
         WorkerSlot {
             registration,
             instance: WorkerInstanceId::new(registration).unwrap(),
@@ -179,7 +179,7 @@ async fn attach(
             continue;
         };
         coordinator
-            .handle_message(generation.get(), message)
+            .handle_message(generation, message)
             .await
             .unwrap();
         coordinator.advance().await.unwrap();
@@ -206,7 +206,7 @@ async fn finish_handoff(coordinator: &mut Coordinator, channel: &AsyncChannel) {
             continue;
         };
         coordinator
-            .handle_message(coordinator.active.unwrap().get(), message)
+            .handle_message(coordinator.active.unwrap(), message)
             .await
             .unwrap();
     }

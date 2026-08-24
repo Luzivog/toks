@@ -19,17 +19,13 @@ impl Coordinator {
                 pid,
                 channel,
             } => {
-                if !self.known_generation(generation)
-                    || !self
-                        .paths
-                        .worker_matches(GenerationId::from_raw(generation), pid)
+                if !self.known_generation(generation) || !self.paths.worker_matches(generation, pid)
                 {
                     return Ok(());
                 }
                 let registration = self.next_registration;
                 self.next_registration = self.next_registration.saturating_add(1);
-                self.disconnected_workers
-                    .remove(&GenerationId::from_raw(generation));
+                self.disconnected_workers.remove(&generation);
                 self.workers.insert(
                     generation,
                     WorkerSlot {
@@ -56,8 +52,7 @@ impl Coordinator {
                 registration,
             } if self.current(generation, registration) => {
                 self.workers.remove(&generation);
-                self.deployment_wait
-                    .clear_generation(GenerationId::from_raw(generation));
+                self.deployment_wait.clear_generation(generation);
                 self.worker_disconnected(generation)?;
             }
             _ => {}
@@ -66,15 +61,15 @@ impl Coordinator {
         Ok(())
     }
 
-    fn current(&self, generation: u64, registration: u64) -> bool {
+    fn current(&self, generation: GenerationId, registration: u64) -> bool {
         self.workers
             .get(&generation)
             .is_some_and(|worker| worker.registration == registration)
     }
 
-    fn known_generation(&self, generation: u64) -> bool {
+    fn known_generation(&self, generation: GenerationId) -> bool {
         self.deployment.snapshot().generations.iter().any(|found| {
-            found.id.get() == generation
+            found.id == generation
                 && matches!(
                     found.status,
                     crate::codex_router::host::GenerationStatus::Staged

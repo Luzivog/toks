@@ -227,7 +227,7 @@ async fn paused_draining_worker_is_not_commanded_to_drain_again() {
     let (_directory, mut coordinator, previous, _target) = fixture(Phase::Prepared).await;
     let (channel, peer) = channel_pair();
     coordinator.workers.insert(
-        previous.get(),
+        previous,
         WorkerSlot {
             registration: 1,
             instance: WorkerInstanceId::new(1).unwrap(),
@@ -240,7 +240,7 @@ async fn paused_draining_worker_is_not_commanded_to_drain_again() {
     );
     coordinator
         .handle_message(
-            previous.get(),
+            previous,
             Control::AdmissionsPaused {
                 generation: crate::codex_router::handoff::GenerationId::new(previous.get()),
             },
@@ -262,14 +262,14 @@ async fn owner_reconciliation_waits_for_every_live_generation() {
     let (_directory, mut coordinator, previous, target) = fixture(Phase::Prepared).await;
     let (previous_channel, _previous_peer) = channel_pair();
     coordinator.workers.insert(
-        previous.get(),
+        previous,
         ready_worker(previous_channel, WorkerInstanceId::new(101).unwrap()),
     );
     assert!(coordinator.reconcilable_worker_instances().is_none());
 
     let (target_channel, _target_peer) = channel_pair();
     coordinator.workers.insert(
-        target.get(),
+        target,
         ready_worker(target_channel, WorkerInstanceId::new(202).unwrap()),
     );
     assert_eq!(

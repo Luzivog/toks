@@ -40,7 +40,7 @@ async fn target_disconnect_after_pause_persists_rollback_before_resuming() {
     }
     coordinator.deployment = deployment;
 
-    coordinator.worker_disconnected(target.get()).unwrap();
+    coordinator.worker_disconnected(target).unwrap();
 
     assert!(matches!(
         load_state(&coordinator.paths.state)

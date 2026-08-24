@@ -29,7 +29,7 @@ impl Coordinator {
         }
         if self
             .workers
-            .get(&active.get())
+            .get(&active)
             .is_some_and(|worker| worker.accepting)
         {
             return Ok(false);
@@ -40,7 +40,7 @@ impl Coordinator {
                 .send(
                     active,
                     Control::Activate {
-                        generation: super::workers::wire(active),
+                        generation: active.into(),
                     },
                 )
                 .await

@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct GenerationId(pub u64);
+pub(crate) struct GenerationId(u64);
 
 impl GenerationId {
     pub const fn new(raw: u64) -> Self {

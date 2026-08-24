@@ -22,7 +22,7 @@ pub(super) async fn run(
     service: Service,
     counts: &mut tokio::sync::mpsc::Receiver<()>,
 ) -> SessionEnd {
-    let wire_generation = WireGenerationId::new(generation.get());
+    let wire_generation = generation.into();
     if channel
         .send_control(&Control::WorkerHello {
             generation: wire_generation,

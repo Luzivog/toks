@@ -10,16 +10,15 @@ use super::wait::WaitKey;
 impl Coordinator {
     pub(in crate::codex_router::host::process) fn worker_disconnected(
         &mut self,
-        generation: u64,
+        generation: GenerationId,
     ) -> Result<()> {
-        self.disconnected_workers
-            .insert(GenerationId::from_raw(generation));
+        self.disconnected_workers.insert(generation);
         let plan = self.current_plan()?;
         let target = match plan {
             DeployPlan::StageTarget { target, .. }
             | DeployPlan::PauseAdmissions { target, .. }
             | DeployPlan::StartAccepting { target }
-                if target.get() == generation =>
+                if target == generation =>
             {
                 target
             }
@@ -33,21 +32,21 @@ impl Coordinator {
 
     pub(in crate::codex_router::host::process) async fn handle_message(
         &mut self,
-        generation: u64,
+        generation: GenerationId,
         message: Control,
     ) -> Result<()> {
+        let wire_generation = generation.into();
         match message {
-            Control::Ready { generation: found } if found.raw() == generation => {
-                let id = GenerationId::from_raw(generation);
-                self.deployment_wait.acknowledge(WaitKey::WorkerReady(id));
+            Control::Ready { generation: found } if found == wire_generation => {
+                self.deployment_wait
+                    .acknowledge(WaitKey::WorkerReady(generation));
                 if let Some(worker) = self.workers.get_mut(&generation) {
                     worker.ready = true;
                 }
             }
-            Control::AdmissionsPaused { generation: found } if found.raw() == generation => {
-                self.deployment_wait.acknowledge(WaitKey::AdmissionsPaused(
-                    GenerationId::from_raw(generation),
-                ));
+            Control::AdmissionsPaused { generation: found } if found == wire_generation => {
+                self.deployment_wait
+                    .acknowledge(WaitKey::AdmissionsPaused(generation));
                 if let Some(worker) = self.workers.get_mut(&generation) {
                     worker.accepting = false;
                     worker.draining = true;
@@ -58,17 +57,16 @@ impl Coordinator {
                     target,
                 } = plan
                 {
-                    if previous.get() == generation {
+                    if previous == generation {
                         self.record(DeploymentEvent::PreviousPaused { target })?;
                     }
                 }
             }
-            Control::Accepting { generation: found } if found.raw() == generation => {
-                let id = GenerationId::from_raw(generation);
+            Control::Accepting { generation: found } if found == wire_generation => {
                 self.deployment_wait
-                    .acknowledge(WaitKey::TargetAccepting(id));
+                    .acknowledge(WaitKey::TargetAccepting(generation));
                 self.deployment_wait
-                    .acknowledge(WaitKey::AdmissionsResumed(id));
+                    .acknowledge(WaitKey::AdmissionsResumed(generation));
                 let reconcile_pending = if let Some(worker) = self.workers.get_mut(&generation) {
                     worker.accepting = true;
                     worker.draining = false;
@@ -80,13 +78,13 @@ impl Coordinator {
                 };
                 let plan = self.current_plan()?;
                 match plan {
-                    DeployPlan::StartAccepting { target } if target.get() == generation => {
+                    DeployPlan::StartAccepting { target } if target == generation => {
                         self.record(DeploymentEvent::TargetAccepting { target })?;
                     }
                     DeployPlan::ResumeAdmissions {
                         previous,
                         failed_target,
-                    } if previous.get() == generation => {
+                    } if previous == generation => {
                         self.record(DeploymentEvent::AdmissionsResumed { failed_target })?;
                     }
                     _ => {}
@@ -96,9 +94,7 @@ impl Coordinator {
                 }
             }
             Control::ConnectionAck { handoff_id }
-                if self
-                    .pending
-                    .mark_committing(wire_generation(generation), handoff_id) =>
+                if self.pending.mark_committing(wire_generation, handoff_id) =>
             {
                 // An acknowledgement can outlive its generation's entry in the
                 // deployment state, so a missing one is retirement, not a bug.
@@ -112,9 +108,7 @@ impl Coordinator {
                 }
             }
             Control::ConnectionCommitAck { handoff_id } => {
-                let should_finalize = self
-                    .pending
-                    .begin_finalizing(wire_generation(generation), handoff_id);
+                let should_finalize = self.pending.begin_finalizing(wire_generation, handoff_id);
                 if let (true, Some(worker_generation)) =
                     (should_finalize, self.host_generation(generation))
                 {
@@ -128,12 +122,12 @@ impl Coordinator {
             }
             Control::ConnectionFinalizedAck { handoff_id } => {
                 self.pending
-                    .acknowledge_finalized(wire_generation(generation), handoff_id);
+                    .acknowledge_finalized(wire_generation, handoff_id);
             }
             Control::ConnectionsObserved {
                 generation: found,
                 active,
-            } if found.raw() == generation => {
+            } if found == wire_generation => {
                 if let Some(id) = self.host_generation(generation) {
                     if self
                         .deployment
@@ -156,8 +150,4 @@ impl Coordinator {
         self.deployment.reconcile(event)?;
         save_state(&self.paths.state, &self.deployment)
     }
-}
-
-fn wire_generation(generation: u64) -> crate::codex_router::handoff::GenerationId {
-    crate::codex_router::handoff::GenerationId::new(generation)
 }

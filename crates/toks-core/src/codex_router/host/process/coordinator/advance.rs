@@ -6,7 +6,6 @@ use crate::codex_router::host::{DeployPlan, DeploymentEvent};
 use super::super::paths::save_state;
 use super::core::Coordinator;
 use super::wait::WaitKey;
-use super::workers::wire;
 
 impl Coordinator {
     pub(in crate::codex_router::host::process) async fn advance(&mut self) -> Result<()> {
@@ -66,7 +65,7 @@ impl Coordinator {
                     if !self.worker_ready(previous) {
                         return Ok(());
                     }
-                    if self.pending.has_generation(wire(previous)) {
+                    if self.pending.has_generation(previous.into()) {
                         self.deployment_wait
                             .acknowledge(WaitKey::AdmissionsPaused(previous));
                         return Ok(());
@@ -75,11 +74,11 @@ impl Coordinator {
                     if self.waiting_for(wait) {
                         return Ok(());
                     }
-                    if let Some(worker) = self.workers.get_mut(&previous.get()) {
+                    if let Some(worker) = self.workers.get_mut(&previous) {
                         worker.accepting = false;
                     }
                     let control = Control::Drain {
-                        generation: wire(previous),
+                        generation: previous.into(),
                     };
                     if self.send(previous, control).await.is_ok() {
                         self.arm_wait(wait);
@@ -95,7 +94,7 @@ impl Coordinator {
                         return Ok(());
                     }
                     let control = Control::Activate {
-                        generation: wire(target),
+                        generation: target.into(),
                     };
                     if self.send(target, control).await.is_ok() {
                         self.arm_wait(wait);
@@ -114,7 +113,7 @@ impl Coordinator {
                         return Ok(());
                     }
                     let control = Control::Activate {
-                        generation: wire(previous),
+                        generation: previous.into(),
                     };
                     if self.send(previous, control).await.is_ok() {
                         self.arm_wait(wait);
