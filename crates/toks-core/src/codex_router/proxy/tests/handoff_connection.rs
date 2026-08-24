@@ -2,9 +2,11 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
-use super::super::connection::serve_state_connection;
-use super::super::{serve_connection, ConnectionLifetime, ConnectionService, InboundTokens};
 use super::{spawn, Harness};
+use crate::codex_router::proxy::connection::serve_state_connection;
+use crate::codex_router::proxy::{
+    serve_connection, ConnectionLifetime, ConnectionService, InboundTokens,
+};
 
 #[tokio::test]
 async fn handed_off_connection_serves_health_and_finishes_cleanly() {
@@ -30,7 +32,7 @@ async fn handed_off_connection_serves_health_and_finishes_cleanly() {
         .unwrap();
     let response = client.await.unwrap();
     assert!(response.starts_with(b"HTTP/1.1 200 OK"));
-    assert!(response.ends_with(super::super::HEALTH_BODY.as_bytes()));
+    assert!(response.ends_with(crate::codex_router::proxy::HEALTH_BODY.as_bytes()));
 }
 
 #[tokio::test]

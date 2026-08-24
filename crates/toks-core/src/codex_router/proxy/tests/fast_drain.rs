@@ -1,11 +1,13 @@
 use super::*;
 
-use super::super::protocol::{requested_model, usage_block, with_service_tier, BAD_THREAD_FRAME};
-use super::super::{
+use super::fixtures::one_percent_snapshot;
+use crate::codex_router::proxy::protocol::{
+    requested_model, usage_block, with_service_tier, BAD_THREAD_FRAME,
+};
+use crate::codex_router::proxy::{
     engine::{AttemptedTier, ResponseDelivery, RouteTier},
     lease::StreamLease,
 };
-use super::fixtures::one_percent_snapshot;
 
 #[test]
 fn service_tier_upgrade_preserves_faster_requests_and_the_rest_of_the_turn() {

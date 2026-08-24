@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use crate::accounts::AccountId;
 use crate::rotation::{BlockWindow, FastLimitDisposition, FastLimitOutcome, UsageLimitIncident};
 
-use super::super::{
+use crate::rotation::runtime::{
     account::ThreadUsage, AccountRuntime, RotationEventKind, RotationRuntime, ThreadId, UnixMillis,
 };
 

@@ -5,6 +5,8 @@ mod channel;
 mod coordinator;
 mod coordinator_identity;
 mod paths;
+#[cfg(test)]
+mod paths_tests;
 mod worker;
 
 pub(crate) use coordinator::run as run_coordinator;

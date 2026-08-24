@@ -1,8 +1,8 @@
-use super::super::lease::ThreadAttachment;
-use super::super::protocol::ResponseLifecycle;
-use super::super::Engine;
 use super::connect::UpstreamSocket;
 use crate::accounts::AccountId;
+use crate::codex_router::proxy::lease::ThreadAttachment;
+use crate::codex_router::proxy::protocol::ResponseLifecycle;
+use crate::codex_router::proxy::Engine;
 use crate::rotation::ThreadId;
 use crate::rotation::UsageLimitTier;
 use axum::extract::ws::WebSocket;

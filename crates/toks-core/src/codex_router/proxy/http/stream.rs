@@ -9,9 +9,9 @@ use futures_util::StreamExt;
 use crate::accounts::AccountId;
 use crate::rotation::{ThreadId, UsageLimitPhase, UsageLimitTier};
 
-use super::super::engine::{AttemptedTier, Engine, ResponseDelivery};
-use super::super::lease::StreamLease;
-use super::super::protocol::{ResponseLifecycle, ResponseLifecycleEnd};
+use crate::codex_router::proxy::engine::{AttemptedTier, Engine, ResponseDelivery};
+use crate::codex_router::proxy::lease::StreamLease;
+use crate::codex_router::proxy::protocol::{ResponseLifecycle, ResponseLifecycleEnd};
 
 type UpstreamBody = BoxStream<'static, Result<Bytes, reqwest::Error>>;
 

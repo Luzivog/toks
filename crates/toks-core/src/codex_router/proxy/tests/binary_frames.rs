@@ -29,7 +29,10 @@ async fn forgotten_exact_marker_rejects_binary_model_traffic() {
     let error = socket.next().await.unwrap().unwrap().into_text().unwrap();
     while socket.next().await.is_some() {}
 
-    assert_eq!(error, super::super::protocol::BAD_THREAD_FRAME);
+    assert_eq!(
+        error,
+        crate::codex_router::proxy::protocol::BAD_THREAD_FRAME
+    );
     assert_eq!(model_frames.load(Ordering::SeqCst), 0);
     assert!(harness.runtime.waiting_threads().is_empty());
 }
@@ -53,7 +56,10 @@ async fn conflicting_binary_thread_is_rejected_without_traffic_or_residue() {
     let error = socket.next().await.unwrap().unwrap().into_text().unwrap();
     while socket.next().await.is_some() {}
 
-    assert_eq!(error, super::super::protocol::BAD_THREAD_FRAME);
+    assert_eq!(
+        error,
+        crate::codex_router::proxy::protocol::BAD_THREAD_FRAME
+    );
     assert_eq!(model_frames.load(Ordering::SeqCst), 0);
     assert_eq!(active_threads(&harness, "a"), 0);
     assert!(harness.runtime.waiting_threads().is_empty());
@@ -118,7 +124,10 @@ async fn unavailable_bridge_rejects_binary_client_data() {
         .into_text()
         .unwrap();
 
-    assert_eq!(error, super::super::protocol::BAD_THREAD_FRAME);
+    assert_eq!(
+        error,
+        crate::codex_router::proxy::protocol::BAD_THREAD_FRAME
+    );
     assert!(harness.runtime.waiting_threads().is_empty());
 }
 

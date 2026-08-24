@@ -5,7 +5,7 @@ use futures_util::future::BoxFuture;
 use crate::accounts::{AccountId, ProviderAccount};
 use crate::limits::{LimitSnapshot, Provider};
 
-use super::super::super::types::{CredentialFailure, CredentialSource, RouteCredential};
+use crate::codex_router::proxy::types::{CredentialFailure, CredentialSource, RouteCredential};
 
 mod proof_tests;
 mod race_tests;

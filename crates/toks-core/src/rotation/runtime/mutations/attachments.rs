@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::accounts::AccountId;
 
-use super::super::{
+use crate::rotation::runtime::{
     AttachedThread, RotationRuntime, ThreadAccountConflict, ThreadId, WorkerConnectionCount,
     WorkerConnectionOwner,
 };

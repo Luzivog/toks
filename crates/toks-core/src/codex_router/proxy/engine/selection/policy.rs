@@ -5,8 +5,8 @@ use crate::rotation::{
     ResumeRoute, RotationRuntime, RotationSettings, ThreadId, ThreadOwnership, UnixMillis,
 };
 
-use super::super::super::headers::ResumeMarker;
 use super::RouteSelection;
+use crate::codex_router::proxy::headers::ResumeMarker;
 
 pub(super) fn selected_account(
     settings: &RotationSettings,

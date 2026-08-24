@@ -13,6 +13,8 @@ mod supervisor;
 mod systemd_tasks;
 mod task_command;
 mod workspace;
+#[cfg(test)]
+mod workspace_tests;
 
 use state::ResumeStore;
 use supervisor::Supervisor;

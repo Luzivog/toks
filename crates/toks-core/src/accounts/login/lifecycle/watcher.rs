@@ -6,8 +6,8 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use crate::limits::Provider;
 
-use super::super::super::{AccountId, AccountProfile, CredentialProfileId};
 use super::{finish, is_pending, start, LoginKey, LoginOutcome};
+use crate::accounts::{AccountId, AccountProfile, CredentialProfileId};
 
 const LOGIN_SETTLE_ATTEMPTS: usize = 300;
 const LOGIN_SETTLE_INTERVAL: Duration = Duration::from_secs(1);
@@ -56,7 +56,7 @@ pub(crate) fn track_reauthentication(
             if !changed {
                 return None;
             }
-            let after = super::super::super::provider_principal_id(&profile)?;
+            let after = crate::accounts::provider_principal_id(&profile)?;
             Some(classify_identity(before.as_ref(), &after))
         });
         finish(&key, tracking.generation, outcome);

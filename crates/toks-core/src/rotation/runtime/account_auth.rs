@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::rotation::UnixMillis;
 
-const REJECTED_CREDENTIAL_HISTORY_LIMIT: usize = 32;
+pub(super) const REJECTED_CREDENTIAL_HISTORY_LIMIT: usize = 32;
 
 pub(super) type AuthFailure = (u64, Option<UnixMillis>, Option<String>);
 
@@ -19,7 +19,7 @@ pub(super) struct AccountAuthState {
     #[serde(default)]
     rejected_credential_fingerprint: Option<String>,
     #[serde(default)]
-    rejected_credential_history: VecDeque<String>,
+    pub(super) rejected_credential_history: VecDeque<String>,
 }
 
 impl AccountAuthState {
@@ -84,7 +84,7 @@ impl AccountAuthState {
         }
     }
 
-    fn remember_rejected_credential(&mut self, fingerprint: &str) {
+    pub(super) fn remember_rejected_credential(&mut self, fingerprint: &str) {
         self.rejected_credential_history
             .retain(|rejected| rejected != fingerprint);
         self.rejected_credential_history
@@ -92,32 +92,5 @@ impl AccountAuthState {
         while self.rejected_credential_history.len() > REJECTED_CREDENTIAL_HISTORY_LIMIT {
             self.rejected_credential_history.pop_front();
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{AccountAuthState, REJECTED_CREDENTIAL_HISTORY_LIMIT};
-
-    #[test]
-    fn rejected_credential_history_is_bounded_and_keeps_most_recent_unique_entries() {
-        let mut auth = AccountAuthState::default();
-        for index in 0..(REJECTED_CREDENTIAL_HISTORY_LIMIT + 2) {
-            auth.remember_rejected_credential(&format!("fingerprint-{index}"));
-        }
-
-        auth.remember_rejected_credential("fingerprint-2");
-
-        assert_eq!(
-            auth.rejected_credential_history.len(),
-            REJECTED_CREDENTIAL_HISTORY_LIMIT
-        );
-        assert!(!auth.credential_was_rejected("fingerprint-0"));
-        assert!(!auth.credential_was_rejected("fingerprint-1"));
-        assert!(auth.credential_was_rejected("fingerprint-2"));
-        assert!(auth.credential_was_rejected(&format!(
-            "fingerprint-{}",
-            REJECTED_CREDENTIAL_HISTORY_LIMIT + 1
-        )));
     }
 }

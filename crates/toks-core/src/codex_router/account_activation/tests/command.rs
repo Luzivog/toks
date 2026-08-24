@@ -1,4 +1,4 @@
-use super::super::catalogue::ModelChoice;
+use crate::codex_router::account_activation::catalogue::ModelChoice;
 
 const NOW: i64 = 1_800_000_000_000;
 
@@ -8,7 +8,7 @@ fn command_is_exact_account_isolated_read_only_and_four_letter_prompt() {
         slug: Some("best-model".into()),
         reasoning: "low".into(),
     };
-    let command = super::super::command::command_for_test(
+    let command = crate::codex_router::account_activation::command::command_for_test(
         std::path::Path::new("/opt/codex"),
         std::path::Path::new("/home/person"),
         std::path::Path::new("/profiles/a/.codex"),
@@ -19,7 +19,10 @@ fn command_is_exact_account_isolated_read_only_and_four_letter_prompt() {
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
     assert_eq!(args.last().map(String::as_str), Some("test"));
-    assert_eq!(super::super::command::PROMPT_FOR_TEST, "test");
+    assert_eq!(
+        crate::codex_router::account_activation::command::PROMPT_FOR_TEST,
+        "test"
+    );
     for expected in [
         "--ignore-user-config",
         "--ignore-rules",
@@ -55,7 +58,7 @@ fn catalogue_chooses_primary_visible_model_and_lowest_effort() {
       {"slug":"best","visibility":"list","supported_in_api":true,"priority":1,"supported_reasoning_levels":[{"effort":"high"},{"effort":"low"}]}
     ]}"#).unwrap();
     assert_eq!(
-        super::super::catalogue::best_for_test(path, NOW),
+        crate::codex_router::account_activation::catalogue::best_for_test(path, NOW),
         Some(ModelChoice {
             slug: Some("best".into()),
             reasoning: "low".into()
@@ -74,12 +77,16 @@ fn stale_or_other_account_catalogue_is_not_imposed_on_the_selected_account() {
         ]}"#,
     )
     .unwrap();
-    assert_eq!(super::super::catalogue::best_for_test(path, NOW), None);
+    assert_eq!(
+        crate::codex_router::account_activation::catalogue::best_for_test(path, NOW),
+        None
+    );
 
-    let choice = super::super::catalogue::best_for_profile(directory.path());
+    let choice =
+        crate::codex_router::account_activation::catalogue::best_for_profile(directory.path());
     assert_eq!(choice.slug, None);
     assert_eq!(choice.reasoning, "low");
-    let command = super::super::command::command_for_test(
+    let command = crate::codex_router::account_activation::command::command_for_test(
         std::path::Path::new("/opt/codex"),
         std::path::Path::new("/home/person"),
         directory.path(),

@@ -7,10 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use super::runtime::RUNTIME_VERSION;
 use super::settings::SETTINGS_VERSION;
 use super::{RotationRuntime, RotationSettings};
-use crate::storage::StoreUpdate;
-
-mod lock;
-use lock::lock_document;
+use crate::storage::{LockMode, PrivateFileLock, StoreUpdate};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RotationPaths {
@@ -178,4 +175,18 @@ fn write_json(path: &Path, value: &impl Serialize, label: &str) -> Result<()> {
     crate::storage::restrict_directory(parent)?;
     let bytes = serde_json::to_vec_pretty(value)?;
     crate::storage::write_private_atomic(path, &bytes, label)
+}
+
+fn lock_document(path: &Path, label: &str) -> Result<PrivateFileLock> {
+    let parent = path
+        .parent()
+        .with_context(|| format!("{label} path has no parent"))?;
+    fs::create_dir_all(parent).with_context(|| format!("creating {label} directory"))?;
+    crate::storage::restrict_directory(parent)?;
+    let mut name = path
+        .file_name()
+        .with_context(|| format!("{label} path has no file name"))?
+        .to_os_string();
+    name.push(".lock");
+    crate::storage::lock_private(&parent.join(name), label, LockMode::Blocking)
 }

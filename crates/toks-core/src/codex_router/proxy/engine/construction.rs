@@ -3,10 +3,12 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::codex_router::thread_source::ThreadSourceStore;
-use crate::rotation::{RotationRuntimeStore, RotationSettingsStore, WorkerConnectionOwner};
+use crate::rotation::{
+    RotationRuntimeStore, RotationSettingsStore, UnixMillis, WorkerConnectionOwner,
+};
 use crate::storage::StoreUpdate;
 
-use super::{now, Catalogue, Engine, RuntimeWriter, SharedCredentials};
+use super::{Catalogue, Engine, RuntimeWriter, SharedCredentials};
 
 pub(in crate::codex_router::proxy) struct EngineConfig {
     pub(in crate::codex_router::proxy) credentials: SharedCredentials,
@@ -41,7 +43,7 @@ impl Engine {
             thread_sources,
         } = config;
         let runtime = RuntimeWriter::new(runtime_store)?;
-        let observed_at = now();
+        let observed_at = UnixMillis::now();
         runtime.update(|state| {
             state.reconcile(&credentials.account_ids(), observed_at);
             if let Some(owner) = connection_owner {

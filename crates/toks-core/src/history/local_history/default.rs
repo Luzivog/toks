@@ -3,8 +3,8 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Result};
 use toks_ingest::accounting_delta::AccountingDeltaCollector;
 
-use super::super::HistorySnapshot;
 use super::backend::{HistoryBackend, RefreshBatch};
+use crate::history::HistorySnapshot;
 
 pub(super) struct DefaultBackend {
     collector: Mutex<CollectorSlot>,
@@ -33,7 +33,7 @@ impl HistoryBackend for DefaultBackend {
     }
 
     fn load_last_good(&self) -> Option<HistorySnapshot> {
-        super::super::cache::load()
+        crate::history::cache::load()
     }
 
     fn refresh(&self) -> Result<RefreshBatch> {
@@ -54,6 +54,6 @@ impl HistoryBackend for DefaultBackend {
     }
 
     fn store_last_good(&self, snapshot: &HistorySnapshot) -> Result<()> {
-        super::super::cache::store(snapshot)
+        crate::history::cache::store(snapshot)
     }
 }

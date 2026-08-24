@@ -4,8 +4,8 @@ use std::sync::Arc;
 use crate::codex_router::handoff::WorkerInstanceId;
 use crate::codex_router::host::GenerationId;
 
-use super::super::super::channel::AsyncChannel;
 use super::WorkerSlot;
+use crate::codex_router::host::process::channel::AsyncChannel;
 
 mod state;
 

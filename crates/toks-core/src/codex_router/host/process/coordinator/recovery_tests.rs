@@ -1,11 +1,11 @@
 use futures_util::FutureExt;
 use std::sync::{Arc, Mutex};
 
-use super::super::test_fixtures::{
-    accepting_worker, active_deployment, channel_pair, host_paths, ready_worker,
-};
 use super::core::Coordinator;
 use crate::codex_router::handoff::{Control, WorkerInstanceId};
+use crate::codex_router::host::process::test_fixtures::{
+    accepting_worker, active_deployment, channel_pair, host_paths, ready_worker,
+};
 use crate::codex_router::host::{
     BuildId, DeployPlan, DeploymentEvent, DeploymentState, GenerationId,
 };

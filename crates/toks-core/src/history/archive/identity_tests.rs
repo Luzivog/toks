@@ -7,8 +7,8 @@ use toks_ingest::sessions::{
 };
 use toks_ingest::TokenBreakdown;
 
-use super::super::materialize;
 use super::{reconcile_at, schema};
+use crate::history::materialize;
 
 const CAPTURED_AT: i64 = 1_776_508_800_000;
 

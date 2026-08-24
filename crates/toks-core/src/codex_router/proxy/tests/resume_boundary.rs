@@ -25,7 +25,7 @@ fn marker_must_be_a_canonical_uuid_and_is_never_forwarded() {
     incoming.insert("content-length", "7".parse().unwrap());
     incoming.insert("x-codex-test", "kept".parse().unwrap());
     incoming.insert("x-toks-resume-attempt", ATTEMPT.parse().unwrap());
-    let outgoing = super::super::headers::upstream_headers(
+    let outgoing = crate::codex_router::proxy::headers::upstream_headers(
         &incoming,
         &RouteCredential {
             account_id: AccountId::new("a"),
@@ -41,8 +41,8 @@ fn marker_must_be_a_canonical_uuid_and_is_never_forwarded() {
     assert!(!outgoing.contains_key("content-length"));
     assert!(!outgoing.contains_key("x-toks-resume-attempt"));
     assert_eq!(
-        super::super::headers::resume_marker(&incoming),
-        super::super::headers::ResumeMarker::Canonical(ATTEMPT)
+        crate::codex_router::proxy::headers::resume_marker(&incoming),
+        crate::codex_router::proxy::headers::ResumeMarker::Canonical(ATTEMPT)
     );
 
     incoming.insert(
@@ -50,23 +50,23 @@ fn marker_must_be_a_canonical_uuid_and_is_never_forwarded() {
         "00000000-0000-4000-8000-0000000000AA".parse().unwrap(),
     );
     assert_eq!(
-        super::super::headers::resume_marker(&incoming),
-        super::super::headers::ResumeMarker::Invalid
+        crate::codex_router::proxy::headers::resume_marker(&incoming),
+        crate::codex_router::proxy::headers::ResumeMarker::Invalid
     );
     incoming.insert(
         "x-toks-resume-attempt",
         "000000000000400080000000000000aa".parse().unwrap(),
     );
     assert_eq!(
-        super::super::headers::resume_marker(&incoming),
-        super::super::headers::ResumeMarker::Invalid
+        crate::codex_router::proxy::headers::resume_marker(&incoming),
+        crate::codex_router::proxy::headers::ResumeMarker::Invalid
     );
     incoming.remove("x-toks-resume-attempt");
     incoming.append("x-toks-resume-attempt", ATTEMPT.parse().unwrap());
     incoming.append("x-toks-resume-attempt", WRONG_ATTEMPT.parse().unwrap());
     assert_eq!(
-        super::super::headers::resume_marker(&incoming),
-        super::super::headers::ResumeMarker::Invalid
+        crate::codex_router::proxy::headers::resume_marker(&incoming),
+        crate::codex_router::proxy::headers::ResumeMarker::Invalid
     );
 }
 

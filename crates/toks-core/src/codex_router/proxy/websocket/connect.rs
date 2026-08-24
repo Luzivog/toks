@@ -6,11 +6,11 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Error as WsError;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
-use super::super::headers::upstream_headers;
-use super::super::protocol::usage_block;
-use super::super::types::RouteCredential;
-use super::super::ProxyState;
-use super::super::{engine::RouteSelection, headers::ResumeMarker};
+use crate::codex_router::proxy::headers::upstream_headers;
+use crate::codex_router::proxy::protocol::usage_block;
+use crate::codex_router::proxy::types::RouteCredential;
+use crate::codex_router::proxy::ProxyState;
+use crate::codex_router::proxy::{engine::RouteSelection, headers::ResumeMarker};
 use crate::rotation::{ThreadId, UsageLimitPhase, UsageLimitTier};
 
 pub(super) type UpstreamSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;

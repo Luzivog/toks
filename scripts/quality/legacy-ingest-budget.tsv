@@ -9,7 +9,7 @@ crates/toks-ingest/src/opencode_model_name.rs	276	0	0
 crates/toks-ingest/src/paths.rs	207	0	0
 crates/toks-ingest/src/pricing/custom.rs	399	0	0
 crates/toks-ingest/src/pricing/litellm.rs	332	0	0
-crates/toks-ingest/src/pricing/mod.rs	532	0	0
+crates/toks-ingest/src/pricing.rs	532	0	0
 crates/toks-ingest/src/pricing/openrouter.rs	347	0	0
 crates/toks-ingest/src/provider_identity.rs	315	0	0
 crates/toks-ingest/src/sessionize.rs	418	0	0
@@ -38,7 +38,7 @@ crates/toks-ingest/src/sessions/junie.rs	297	0	0
 crates/toks-ingest/src/sessions/kimi.rs	441	0	0
 crates/toks-ingest/src/sessions/kiro.rs	1407	0	0
 crates/toks-ingest/src/sessions/micode.rs	340	0	0
-crates/toks-ingest/src/sessions/mod.rs	352	0	0
+crates/toks-ingest/src/sessions.rs	352	0	0
 crates/toks-ingest/src/sessions/openclaw.rs	251	0	0
 crates/toks-ingest/src/sessions/opencode.rs	646	0	0
 crates/toks-ingest/src/sessions/pi.rs	405	0	0

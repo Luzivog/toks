@@ -1,6 +1,8 @@
 use crate::accounts::AccountId;
 
-use super::super::{account_auth::AuthFailure, RotationEventKind, RotationRuntime, UnixMillis};
+use crate::rotation::runtime::{
+    account_auth::AuthFailure, RotationEventKind, RotationRuntime, UnixMillis,
+};
 
 impl RotationRuntime {
     pub fn auth_failed(&mut self, account: &AccountId, at: UnixMillis) -> bool {

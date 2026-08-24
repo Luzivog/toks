@@ -11,7 +11,7 @@ use crate::rotation::account_quota_drain;
 use crate::rotation::{QuotaObservation, UnixMillis};
 use crate::storage::StoreUpdate;
 
-use super::super::{now, Engine};
+use crate::codex_router::proxy::engine::Engine;
 
 type AuthFailure = (u64, Option<UnixMillis>, Option<String>);
 
@@ -58,7 +58,7 @@ impl Engine {
                 (snapshot.account.id.clone(), observation)
             })
             .collect();
-        let at = now();
+        let at = UnixMillis::now();
         self.runtime.update(|runtime| {
             runtime.reconcile(&discovered, at);
             runtime.apply_quota_observations(&observations, at);
@@ -97,7 +97,7 @@ impl Engine {
     ) -> Result<()> {
         let discovered = self.credentials.account_ids();
         let candidates = quota_candidates(collection, &discovered);
-        let at = now();
+        let at = UnixMillis::now();
         self.runtime.update(|runtime| {
             runtime.reconcile(&discovered, at);
             for proof in &collection.codex_auth {

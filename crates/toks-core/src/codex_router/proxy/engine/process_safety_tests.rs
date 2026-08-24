@@ -10,11 +10,11 @@ use crate::rotation::{
 };
 use crate::storage::StoreUpdate;
 
-use super::super::catalogue::Catalogue;
-use super::super::types::{
+use super::{Engine, EngineConfig};
+use crate::codex_router::proxy::catalogue::Catalogue;
+use crate::codex_router::proxy::types::{
     CredentialFailure, CredentialSource, RouteCredential, SharedCredentials,
 };
-use super::{Engine, EngineConfig};
 
 mod auth_repair;
 mod cross_account;
@@ -224,7 +224,7 @@ async fn automatic_marker_selects_its_bound_account_after_priority_changes() {
         .second
         .select_for_thread_authorized(
             Some(&thread),
-            super::super::headers::ResumeMarker::Canonical(ATTEMPT),
+            crate::codex_router::proxy::headers::ResumeMarker::Canonical(ATTEMPT),
             &Default::default(),
         )
         .await
@@ -289,7 +289,7 @@ fn overlapping_engines_serialize_the_whole_read_modify_write() {
                 release_rx.recv().unwrap();
                 StoreUpdate::from_changed(
                     (),
-                    runtime.waiting(&ThreadId::new("first"), super::now()),
+                    runtime.waiting(&ThreadId::new("first"), UnixMillis::now()),
                 )
             })
             .unwrap();

@@ -7,10 +7,10 @@ use crate::codex_router::handoff::{Connection, HandoffId, WorkerInstanceId};
 use crate::codex_router::host::{BuildId, DeploymentState, GenerationId, GenerationStatus};
 
 use self::workers::Workers;
-use super::super::channel::AsyncChannel;
-use super::super::paths::HostPaths;
 use super::pending::Pending;
 use super::wait::DeploymentWait;
+use crate::codex_router::host::process::channel::AsyncChannel;
+use crate::codex_router::host::process::paths::HostPaths;
 
 mod admission;
 mod workers;

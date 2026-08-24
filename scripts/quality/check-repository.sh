@@ -10,6 +10,11 @@ declare -A toks_legacy_lines=()
 declare -A toks_legacy_internal_wildcards=()
 declare -A toks_legacy_public_wildcards=()
 
+while IFS= read -r -d '' toks_file; do
+    echo "mod.rs is not allowed; use a sibling module root: $toks_file" >&2
+    toks_errors=$((toks_errors + 1))
+done < <(find crates -type f -name mod.rs -print0)
+
 while IFS=$'\t' read -r toks_path toks_lines toks_internal toks_public; do
     [[ -n "$toks_path" && "$toks_path" != \#* ]] || continue
     toks_legacy_lines["$toks_path"]=$toks_lines

@@ -17,18 +17,3 @@ pub(super) fn confirmation_body(origin: AccountOrigin, provider: &str) -> String
     };
     format!("{action} Your {provider} usage history will be kept.")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{confirmation_body, AccountOrigin};
-
-    #[test]
-    fn removal_copy_matches_capability() {
-        assert!(confirmation_body(AccountOrigin::Managed, "Codex")
-            .contains("saved credentials will be removed"));
-        assert!(confirmation_body(AccountOrigin::Current, "Codex")
-            .contains("credentials will not be changed"));
-        assert!(confirmation_body(AccountOrigin::Mixed, "Claude Code")
-            .contains("profiles will be removed"));
-    }
-}

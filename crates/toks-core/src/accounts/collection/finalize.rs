@@ -1,6 +1,6 @@
 use crate::limits::{self, LimitIssue, LimitSnapshot, Provider, SnapshotStatus};
 
-use super::super::{account_email, AccountProfile, CodexAuthProof};
+use crate::accounts::{account_email, AccountProfile, CodexAuthProof};
 
 pub(super) struct CollectedProfile {
     pub(super) snapshot: LimitSnapshot,

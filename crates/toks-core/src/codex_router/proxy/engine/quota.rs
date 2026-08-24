@@ -8,7 +8,7 @@ use crate::rotation::{
 };
 use crate::storage::StoreUpdate;
 
-use super::{now, Engine};
+use super::Engine;
 
 const REPROBE_AFTER_MILLIS: i64 = 60_000;
 
@@ -38,7 +38,7 @@ impl Engine {
         if self.thread_sources.is_known_subagent(thread) {
             return Ok(());
         }
-        self.mutate(|runtime| runtime.waiting(thread, now()))
+        self.mutate(|runtime| runtime.waiting(thread, UnixMillis::now()))
     }
 
     pub fn release_reservation(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
@@ -46,7 +46,7 @@ impl Engine {
     }
 
     pub fn reserve_retry(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
-        let at = now();
+        let at = UnixMillis::now();
         self.runtime.update(
             |runtime| match runtime.reserve_thread(account, thread, at) {
                 Ok(()) => StoreUpdate::Changed(Ok(())),
@@ -79,7 +79,7 @@ impl Engine {
                 ResponseDelivery::NothingDelivered => FastLimitDisposition::RetryingStandard,
                 ResponseDelivery::Delivered => FastLimitDisposition::NextRequestUsesStandard,
             };
-            let at = now();
+            let at = UnixMillis::now();
             let window = block_window(account, reset);
             let outcome = self.runtime.update(|runtime| {
                 let (outcome, _material_changed) =
@@ -104,7 +104,7 @@ impl Engine {
         }
 
         let window = block_window(account, reset);
-        let at = now();
+        let at = UnixMillis::now();
         match thread {
             Some(thread) => self.runtime.update(|runtime| {
                 runtime.thread_blocked(account, thread, window, at);
@@ -125,7 +125,7 @@ impl Engine {
 
     #[cfg(test)]
     pub fn block_admission(&self, account: &AccountId, reset: Option<UnixMillis>) -> Result<()> {
-        let at = now();
+        let at = UnixMillis::now();
         let window = block_window(account, reset);
         self.runtime.update(|runtime| {
             runtime.block_admission(account, window, at);
@@ -139,7 +139,7 @@ impl Engine {
         reset: Option<UnixMillis>,
         incident: UsageLimitIncident,
     ) -> Result<()> {
-        let at = now();
+        let at = UnixMillis::now();
         let window = block_window(account, reset);
         self.runtime.update(|runtime| {
             runtime.block_admission(account, window, at);
@@ -150,7 +150,7 @@ impl Engine {
 }
 
 fn block_window(account: &AccountId, reset: Option<UnixMillis>) -> BlockWindow {
-    let at = now();
+    let at = UnixMillis::now();
     reset
         .filter(|until| *until > at)
         .or_else(|| known_drain_reset(account).filter(|until| *until > at))

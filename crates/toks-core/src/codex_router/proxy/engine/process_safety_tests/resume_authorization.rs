@@ -148,7 +148,7 @@ async fn exact_resume_admission_routes_the_grandfathered_thread_on_its_draining_
         .unwrap();
     assert!(matches!(
         threadless,
-        super::super::selection::RouteSelection::Selected(selected)
+        crate::codex_router::proxy::engine::selection::RouteSelection::Selected(selected)
             if selected.account_id == account
     ));
     assert_eq!(
@@ -156,6 +156,6 @@ async fn exact_resume_admission_routes_the_grandfathered_thread_on_its_draining_
             .second
             .route_authorized(&account, &thread, Some(CURRENT_ATTEMPT))
             .unwrap(),
-        Some(super::super::RouteTier::Fast)
+        Some(crate::codex_router::proxy::engine::RouteTier::Fast)
     );
 }

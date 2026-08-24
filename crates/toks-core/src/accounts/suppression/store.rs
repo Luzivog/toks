@@ -5,9 +5,9 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::limits::{LimitSnapshot, Provider};
 
-use super::super::{AccountId, CredentialProfileKind, ProviderAccount};
 use super::filtering::{retain_visible, update_for_observed_accounts};
 use super::model::{SuppressedAccount, SuppressionDocument, DOCUMENT_VERSION};
+use crate::accounts::{AccountId, CredentialProfileKind, ProviderAccount};
 
 static FILE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 

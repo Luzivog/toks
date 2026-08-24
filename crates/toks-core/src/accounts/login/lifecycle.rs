@@ -2,7 +2,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::limits::Provider;
 
-use super::super::CredentialProfileId;
+use crate::accounts::CredentialProfileId;
 
 mod registry;
 mod watcher;

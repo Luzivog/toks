@@ -23,17 +23,17 @@ pub(in crate::codex_router::resume) trait ResumeQueue {
     fn forget(&mut self, waiting: &WaitingThread, attempt: &str) -> Result<()>;
 }
 
-impl ResumeQueue for super::super::super::proxy::RouterRuntimeHandle {
+impl ResumeQueue for crate::codex_router::proxy::RouterRuntimeHandle {
     fn eligible_account(&mut self, thread: &ThreadId) -> Result<Option<AccountId>> {
-        super::super::super::proxy::RouterRuntimeHandle::eligible_account_for_thread(self, thread)
+        crate::codex_router::proxy::RouterRuntimeHandle::eligible_account_for_thread(self, thread)
     }
 
     fn waiting_threads(&mut self) -> Vec<WaitingThread> {
-        super::super::super::proxy::RouterRuntimeHandle::waiting_threads(self)
+        crate::codex_router::proxy::RouterRuntimeHandle::waiting_threads(self)
     }
 
     fn discard_waiting_entries(&mut self, discarded: &[WaitingThread]) -> Result<()> {
-        super::super::super::proxy::RouterRuntimeHandle::discard_waiting_entries(self, discarded)
+        crate::codex_router::proxy::RouterRuntimeHandle::discard_waiting_entries(self, discarded)
     }
 
     fn authorize(
@@ -42,7 +42,7 @@ impl ResumeQueue for super::super::super::proxy::RouterRuntimeHandle {
         attempt: &str,
         account: &AccountId,
     ) -> Result<ResumeAuthorization> {
-        super::super::super::proxy::RouterRuntimeHandle::authorize_resume(
+        crate::codex_router::proxy::RouterRuntimeHandle::authorize_resume(
             self, waiting, attempt, account,
         )
     }
@@ -54,7 +54,7 @@ impl ResumeQueue for super::super::super::proxy::RouterRuntimeHandle {
         terminal: ResumeTerminal,
         replacement: WaitingId,
     ) -> Result<Option<WaitingThread>> {
-        super::super::super::proxy::RouterRuntimeHandle::finish_resume(
+        crate::codex_router::proxy::RouterRuntimeHandle::finish_resume(
             self,
             waiting,
             attempt,
@@ -64,6 +64,6 @@ impl ResumeQueue for super::super::super::proxy::RouterRuntimeHandle {
     }
 
     fn forget(&mut self, waiting: &WaitingThread, attempt: &str) -> Result<()> {
-        super::super::super::proxy::RouterRuntimeHandle::forget_resume(self, waiting, attempt)
+        crate::codex_router::proxy::RouterRuntimeHandle::forget_resume(self, waiting, attempt)
     }
 }

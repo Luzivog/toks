@@ -14,6 +14,8 @@ mod account_removals;
 pub(crate) mod banked_reset_operations;
 mod history_task;
 mod navigation;
+#[cfg(test)]
+mod navigation_tests;
 mod page;
 pub(crate) mod remote_control_operations;
 mod rotation_operations;

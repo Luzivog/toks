@@ -1,7 +1,7 @@
 use crate::limits::LimitSnapshot;
 
-use super::super::{AccountIdentityKind, CredentialProfileKind};
 use super::model::{SuppressedAccount, SuppressionDocument};
+use crate::accounts::{AccountIdentityKind, CredentialProfileKind};
 
 pub(super) fn update_for_observed_accounts(
     document: &mut SuppressionDocument,

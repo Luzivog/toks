@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::accounts::AccountId;
 
-use super::super::{RotationRuntime, ThreadId};
+use crate::rotation::runtime::{RotationRuntime, ThreadId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadAccountConflict {

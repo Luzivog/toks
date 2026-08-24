@@ -317,7 +317,7 @@ fn permanently_poisoned_cleanup_does_not_block_other_progress() {
         .get_mut(&ThreadId::new("poisoned-cleanup"))
         .unwrap();
     original.phase = ResumePhase::Cleaning;
-    original.terminal = Some(super::super::state::ResumeTerminalState::Success);
+    original.terminal = Some(crate::codex_router::resume::state::ResumeTerminalState::Success);
     let mut second = original.clone();
     second.id = uuid::Uuid::new_v4().to_string();
     second.retry_waiting_id = WaitingId::for_attempt(&second.id);
@@ -370,7 +370,7 @@ fn failure_tombstone_stays_cleaning_until_forget_converges() {
     assert_eq!(attempt_state.phase, ResumePhase::Cleaning);
     assert_eq!(
         attempt_state.terminal,
-        Some(super::super::state::ResumeTerminalState::Failure)
+        Some(crate::codex_router::resume::state::ResumeTerminalState::Failure)
     );
     assert_eq!(harness.queue.0.borrow().admissions.len(), 1);
     assert_eq!(harness.queue.0.borrow().waiting.len(), 1);
@@ -400,7 +400,7 @@ fn cancelled_tombstone_stays_cleaning_until_forget_converges() {
     assert_eq!(attempt_state.phase, ResumePhase::Cleaning);
     assert_eq!(
         attempt_state.terminal,
-        Some(super::super::state::ResumeTerminalState::Cancelled)
+        Some(crate::codex_router::resume::state::ResumeTerminalState::Cancelled)
     );
     assert_eq!(harness.queue.0.borrow().admissions.len(), 1);
     assert_eq!(harness.queue.0.borrow().waiting.len(), 1);

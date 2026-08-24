@@ -4,15 +4,15 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use super::super::channel::{AsyncChannel, AsyncListener};
-use super::super::test_fixtures::{accepting_worker, fixture, tcp_pair};
-use super::super::worker::{run_with, Service};
 use super::core::Coordinator;
 use super::events::spawn_reader;
 use crate::codex_router::handoff::{
     Connection, Control, GenerationId as WireGenerationId, HandoffId, HandoffListener, Received,
     WorkerInstanceId,
 };
+use crate::codex_router::host::process::channel::{AsyncChannel, AsyncListener};
+use crate::codex_router::host::process::test_fixtures::{accepting_worker, fixture, tcp_pair};
+use crate::codex_router::host::process::worker::{run_with, Service};
 use crate::codex_router::host::GenerationId;
 
 #[tokio::test]

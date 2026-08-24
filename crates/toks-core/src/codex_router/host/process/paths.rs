@@ -3,7 +3,7 @@ use std::fs;
 use std::os::unix::fs::FileTypeExt;
 use std::path::{Path, PathBuf};
 
-use super::super::{BuildId, DeploymentState, GenerationId};
+use crate::codex_router::host::{BuildId, DeploymentState, GenerationId};
 
 mod worker_identity;
 
@@ -126,7 +126,7 @@ impl HostPaths {
     }
 }
 
-fn installed_build_id(value: Result<String, std::env::VarError>) -> Result<BuildId> {
+pub(super) fn installed_build_id(value: Result<String, std::env::VarError>) -> Result<BuildId> {
     let value = value.context("coordinator is missing its installed deployment build identity")?;
     BuildId::new(value).context("coordinator has an invalid installed deployment build identity")
 }
@@ -144,24 +144,4 @@ pub(super) fn load_state(path: &Path) -> Result<DeploymentState> {
 pub(super) fn save_state(path: &Path, state: &DeploymentState) -> Result<()> {
     let bytes = serde_json::to_vec_pretty(state)?;
     crate::storage::write_private_atomic(path, &bytes, "router deployment state")
-}
-
-#[cfg(test)]
-mod build_identity_tests {
-    use super::installed_build_id;
-
-    #[test]
-    fn baked_identity_does_not_depend_on_the_process_environment() {
-        let from_installer = installed_build_id(Ok("baked-at-install".into())).unwrap();
-        let from_manager = installed_build_id(Ok("baked-at-install".into())).unwrap();
-
-        assert_eq!(from_installer, from_manager);
-        assert_eq!(from_manager.as_str(), "baked-at-install");
-    }
-
-    #[test]
-    fn missing_or_blank_baked_identity_is_rejected() {
-        assert!(installed_build_id(Err(std::env::VarError::NotPresent)).is_err());
-        assert!(installed_build_id(Ok("  ".into())).is_err());
-    }
 }

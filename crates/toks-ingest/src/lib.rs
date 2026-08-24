@@ -24,6 +24,8 @@ pub mod scanner;
 pub mod sessionize;
 pub mod sessions;
 pub mod tui_signal;
+#[cfg(test)]
+mod tui_signal_tests;
 mod usage_reports;
 pub use aggregator::{
     aggregate_by_date, aggregate_by_session, calculate_intensities, calculate_summary,

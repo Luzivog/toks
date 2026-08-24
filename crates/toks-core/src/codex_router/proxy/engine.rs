@@ -186,7 +186,3 @@ fn validate_resume_attempt(attempt: &str) -> Result<()> {
     );
     Ok(())
 }
-
-pub(super) fn now() -> UnixMillis {
-    UnixMillis::now()
-}

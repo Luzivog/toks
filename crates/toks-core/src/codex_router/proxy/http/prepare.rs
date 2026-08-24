@@ -2,10 +2,10 @@ use axum::body::Bytes;
 
 use crate::rotation::{ThreadId, UsageLimitTier, UsageLimitTierOrigin};
 
-use super::super::engine::RouteTier;
-use super::super::protocol::{requested_model, requested_service_tier};
-use super::super::ProxyState;
 use super::request_body::{CodexHttpBody, RewriteError};
+use crate::codex_router::proxy::engine::RouteTier;
+use crate::codex_router::proxy::protocol::{requested_model, requested_service_tier};
+use crate::codex_router::proxy::ProxyState;
 
 pub(super) struct PreparedRequest {
     pub wire: Bytes,
@@ -49,7 +49,7 @@ pub(super) async fn request_body(
     Ok(prepared(rewritten.wire, rewritten.forced_fast, model, tier))
 }
 
-fn recorded_tier(
+pub(super) fn recorded_tier(
     original: &[u8],
     forwarded: &str,
     changed_origin: UsageLimitTierOrigin,
@@ -85,35 +85,5 @@ fn prepared(
         forced_fast,
         model,
         tier,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{recorded_tier, UsageLimitTierOrigin};
-    use crate::codex_router::proxy::protocol::with_service_tier;
-
-    #[test]
-    fn incident_observability_records_the_actual_client_fast_tier_on_a_standard_route() {
-        let original = r#"{"type":"response.create","service_tier":"priority"}"#;
-        let forwarded = with_service_tier(original, "default").unwrap();
-        assert_eq!(forwarded, original);
-
-        let tier = recorded_tier(
-            original.as_bytes(),
-            &forwarded,
-            UsageLimitTierOrigin::ToksStandardFallback,
-        );
-        assert_eq!(tier.effective(), Some("priority"));
-        assert_eq!(tier.origin(), UsageLimitTierOrigin::Client);
-
-        let default = r#"{"type":"response.create","service_tier":"default"}"#;
-        let tier = recorded_tier(
-            default.as_bytes(),
-            default,
-            UsageLimitTierOrigin::ToksStandardFallback,
-        );
-        assert_eq!(tier.effective(), Some("default"));
-        assert_eq!(tier.origin(), UsageLimitTierOrigin::ToksStandardFallback);
     }
 }

@@ -15,6 +15,8 @@ use response::{plain, usage_unavailable};
 
 mod attempt;
 mod prepare;
+#[cfg(test)]
+mod prepare_tests;
 mod request_body;
 mod response;
 mod stream;

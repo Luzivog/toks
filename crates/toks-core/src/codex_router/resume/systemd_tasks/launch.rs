@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
 
-use super::super::state::ResumeAttempt;
 use super::unit_name;
+use crate::codex_router::resume::state::ResumeAttempt;
 
 #[derive(Debug)]
 pub(super) struct TaskEnvironment(BTreeMap<String, String>);
@@ -94,7 +94,7 @@ pub(in crate::codex_router) fn execute(encoded: &str) -> Result<()> {
 }
 
 fn command(launch: TaskLaunch) -> Result<std::process::Command> {
-    super::super::state::validate_attempt_id(&launch.attempt)?;
+    crate::codex_router::resume::state::validate_attempt_id(&launch.attempt)?;
     crate::codex_router::systemd::validate_allowed_environment(&launch.environment)?;
     Ok(crate::codex_router::systemd::exact_command(
         Path::new(&launch.executable),

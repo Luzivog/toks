@@ -7,11 +7,11 @@ use toks_ingest::accounting_delta::{AccountingDeltaCollector, AccountingDeltaOpt
 use toks_ingest::bucket_tz::BucketTimezone;
 use toks_ingest::pricing::PricingService;
 
-use super::super::{archive, HistorySnapshot};
 use super::backend::RefreshBatch;
+use crate::history::{archive, HistorySnapshot};
 
 pub(super) fn refresh(collector: &mut AccountingDeltaCollector) -> Result<RefreshBatch> {
-    super::super::cache::preserve_legacy_snapshot();
+    crate::history::cache::preserve_legacy_snapshot();
     let scanner_settings = scanner_settings();
     if let Some(batch) = migrate_projection_before_ingest(&scanner_settings)? {
         return Ok(batch);
@@ -104,7 +104,7 @@ pub(super) fn hydrate_archive() -> Result<Option<RefreshBatch>> {
         .pending_sources
         .saturating_add(projection_backlog(&projection));
     let snapshot = builder.finish(projection);
-    super::super::validation::validate(&snapshot)?;
+    crate::history::validation::validate(&snapshot)?;
     Ok(Some(RefreshBatch {
         snapshot,
         pending_sources,
@@ -113,7 +113,7 @@ pub(super) fn hydrate_archive() -> Result<Option<RefreshBatch>> {
 }
 
 fn fallback_or_empty(pending_sources: usize) -> Result<RefreshBatch> {
-    let snapshot = super::super::cache::load().unwrap_or_else(|| HistorySnapshot {
+    let snapshot = crate::history::cache::load().unwrap_or_else(|| HistorySnapshot {
         generated_at_ms: Utc::now().timestamp_millis(),
         ..Default::default()
     });

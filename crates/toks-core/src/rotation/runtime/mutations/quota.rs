@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::accounts::AccountId;
 use crate::rotation::QuotaObservation;
 
-use super::super::{QuotaDrainState, RotationEventKind, RotationRuntime, UnixMillis};
+use crate::rotation::runtime::{QuotaDrainState, RotationEventKind, RotationRuntime, UnixMillis};
 
 const REPROBE_AFTER_MILLIS: i64 = 60_000;
 

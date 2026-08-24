@@ -3,9 +3,9 @@ use anyhow::Result;
 use crate::codex_router::handoff::Control;
 use crate::codex_router::host::{DeployPlan, DeploymentEvent};
 
-use super::super::paths::save_state;
 use super::core::Coordinator;
 use super::wait::WaitKey;
+use crate::codex_router::host::process::paths::save_state;
 
 impl Coordinator {
     pub(in crate::codex_router::host::process) async fn advance(&mut self) -> Result<()> {

@@ -16,10 +16,16 @@ mod launch_contract;
 mod lifecycle_lock;
 mod plan;
 mod readiness;
+#[cfg(test)]
+mod readiness_tests;
 mod receipt;
 mod resume_unit;
 mod runtime_process;
+#[cfg(test)]
+mod runtime_process_tests;
 mod socket_contract;
+#[cfg(test)]
+mod socket_contract_tests;
 mod uninstall;
 mod units;
 pub(in crate::codex_router) use launch_contract::coordinator_process_contract;

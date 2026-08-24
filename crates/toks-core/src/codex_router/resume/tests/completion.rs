@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn resume_terminal_state_wire_values_remain_stable() {
-    use super::super::state::ResumeTerminalState;
+    use crate::codex_router::resume::state::ResumeTerminalState;
 
     let states = [
         ResumeTerminalState::Success,
@@ -78,7 +78,7 @@ fn systemd_outcome_recovers_when_receipt_is_missing() {
 
 #[test]
 fn continuation_uses_exact_thread_argument_without_a_shell() {
-    let command = super::super::task_command::command_for_test(
+    let command = crate::codex_router::resume::task_command::command_for_test(
         std::path::Path::new("/opt/codex"),
         "00000000-0000-0000-0000-000000000001",
         &ThreadId::new("thread; literal"),
@@ -102,7 +102,7 @@ fn continuation_uses_exact_thread_argument_without_a_shell() {
             "resume",
             "--all",
             "thread; literal",
-            super::super::task_command::PROMPT_FOR_TEST,
+            crate::codex_router::resume::task_command::PROMPT_FOR_TEST,
         ]
     );
     assert_eq!(
@@ -133,7 +133,7 @@ fn outcome_paths_reject_non_uuid_attempts() {
 fn supervisor_tick_errors_include_the_full_cause_chain() {
     let error = anyhow::anyhow!("disk unavailable").context("saving resume state");
     assert_eq!(
-        super::super::tick_error_message(&error),
+        crate::codex_router::resume::tick_error_message(&error),
         "toks resume supervisor tick failed: saving resume state: disk unavailable"
     );
 }
@@ -146,7 +146,7 @@ fn nonzero_resume_exit_reports_the_exact_status_without_output() {
         .status()
         .unwrap();
     assert_eq!(
-        super::super::task_failure_message(status),
+        crate::codex_router::resume::task_failure_message(status),
         "resumed Codex task exited unsuccessfully (exit status: 23)"
     );
 }
@@ -154,7 +154,7 @@ fn nonzero_resume_exit_reports_the_exact_status_without_output() {
 #[tokio::test]
 async fn resume_spawn_failure_preserves_the_operating_system_cause() {
     let command = std::process::Command::new("/definitely/missing/toks-codex");
-    let error = super::super::task_command::execute(command)
+    let error = crate::codex_router::resume::task_command::execute(command)
         .await
         .unwrap_err();
     let message = format!("{error:#}");
@@ -199,7 +199,7 @@ fn persisted_attempt_phase_terminal_and_thread_invariants_are_validated() {
     harness.supervisor().tick(NOW).unwrap();
     let mut state = harness.store.load().unwrap();
     let attempt = state.attempts.values_mut().next().unwrap();
-    attempt.terminal = Some(super::super::state::ResumeTerminalState::Success);
+    attempt.terminal = Some(crate::codex_router::resume::state::ResumeTerminalState::Success);
     harness.store.save(&state).unwrap();
     assert!(harness
         .store
@@ -241,7 +241,7 @@ fn task_launch_rejects_a_persisted_workspace_retargeted_by_symlink() {
     std::fs::remove_dir(&harness.workspace).unwrap();
     symlink(&target, &harness.workspace).unwrap();
 
-    let error = super::super::task_workspace(
+    let error = crate::codex_router::resume::task_workspace(
         &state,
         &attempt.id,
         &attempt.waiting.thread_id,

@@ -39,6 +39,8 @@ mod retry;
 mod unit_reconciliation;
 mod wait;
 mod worker_unit;
+#[cfg(test)]
+mod worker_unit_tests;
 mod workers;
 
 pub(crate) async fn run(runtime: RouterRuntimeHandle) -> Result<()> {

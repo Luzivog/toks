@@ -16,11 +16,11 @@ impl Default for PageNavigation {
 }
 
 impl PageNavigation {
-    fn current(&self) -> Page {
+    pub(super) fn current(&self) -> Page {
         self.visited[self.cursor]
     }
 
-    fn visit(&mut self, page: Page) -> bool {
+    pub(super) fn visit(&mut self, page: Page) -> bool {
         if self.current() == page {
             return false;
         }
@@ -30,7 +30,7 @@ impl PageNavigation {
         true
     }
 
-    fn back(&mut self) -> bool {
+    pub(super) fn back(&mut self) -> bool {
         if self.cursor == 0 {
             return false;
         }
@@ -38,7 +38,7 @@ impl PageNavigation {
         true
     }
 
-    fn forward(&mut self) -> bool {
+    pub(super) fn forward(&mut self) -> bool {
         if self.cursor + 1 >= self.visited.len() {
             return false;
         }
@@ -62,23 +62,5 @@ impl ToksApp {
 
     pub(crate) fn navigate_forward(&mut self) -> bool {
         self.navigation.forward()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Page, PageNavigation};
-
-    #[test]
-    fn a_new_visit_replaces_forward_history_and_repeated_visits_are_ignored() {
-        let mut navigation = PageNavigation::default();
-        assert!(navigation.visit(Page::Rotation));
-        assert!(navigation.back());
-        assert_eq!(navigation.current(), Page::Overview);
-        assert!(navigation.visit(Page::Daily));
-        assert!(!navigation.visit(Page::Daily));
-        assert!(!navigation.forward());
-        assert!(navigation.back());
-        assert_eq!(navigation.current(), Page::Overview);
     }
 }

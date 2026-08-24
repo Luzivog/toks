@@ -28,7 +28,7 @@ pub(super) async fn run() -> Result<RemoteControlSnapshot> {
     bail!("Timed out waiting for the Remote Control relay after restarting Codex")
 }
 
-fn is_settled(snapshot: &RemoteControlSnapshot) -> bool {
+pub(super) fn is_settled(snapshot: &RemoteControlSnapshot) -> bool {
     matches!(
         snapshot.connection.status,
         RemoteConnectionStatus::Connected | RemoteConnectionStatus::Managed(_)
@@ -41,35 +41,4 @@ async fn pause() -> Result<()> {
         Ok(())
     })
     .await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_settled;
-    use crate::remote_control::{
-        RemoteConnection, RemoteConnectionStatus, RemoteControlOwner, RemoteControlSnapshot,
-    };
-
-    #[test]
-    fn only_terminal_relay_states_finish_reconnection() {
-        for (status, expected) in [
-            (RemoteConnectionStatus::Off, false),
-            (RemoteConnectionStatus::Connecting, false),
-            (RemoteConnectionStatus::Connected, true),
-            (
-                RemoteConnectionStatus::Managed(RemoteControlOwner::ChatGptDesktop),
-                true,
-            ),
-            (RemoteConnectionStatus::Errored, false),
-        ] {
-            let snapshot = RemoteControlSnapshot {
-                connection: RemoteConnection {
-                    status,
-                    server_name: None,
-                },
-                ..Default::default()
-            };
-            assert_eq!(is_settled(&snapshot), expected);
-        }
-    }
 }

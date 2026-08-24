@@ -3,14 +3,14 @@ use std::os::unix::fs::{symlink, PermissionsExt};
 
 use tempfile::tempdir;
 
-use super::super::launch_contract::{
+use super::executable;
+use crate::codex_router::systemd::launch_contract::{
     command_for_test, inspect, persist, LaunchContract, CONTRACT_NAME,
 };
-use super::super::persist_test_launch_contract;
-use super::super::receipt::render_units_test;
-use super::super::stage_generation;
-use super::super::units::UnitEnvironment;
-use super::executable;
+use crate::codex_router::systemd::persist_test_launch_contract;
+use crate::codex_router::systemd::receipt::render_units_test;
+use crate::codex_router::systemd::stage_generation;
+use crate::codex_router::systemd::units::UnitEnvironment;
 
 #[test]
 fn a_staged_build_from_one_prefix_is_recoverable_by_another_prefix() {

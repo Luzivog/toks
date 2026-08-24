@@ -6,6 +6,8 @@ use std::path::Path;
 use crate::accounts::AccountId;
 
 mod refresh;
+#[cfg(test)]
+mod refresh_tests;
 mod snapshot;
 use snapshot::preferred_snapshot;
 
@@ -87,24 +89,9 @@ fn expires_soon(token: &str) -> bool {
     token_expiry(token).is_some_and(|expiry| expiry <= Utc::now() + Duration::minutes(5))
 }
 
-fn token_expiry(token: &str) -> Option<chrono::DateTime<Utc>> {
+pub(super) fn token_expiry(token: &str) -> Option<chrono::DateTime<Utc>> {
     let payload = token.split('.').nth(1)?;
     let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
     let value = serde_json::from_slice::<Value>(&bytes).ok()?;
     chrono::DateTime::from_timestamp(value.get("exp")?.as_i64()?, 0)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::token_expiry;
-
-    #[test]
-    fn reads_jwt_expiry_without_trusting_other_claims() {
-        let payload = base64::Engine::encode(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            br#"{"exp":1893456000,"private":"ignored"}"#,
-        );
-        let expiry = token_expiry(&format!("header.{payload}.signature")).unwrap();
-        assert_eq!(expiry.timestamp(), 1_893_456_000);
-    }
 }

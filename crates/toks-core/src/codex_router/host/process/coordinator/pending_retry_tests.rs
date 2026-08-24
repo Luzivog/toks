@@ -1,7 +1,9 @@
-use super::super::test_fixtures::{accepting_worker, channel_pair, fixture, tcp_pair};
 use super::pending::{AbandonedStage, Pending, HANDOFF_SETTLE_TIMEOUT};
 use crate::codex_router::handoff::{
     Control, GenerationId as WireGenerationId, Received, WorkerInstanceId,
+};
+use crate::codex_router::host::process::test_fixtures::{
+    accepting_worker, channel_pair, fixture, tcp_pair,
 };
 
 #[tokio::test]

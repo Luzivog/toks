@@ -41,11 +41,11 @@ pub(super) struct LocalCredentials;
 
 impl CredentialSource for LocalCredentials {
     fn account_ids(&self) -> Vec<AccountId> {
-        super::super::credentials::account_ids()
+        crate::codex_router::credentials::account_ids()
     }
 
     fn incoming_account(&self, token: &str) -> Option<AccountId> {
-        super::super::credentials::incoming_token_account(token)
+        crate::codex_router::credentials::incoming_token_account(token)
     }
 
     fn credential<'a>(
@@ -53,7 +53,7 @@ impl CredentialSource for LocalCredentials {
         account: &'a AccountId,
     ) -> BoxFuture<'a, Result<RouteCredential, CredentialFailure>> {
         Box::pin(async move {
-            super::super::credentials::for_account(account)
+            crate::codex_router::credentials::for_account(account)
                 .await
                 .map(RouteCredential::from)
                 .map_err(CredentialFailure::from)
@@ -65,7 +65,7 @@ impl CredentialSource for LocalCredentials {
         account: &'a AccountId,
     ) -> BoxFuture<'a, Result<RouteCredential, CredentialFailure>> {
         Box::pin(async move {
-            super::super::credentials::refresh_account(account)
+            crate::codex_router::credentials::refresh_account(account)
                 .await
                 .map(RouteCredential::from)
                 .map_err(CredentialFailure::from)
@@ -73,8 +73,8 @@ impl CredentialSource for LocalCredentials {
     }
 }
 
-impl From<super::super::credentials::Credential> for RouteCredential {
-    fn from(value: super::super::credentials::Credential) -> Self {
+impl From<crate::codex_router::credentials::Credential> for RouteCredential {
+    fn from(value: crate::codex_router::credentials::Credential) -> Self {
         Self {
             account_id: value.account_id,
             access_token: value.access_token,
@@ -83,14 +83,16 @@ impl From<super::super::credentials::Credential> for RouteCredential {
     }
 }
 
-impl From<super::super::credentials::CredentialError> for CredentialFailure {
-    fn from(value: super::super::credentials::CredentialError) -> Self {
+impl From<crate::codex_router::credentials::CredentialError> for CredentialFailure {
+    fn from(value: crate::codex_router::credentials::CredentialError) -> Self {
         match value {
-            super::super::credentials::CredentialError::NeedsSignIn(reason) => {
+            crate::codex_router::credentials::CredentialError::NeedsSignIn(reason) => {
                 drop(reason);
                 Self::NeedsSignIn
             }
-            super::super::credentials::CredentialError::Temporary(error) => Self::Temporary(error),
+            crate::codex_router::credentials::CredentialError::Temporary(error) => {
+                Self::Temporary(error)
+            }
         }
     }
 }

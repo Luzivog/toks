@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use tempfile::tempdir;
 
-use super::super::LifecycleGuard;
+use crate::codex_router::systemd::LifecycleGuard;
 
 const CHILD_TEST: &str = "codex_router::systemd::tests::install_lock::installer_process";
 

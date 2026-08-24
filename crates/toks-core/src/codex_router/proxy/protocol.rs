@@ -1,6 +1,8 @@
 use serde_json::Value;
 
 mod lifecycle;
+#[cfg(test)]
+mod lifecycle_tests;
 mod request_frame;
 mod thread_identity;
 mod usage_limit;

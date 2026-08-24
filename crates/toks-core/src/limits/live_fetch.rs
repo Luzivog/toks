@@ -1,13 +1,10 @@
+use std::time::Duration;
+
 use serde_json::Value;
 
-use super::http::{get_json, LiveError};
-use super::{claude, LimitIssueKind, LimitSnapshot, Provider};
-use crate::accounts::{AccountProfile, CodexAuthProof};
-
-mod codex_live;
-#[cfg(test)]
-pub(crate) use codex_live::fetch_codex_for_test;
-pub(super) use codex_live::{codex_request_with_method, codex_tokens};
+use super::http::{get_json, get_typed_json, LiveError};
+use super::{claude, codex, LimitIssueKind, LimitSnapshot, Provider};
+use crate::accounts::{AccountProfile, CodexAuthProof, CodexAuthSnapshot};
 
 const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const CLAUDE_BETA_HEADER: &str = "oauth-2025-04-20";
@@ -21,7 +18,7 @@ pub(crate) fn fetch(profile: &AccountProfile) -> Result<LiveFetch, LiveError> {
     let (snapshot, codex_auth) = match profile.provider {
         Provider::Claude => (with_profile_identity(fetch_claude(profile)?, profile), None),
         Provider::Codex => {
-            let (snapshot, proof) = codex_live::fetch(profile)?;
+            let (snapshot, proof) = fetch_codex(profile)?;
             (snapshot, Some(proof))
         }
     };
@@ -73,4 +70,106 @@ fn with_profile_identity(mut snapshot: LimitSnapshot, profile: &AccountProfile) 
     snapshot.account = profile.account.clone();
     snapshot.account.email = snapshot.account.email.or(response_email);
     snapshot
+}
+
+const CODEX_USAGE_URL: &str = "https://chatgpt.com/backend-api/wham/usage";
+const RESET_CREDITS_URL: &str = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
+const RESET_CREDITS_TIMEOUT: Duration = Duration::from_secs(5);
+
+fn fetch_codex(profile: &AccountProfile) -> Result<(LimitSnapshot, CodexAuthProof), LiveError> {
+    fetch_codex_with(profile, CODEX_USAGE_URL, CodexAuthSnapshot::read)
+}
+
+fn fetch_codex_with(
+    profile: &AccountProfile,
+    url: &str,
+    read: fn(&AccountProfile) -> Result<CodexAuthSnapshot, String>,
+) -> Result<(LimitSnapshot, CodexAuthProof), LiveError> {
+    let auth = read(profile).map_err(|_| {
+        LiveError::new(
+            LimitIssueKind::Authentication,
+            "Codex sign-in is no longer valid",
+        )
+    })?;
+    let proof = auth.proof();
+    let value = get_json(|client| {
+        codex_request(
+            client,
+            url,
+            &auth.access_token,
+            auth.chatgpt_account_id.as_deref(),
+        )
+    })?;
+    let mut snapshot = codex::parse(&value, Some(chrono::Utc::now()), "live".into());
+    if snapshot.banked_resets > 0 {
+        set_reset_credit_details(
+            &mut snapshot,
+            fetch_reset_credits(&auth.access_token, auth.chatgpt_account_id.as_deref()).ok(),
+        );
+    }
+    Ok((ensure_windows(snapshot)?, proof))
+}
+
+fn fetch_reset_credits(
+    token: &str,
+    account_id: Option<&str>,
+) -> Result<codex::ResetCreditDetailsResponse, LiveError> {
+    get_typed_json(|client| {
+        codex_request(client, RESET_CREDITS_URL, token, account_id).timeout(RESET_CREDITS_TIMEOUT)
+    })
+}
+
+fn codex_request(
+    client: &reqwest::Client,
+    url: &str,
+    token: &str,
+    account_id: Option<&str>,
+) -> reqwest::RequestBuilder {
+    codex_request_with_method(client, reqwest::Method::GET, url, token, account_id)
+}
+
+pub(crate) fn codex_request_with_method(
+    client: &reqwest::Client,
+    method: reqwest::Method,
+    url: &str,
+    token: &str,
+    account_id: Option<&str>,
+) -> reqwest::RequestBuilder {
+    let mut request = client
+        .request(method, url)
+        .bearer_auth(token)
+        .header("Accept", "application/json")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        );
+    if let Some(id) = account_id {
+        request = request.header("ChatGPT-Account-Id", id);
+    }
+    request
+}
+
+pub(crate) fn codex_tokens(profile: &AccountProfile) -> Option<(String, Option<String>)> {
+    let auth = CodexAuthSnapshot::read(profile).ok()?;
+    Some((auth.access_token, auth.chatgpt_account_id))
+}
+
+pub(super) fn set_reset_credit_details(
+    snapshot: &mut LimitSnapshot,
+    details: Option<codex::ResetCreditDetailsResponse>,
+) {
+    snapshot.banked_reset_credits = details.map(codex::reset_credits_into_domain);
+}
+
+#[cfg(test)]
+pub(crate) fn fetch_codex_for_test(
+    profile: &AccountProfile,
+    url: &str,
+) -> Result<LiveFetch, LiveError> {
+    let (snapshot, proof) =
+        fetch_codex_with(profile, url, crate::accounts::read_codex_auth_for_test)?;
+    Ok(LiveFetch {
+        snapshot,
+        codex_auth: Some(proof),
+    })
 }

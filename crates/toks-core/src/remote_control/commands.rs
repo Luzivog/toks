@@ -9,7 +9,7 @@ use super::{RemoteConnection, RemoteConnectionStatus, RemotePairing};
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(100);
 
 #[derive(Clone, Copy)]
-enum Operation {
+pub(super) enum Operation {
     Enable,
     Reconnect,
     Disable,
@@ -98,7 +98,7 @@ pub(super) async fn run_at(executable: &Path, args: &[&str]) -> Result<Vec<u8>> 
     .await
 }
 
-fn arguments(operation: Operation) -> &'static [&'static str] {
+pub(super) fn arguments(operation: Operation) -> &'static [&'static str] {
     match operation {
         Operation::Enable => &["remote-control", "--json", "start"],
         Operation::Reconnect => &["app-server", "daemon", "restart"],
@@ -107,7 +107,7 @@ fn arguments(operation: Operation) -> &'static [&'static str] {
     }
 }
 
-fn parse_start(raw: &[u8]) -> Result<(RemoteConnection, Option<String>)> {
+pub(super) fn parse_start(raw: &[u8]) -> Result<(RemoteConnection, Option<String>)> {
     let output: StartOutput = serde_json::from_slice(raw).context("reading Codex Remote status")?;
     Ok((
         RemoteConnection {
@@ -118,7 +118,7 @@ fn parse_start(raw: &[u8]) -> Result<(RemoteConnection, Option<String>)> {
     ))
 }
 
-fn parse_pairing(raw: &[u8]) -> Result<RemotePairing> {
+pub(super) fn parse_pairing(raw: &[u8]) -> Result<RemotePairing> {
     let output: PairingOutput =
         serde_json::from_slice(raw).context("reading Codex pairing response")?;
     Ok(RemotePairing {
@@ -139,50 +139,5 @@ impl From<WireStatus> for RemoteConnectionStatus {
             WireStatus::Connected => Self::Connected,
             WireStatus::Errored => Self::Errored,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{arguments, parse_pairing, parse_start, Operation};
-    use crate::remote_control::RemoteConnectionStatus;
-
-    #[test]
-    fn parses_machine_readable_lifecycle_and_pairing_output() {
-        let (connection, environment) = parse_start(
-            br#"{"mode":"daemon","status":"connected","serverName":"workstation","environmentId":"env","timedOut":false}"#,
-        )
-        .unwrap();
-        assert_eq!(connection.status, RemoteConnectionStatus::Connected);
-        assert_eq!(connection.server_name.as_deref(), Some("workstation"));
-        assert_eq!(environment.as_deref(), Some("env"));
-
-        let pairing = parse_pairing(
-            br#"{"pairingCode":"opaque","manualPairingCode":"ABCD-EFGH","environmentId":"env","expiresAt":1777000000}"#,
-        )
-        .unwrap();
-        assert_eq!(pairing.manual_code, "ABCD-EFGH");
-        assert_eq!(pairing.environment_id, "env");
-        assert_eq!(pairing.expires_at, 1_777_000_000);
-    }
-
-    #[test]
-    fn lifecycle_commands_use_durable_machine_readable_operations() {
-        assert_eq!(
-            arguments(Operation::Enable),
-            ["remote-control", "--json", "start"]
-        );
-        assert_eq!(
-            arguments(Operation::Reconnect),
-            ["app-server", "daemon", "restart"]
-        );
-        assert_eq!(
-            arguments(Operation::Disable),
-            ["app-server", "daemon", "disable-remote-control"]
-        );
-        assert_eq!(
-            arguments(Operation::Pair),
-            ["remote-control", "--json", "pair"]
-        );
     }
 }

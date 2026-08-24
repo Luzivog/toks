@@ -58,7 +58,7 @@ fn cancellation_committed_after_authorization_prevents_launch() {
     let thread = ThreadId::new("cancel-after-authorization");
     let waiting = harness.queue.0.borrow().waiting[0].clone();
     let id = uuid::Uuid::new_v4().to_string();
-    let attempt = super::super::state::ResumeAttempt {
+    let attempt = crate::codex_router::resume::state::ResumeAttempt {
         retry_waiting_id: WaitingId::for_attempt(&id),
         id,
         account: AccountId::new("account"),
@@ -67,7 +67,7 @@ fn cancellation_committed_after_authorization_prevents_launch() {
         phase: ResumePhase::Authorizing,
         terminal: None,
     };
-    let mut state = super::super::state::ResumeState::default();
+    let mut state = crate::codex_router::resume::state::ResumeState::default();
     state.attempts.insert(thread.clone(), attempt.clone());
     harness.store.save(&state).unwrap();
     harness
@@ -80,7 +80,7 @@ fn cancellation_committed_after_authorization_prevents_launch() {
             .supervisor()
             .authorize(&mut state, &thread, &attempt)
             .unwrap(),
-        super::super::supervisor::AuthorizationOutcome::Cancelled
+        crate::codex_router::resume::supervisor::AuthorizationOutcome::Cancelled
     );
 
     assert!(harness.store.load().unwrap().attempts.is_empty());

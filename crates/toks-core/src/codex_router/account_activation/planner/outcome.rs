@@ -1,7 +1,7 @@
 use crate::accounts::AccountId;
 
-use super::super::job;
-use super::super::model::{Document, FailureReason, JobPhase};
+use crate::codex_router::account_activation::job;
+use crate::codex_router::account_activation::model::{Document, FailureReason, JobPhase};
 
 pub(in crate::codex_router::account_activation) fn finish(
     document: &mut Document,

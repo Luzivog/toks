@@ -63,17 +63,6 @@ pub(super) fn age(now: DateTime<Utc>, at: UnixMillis) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-fn datetime(at: UnixMillis) -> Option<DateTime<Utc>> {
+pub(super) fn datetime(at: UnixMillis) -> Option<DateTime<Utc>> {
     DateTime::from_timestamp_millis(at.get())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::datetime;
-    use toks_core::rotation::UnixMillis;
-
-    #[test]
-    fn invalid_unix_millis_does_not_invent_a_date() {
-        assert!(datetime(UnixMillis::new(i64::MAX)).is_none());
-    }
 }

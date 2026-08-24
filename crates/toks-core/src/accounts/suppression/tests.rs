@@ -2,12 +2,12 @@ use std::fs;
 
 use crate::limits::{LimitSnapshot, Provider};
 
-use super::super::{
+use super::store::SuppressionStore;
+use super::unhide_profile_from;
+use crate::accounts::{
     AccountId, AccountIdentityKind, AccountProfile, AccountSource, CredentialProfileId,
     CredentialProfileKind, ProviderAccount,
 };
-use super::store::SuppressionStore;
-use super::unhide_profile_from;
 
 #[test]
 fn current_hide_persists_without_provider_identity_material() {

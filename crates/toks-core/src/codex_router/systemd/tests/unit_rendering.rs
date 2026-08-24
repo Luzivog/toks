@@ -2,8 +2,8 @@ use std::path::Path;
 
 use crate::codex_router::host::BuildId;
 
-use super::super::resume_unit;
-use super::super::units::{
+use crate::codex_router::systemd::resume_unit;
+use crate::codex_router::systemd::units::{
     render_service_unit, render_socket_unit, render_worker_unit, UnitEnvironment,
 };
 

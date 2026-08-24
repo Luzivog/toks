@@ -6,6 +6,8 @@ use super::{AccountId, AccountSource, CredentialProfileId};
 
 mod identity;
 #[cfg(test)]
+mod identity_tests;
+#[cfg(test)]
 pub(crate) use identity::codex_auth_account_id_for_test;
 pub(crate) use identity::{codex_auth_account_id, provider_principal_id};
 

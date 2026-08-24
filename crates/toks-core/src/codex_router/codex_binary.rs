@@ -23,7 +23,7 @@ pub(crate) fn discover() -> Result<PathBuf> {
     bail!("Codex CLI was not found; install it before enabling rotation")
 }
 
-fn validate(path: PathBuf) -> Result<PathBuf> {
+pub(super) fn validate(path: PathBuf) -> Result<PathBuf> {
     let requested = path.display().to_string();
     let canonical = path
         .canonicalize()
@@ -49,32 +49,4 @@ fn is_executable(path: &Path) -> bool {
     }
     #[cfg(not(unix))]
     metadata.is_file()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::os::unix::fs::{symlink, PermissionsExt};
-
-    use tempfile::tempdir;
-
-    #[test]
-    fn discovery_validation_pins_the_canonical_executable() {
-        let directory = tempdir().unwrap();
-        let bin = directory.path().join("bin");
-        let real = directory.path().join("real/codex");
-        fs::create_dir_all(&bin).unwrap();
-        fs::create_dir_all(real.parent().unwrap()).unwrap();
-        fs::write(&real, b"#!/bin/sh\n").unwrap();
-        fs::set_permissions(&real, fs::Permissions::from_mode(0o755)).unwrap();
-        let alias = bin.join("codex");
-        symlink(&real, &alias).unwrap();
-
-        let found = super::validate(bin.join("../bin/codex")).unwrap();
-
-        assert_eq!(found, real.canonicalize().unwrap());
-        fs::remove_file(&alias).unwrap();
-        symlink("/bin/false", &alias).unwrap();
-        assert_eq!(found, real.canonicalize().unwrap());
-    }
 }

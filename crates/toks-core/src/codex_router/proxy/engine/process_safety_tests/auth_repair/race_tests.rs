@@ -4,10 +4,10 @@ use crate::accounts::AccountId;
 use crate::codex_router::thread_source::ThreadSourceStore;
 use crate::rotation::{RotationRuntimeStore, RotationSettings, RotationSettingsStore, ThreadId};
 
-use super::super::super::super::catalogue::Catalogue;
-use super::super::super::super::types::SharedCredentials;
-use super::super::super::{Engine, EngineConfig};
 use super::{credential_with_token, CredentialState, RepairableCredentials};
+use crate::codex_router::proxy::catalogue::Catalogue;
+use crate::codex_router::proxy::engine::{Engine, EngineConfig};
+use crate::codex_router::proxy::types::SharedCredentials;
 
 #[tokio::test]
 async fn a_newer_unauthorized_response_wins_over_an_inflight_repair_proof() {

@@ -2,14 +2,16 @@ use futures_util::FutureExt;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use super::super::channel::{AsyncChannel, AsyncListener};
-use super::super::paths::{load_state, save_state, HostPaths};
-use super::super::test_fixtures::{active_deployment, connected_worker, host_paths};
-use super::super::worker::{run_with, Service};
 use super::core::Coordinator;
 use crate::codex_router::handoff::{
     Control, GenerationId as WireGenerationId, HandoffListener, Received, WorkerInstanceId,
 };
+use crate::codex_router::host::process::channel::{AsyncChannel, AsyncListener};
+use crate::codex_router::host::process::paths::{load_state, save_state, HostPaths};
+use crate::codex_router::host::process::test_fixtures::{
+    active_deployment, connected_worker, host_paths,
+};
+use crate::codex_router::host::process::worker::{run_with, Service};
 use crate::codex_router::host::{DeploymentState, GenerationId};
 
 const STEP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);

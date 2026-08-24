@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::super::protocol::{ClientRequestFrame, ThreadIdentity, BAD_THREAD_FRAME};
 use super::*;
+use crate::codex_router::proxy::protocol::{ClientRequestFrame, ThreadIdentity, BAD_THREAD_FRAME};
 use crate::rotation::{ResumeAuthorization, ThreadId};
 use tokio_tungstenite::tungstenite::Error as WsError;
 

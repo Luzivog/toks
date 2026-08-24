@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::accounts::AccountId;
 
-use super::super::{waiting::is_canonical_uuid, ThreadId, WaitingId, WaitingThread};
+use crate::rotation::runtime::{waiting::is_canonical_uuid, ThreadId, WaitingId, WaitingThread};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumeAuthorization {

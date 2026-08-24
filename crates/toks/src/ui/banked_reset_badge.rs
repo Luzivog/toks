@@ -40,29 +40,9 @@ pub(super) fn banked_reset_badge(
     )
 }
 
-fn banked_reset_label(provider: Provider, count: u64) -> Option<String> {
+pub(super) fn banked_reset_label(provider: Provider, count: u64) -> Option<String> {
     (provider == Provider::Codex && count > 0).then(|| match count {
         1 => "1 reset".to_string(),
         count => format!("{count} resets"),
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::banked_reset_label;
-    use toks_core::Provider;
-
-    #[test]
-    fn labels_positive_codex_resets_only() {
-        assert_eq!(
-            banked_reset_label(Provider::Codex, 1).as_deref(),
-            Some("1 reset")
-        );
-        assert_eq!(
-            banked_reset_label(Provider::Codex, 3).as_deref(),
-            Some("3 resets")
-        );
-        assert_eq!(banked_reset_label(Provider::Codex, 0), None);
-        assert_eq!(banked_reset_label(Provider::Claude, 3), None);
-    }
 }

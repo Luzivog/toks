@@ -15,7 +15,7 @@ pub(super) async fn run(launch: &Launch) -> Result<(), FailureReason> {
     let model = super::catalogue::best_for_profile(&config);
     let home = toks_ingest::paths::home_dir().ok_or(FailureReason::ProfileUnavailable)?;
     let executable =
-        super::super::codex_binary::discover().map_err(|_| FailureReason::SpawnFailed)?;
+        crate::codex_router::codex_binary::discover().map_err(|_| FailureReason::SpawnFailed)?;
     let command = command(&executable, &home, &config, &model);
     run_bounded(command).await
 }
@@ -34,7 +34,7 @@ fn exact_profile(launch: &Launch) -> Option<PathBuf> {
 }
 
 fn command(executable: &Path, home: &Path, config: &Path, model: &ModelChoice) -> Command {
-    let mut environment = super::super::systemd::allowed_environment();
+    let mut environment = crate::codex_router::systemd::allowed_environment();
     environment.insert("CODEX_HOME".into(), config.to_string_lossy().into_owned());
     environment.insert("HOME".into(), home.to_string_lossy().into_owned());
     // GNU timeout remains the task owner if the Toks process is killed, so the

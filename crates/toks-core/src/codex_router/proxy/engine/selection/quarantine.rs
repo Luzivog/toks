@@ -1,8 +1,8 @@
 use anyhow::Result;
 
-use super::super::super::types::{CredentialFailure, RouteCredential};
-use super::super::Engine;
 use super::verified_credential;
+use crate::codex_router::proxy::engine::Engine;
+use crate::codex_router::proxy::types::{CredentialFailure, RouteCredential};
 
 impl Engine {
     pub async fn refresh(&self, rejected: &RouteCredential) -> Result<Option<RouteCredential>> {

@@ -2,12 +2,12 @@ use anyhow::Context;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::{read_auth, CredentialError, StoredAuth};
-
-mod lock;
+use crate::storage::{LockMode, PrivateFileLock};
 
 const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -30,12 +30,12 @@ pub(super) async fn refresh(path: &Path, auth: &StoredAuth) -> Result<StoredAuth
     refresh_at(path, auth, TOKEN_URL).await
 }
 
-async fn refresh_at(
+pub(super) async fn refresh_at(
     path: &Path,
     auth: &StoredAuth,
     endpoint: &str,
 ) -> Result<StoredAuth, CredentialError> {
-    let _lock = lock::RefreshLock::acquire(path)
+    let _lock = RefreshLock::acquire(path)
         .await
         .map_err(CredentialError::Temporary)?;
     let current = read_auth(path).map_err(CredentialError::NeedsSignIn)?;
@@ -142,5 +142,27 @@ fn refresh_error(body: &str) -> String {
         .unwrap_or_else(|| "Codex sign-in needs to be renewed".to_string())
 }
 
-#[cfg(test)]
-mod tests;
+struct RefreshLock {
+    _file: PrivateFileLock,
+}
+
+impl RefreshLock {
+    async fn acquire(auth_path: &Path) -> anyhow::Result<Self> {
+        let path = lock_path(auth_path);
+        tokio::task::spawn_blocking(move || Self::acquire_blocking(&path))
+            .await
+            .context("joining Codex credential refresh lock task")?
+    }
+
+    fn acquire_blocking(path: &Path) -> anyhow::Result<Self> {
+        let file =
+            crate::storage::lock_private(path, "Codex credential refresh", LockMode::Blocking)
+                .context("locking Codex credential refresh")?;
+        Ok(Self { _file: file })
+    }
+}
+
+fn lock_path(auth_path: &Path) -> PathBuf {
+    let canonical = fs::canonicalize(auth_path).unwrap_or_else(|_| auth_path.to_path_buf());
+    canonical.with_file_name(".toks-codex-refresh.lock")
+}

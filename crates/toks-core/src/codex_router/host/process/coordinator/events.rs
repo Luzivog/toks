@@ -4,7 +4,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::codex_router::handoff::{Control, Received, WorkerInstanceId};
 use crate::codex_router::host::GenerationId;
 
-use super::super::channel::AsyncChannel;
+use crate::codex_router::host::process::channel::AsyncChannel;
 
 pub(super) enum WorkerEvent {
     Connected {

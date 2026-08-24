@@ -8,13 +8,13 @@ use futures_util::StreamExt;
 use crate::accounts::AccountId;
 use crate::rotation::{ThreadId, UsageLimitPhase, UsageLimitTier};
 
-use super::super::engine::{AttemptedTier, ResponseDelivery, UsageLimitAction};
-use super::super::headers::response_headers;
-use super::super::lease::StreamLease;
-use super::super::protocol::{usage_block, ResponseLifecycle};
-use super::super::ProxyState;
 use super::response::{body_is_identity_encoded, build_response};
 use super::stream;
+use crate::codex_router::proxy::engine::{AttemptedTier, ResponseDelivery, UsageLimitAction};
+use crate::codex_router::proxy::headers::response_headers;
+use crate::codex_router::proxy::lease::StreamLease;
+use crate::codex_router::proxy::protocol::{usage_block, ResponseLifecycle};
+use crate::codex_router::proxy::ProxyState;
 
 const MAX_SSE_PREFETCH_BYTES: usize = 4 * 1024 * 1024;
 

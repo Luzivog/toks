@@ -1,6 +1,6 @@
-use super::super::model::DeployError;
-use super::super::{DeploymentEvent, DeploymentState, RetryId};
 use super::{build, stage};
+use crate::codex_router::host::model::DeployError;
+use crate::codex_router::host::{DeploymentEvent, DeploymentState, RetryId};
 
 #[test]
 fn retry_ids_accept_only_canonical_uuids_and_the_legacy_sentinel() {

@@ -3,14 +3,14 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::super::channel::AsyncChannel;
-use super::super::test_fixtures::{
-    accepting_worker, active_deployment, channel_pair, host_paths, ready_worker,
-};
 use super::core::Coordinator;
 use super::wait::WaitKey;
 use super::worker_unit::Liveness;
 use crate::codex_router::handoff::{Control, Received, WorkerInstanceId};
+use crate::codex_router::host::process::channel::AsyncChannel;
+use crate::codex_router::host::process::test_fixtures::{
+    accepting_worker, active_deployment, channel_pair, host_paths, ready_worker,
+};
 use crate::codex_router::host::{
     BuildId, DeployPlan, DeploymentEvent, DeploymentState, GenerationId, GenerationStatus,
 };

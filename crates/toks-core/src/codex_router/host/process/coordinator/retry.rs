@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use super::super::paths::save_state;
 use super::core::Coordinator;
+use crate::codex_router::host::process::paths::save_state;
 
 impl Coordinator {
     pub(super) fn consume_retry_intent(&mut self) -> Result<bool> {

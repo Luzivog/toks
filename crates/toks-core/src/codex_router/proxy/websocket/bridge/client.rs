@@ -2,17 +2,17 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::SinkExt;
 use tokio_tungstenite::tungstenite::Message as ServerMessage;
 
-use super::super::super::lease::{StreamLease, ThreadAttachment};
-use super::super::super::protocol::{ClientRequestFrame, ThreadIdentity, RETRY_FRAME};
-use super::super::super::Engine;
-use super::super::connect::UpstreamSocket;
 use super::message::to_server;
 use super::{admission, usage_limit, Turn};
 use crate::accounts::AccountId;
+use crate::codex_router::proxy::lease::{StreamLease, ThreadAttachment};
+use crate::codex_router::proxy::protocol::{
+    requested_model, requested_service_tier, with_service_tier, ClientRequestFrame, ThreadIdentity,
+    RETRY_FRAME,
+};
+use crate::codex_router::proxy::websocket::connect::UpstreamSocket;
+use crate::codex_router::proxy::{engine::RouteTier, Engine};
 use crate::rotation::UsageLimitTierOrigin;
-
-mod upgrade;
-use upgrade::upgraded_request;
 
 pub(super) async fn handle(
     client: &mut WebSocket,
@@ -52,22 +52,22 @@ pub(super) async fn handle(
                     requested_thread.as_ref(),
                     turn.resume_attempt.as_deref(),
                 ) {
-                    Ok(super::super::super::engine::RouteSelection::Selected(selected))
+                    Ok(crate::codex_router::proxy::engine::RouteSelection::Selected(selected))
                         if &selected != account =>
                     {
                         client.send(Message::Text(RETRY_FRAME.into())).await.ok()?;
                         return None;
                     }
-                    Ok(super::super::super::engine::RouteSelection::ResumeDenied) => {
+                    Ok(crate::codex_router::proxy::engine::RouteSelection::ResumeDenied) => {
                         admission::reject(client).await?;
                         return None;
                     }
-                    Ok(super::super::super::engine::RouteSelection::Unavailable) => {
+                    Ok(crate::codex_router::proxy::engine::RouteSelection::Unavailable) => {
                         usage_limit::wait(engine, &requested_thread);
                         admission::reject(client).await?;
                         return None;
                     }
-                    Ok(super::super::super::engine::RouteSelection::Selected(_)) => {}
+                    Ok(crate::codex_router::proxy::engine::RouteSelection::Selected(_)) => {}
                     Err(_) => return None,
                 }
                 attach(engine, account, turn, requested_thread.as_ref(), client).await?;
@@ -156,4 +156,43 @@ async fn open_lease(
 async fn retry(client: &mut WebSocket) -> Option<()> {
     let _ = client.send(Message::Text(RETRY_FRAME.into())).await;
     None
+}
+
+fn upgraded_request(
+    engine: &Engine,
+    turn: &Turn,
+    text: &str,
+) -> Option<(String, Option<String>, UsageLimitTierOrigin)> {
+    match turn
+        .lease
+        .as_ref()
+        .map_or(RouteTier::Original, StreamLease::tier)
+    {
+        RouteTier::Original => None,
+        RouteTier::Standard => with_service_tier(text, "default").map(|body| {
+            let preserved_fast = body == text
+                && requested_service_tier(text)
+                    .as_deref()
+                    .is_some_and(|tier| matches!(tier, "fast" | "priority" | "ultrafast"));
+            let origin = if preserved_fast {
+                UsageLimitTierOrigin::Client
+            } else {
+                UsageLimitTierOrigin::ToksStandardFallback
+            };
+            (body, None, origin)
+        }),
+        RouteTier::Fast => requested_model(text)
+            .and_then(|model| engine.fast_tier_for(&model))
+            .and_then(|tier| with_service_tier(text, tier))
+            .map(|body| {
+                let fallback = (body != text)
+                    .then(|| with_service_tier(text, "default").unwrap_or_else(|| text.to_owned()));
+                let origin = if fallback.is_some() {
+                    UsageLimitTierOrigin::ToksForcedFast
+                } else {
+                    UsageLimitTierOrigin::Client
+                };
+                (body, fallback, origin)
+            }),
+    }
 }

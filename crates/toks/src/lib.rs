@@ -1,6 +1,8 @@
 //! Toks application library and deterministic test seam.
 
 mod app;
+#[cfg(test)]
+mod app_tests;
 mod history_refresh;
 mod palette;
 mod shell;
@@ -162,6 +164,3 @@ pub mod test_support {
         };
     }
 }
-
-#[cfg(test)]
-mod app_tests;

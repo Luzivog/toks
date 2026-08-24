@@ -2,12 +2,12 @@ use futures_util::FutureExt;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use super::super::channel::AsyncChannel;
-use super::super::test_fixtures::channel_pair;
 use super::{session, Handoffs, Service, WorkerState};
 use crate::codex_router::handoff::{
     Control, GenerationId as WireGenerationId, Received, WorkerInstanceId,
 };
+use crate::codex_router::host::process::channel::AsyncChannel;
+use crate::codex_router::host::process::test_fixtures::channel_pair;
 use crate::codex_router::host::GenerationId;
 
 #[tokio::test(flavor = "current_thread")]

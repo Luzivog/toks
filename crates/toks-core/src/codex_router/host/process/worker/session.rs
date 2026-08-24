@@ -6,8 +6,8 @@ use crate::codex_router::handoff::{
 };
 use crate::codex_router::host::GenerationId;
 
-use super::super::channel::AsyncChannel;
 use super::{connection, Service, WorkerState};
+use crate::codex_router::host::process::channel::AsyncChannel;
 
 pub(super) enum SessionEnd {
     Drained,

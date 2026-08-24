@@ -2,9 +2,9 @@ use std::fs;
 
 use tempfile::tempdir;
 
-use super::super::receipt::failed_candidate;
 use super::activate;
 use crate::codex_router::host::{BuildId, DeployPlan, DeploymentEvent, DeploymentState, RetryId};
+use crate::codex_router::systemd::receipt::failed_candidate;
 
 #[test]
 fn retired_retry_shadows_older_failure_across_install_and_host_planning() {

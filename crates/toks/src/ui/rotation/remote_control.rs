@@ -52,7 +52,7 @@ pub(super) fn row(app: &ToksApp, cx: &gpui::App) -> gpui::Div {
         )
 }
 
-fn status_label(status: RemoteConnectionStatus) -> &'static str {
+pub(super) fn status_label(status: RemoteConnectionStatus) -> &'static str {
     match status {
         RemoteConnectionStatus::Off => "Off",
         RemoteConnectionStatus::Connecting => "Connecting",
@@ -99,20 +99,4 @@ fn control_account(app: &ToksApp) -> Option<&LimitSnapshot> {
                 .iter()
                 .any(|source| source.kind == CredentialProfileKind::Current)
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::status_label;
-    use toks_core::remote_control::{RemoteConnectionStatus, RemoteControlOwner};
-
-    #[test]
-    fn desktop_ownership_has_compact_copy() {
-        assert_eq!(
-            status_label(RemoteConnectionStatus::Managed(
-                RemoteControlOwner::ChatGptDesktop
-            )),
-            "On via ChatGPT"
-        );
-    }
 }

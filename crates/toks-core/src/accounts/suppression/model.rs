@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::limits::Provider;
 
-use super::super::{AccountId, CredentialProfileId};
+use crate::accounts::{AccountId, CredentialProfileId};
 
 pub(super) const DOCUMENT_VERSION: u8 = 1;
 

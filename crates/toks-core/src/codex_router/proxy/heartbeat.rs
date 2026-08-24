@@ -20,8 +20,10 @@ pub(crate) async fn heartbeat(runtime: RouterRuntimeHandle) {
                 .apply_snapshots(&snapshots, &epoch, observed_at)
                 .is_ok()
             {
-                let _ =
-                    super::super::account_activation::observe_and_launch(&snapshots, observed_at);
+                let _ = crate::codex_router::account_activation::observe_and_launch(
+                    &snapshots,
+                    observed_at,
+                );
             }
         }
     }

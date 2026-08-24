@@ -1,8 +1,10 @@
 use crate::rotation::ThreadId;
 use crate::rotation::{UsageLimitTier, UsageLimitTierOrigin};
 
-use super::super::super::lease::{StreamLease, ThreadAttachment};
-use super::super::super::protocol::{requested_model, requested_service_tier, ResponseLifecycle};
+use crate::codex_router::proxy::lease::{StreamLease, ThreadAttachment};
+use crate::codex_router::proxy::protocol::{
+    requested_model, requested_service_tier, ResponseLifecycle,
+};
 
 pub(super) struct Turn {
     pub(super) active: bool,

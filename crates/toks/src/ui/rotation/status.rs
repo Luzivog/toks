@@ -5,6 +5,8 @@ use crate::ToksApp;
 
 mod controls;
 mod generations;
+#[cfg(test)]
+mod generations_tests;
 mod state;
 use controls::routing_controls;
 use state::{health_label, selected_account, SelectedAccount};

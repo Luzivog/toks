@@ -8,6 +8,8 @@ use super::{RotationEvent, RotationEventKind, ThreadId, UnixMillis};
 
 mod account;
 mod account_auth;
+#[cfg(test)]
+mod account_auth_tests;
 mod active_threads;
 mod connection_owner;
 mod events;

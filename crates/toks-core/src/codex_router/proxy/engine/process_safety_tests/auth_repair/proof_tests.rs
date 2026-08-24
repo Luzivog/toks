@@ -13,10 +13,10 @@ use crate::rotation::{
     UnixMillis,
 };
 
-use super::super::super::super::catalogue::Catalogue;
-use super::super::super::super::types::SharedCredentials;
-use super::super::super::{Engine, EngineConfig};
 use super::{credential_with_token, snapshot, CredentialState, RepairableCredentials};
+use crate::codex_router::proxy::catalogue::Catalogue;
+use crate::codex_router::proxy::engine::{Engine, EngineConfig};
+use crate::codex_router::proxy::types::SharedCredentials;
 
 #[tokio::test]
 async fn permanent_unauthorized_state_survives_restart_until_credentials_are_proven_repaired() {

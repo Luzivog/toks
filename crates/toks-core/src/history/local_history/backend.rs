@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::super::HistorySnapshot;
+use crate::history::HistorySnapshot;
 
 pub(super) struct RefreshBatch {
     pub snapshot: HistorySnapshot,

@@ -158,21 +158,10 @@ fn workload_label(app: &ToksApp, generation: &RouterGenerationSummary) -> String
     )
 }
 
-fn short_build(build: &str) -> String {
+pub(super) fn short_build(build: &str) -> String {
     const MAX_CHARS: usize = 12;
     if build.chars().count() <= MAX_CHARS {
         return build.to_owned();
     }
     format!("{}…", build.chars().take(MAX_CHARS).collect::<String>())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::short_build;
-
-    #[test]
-    fn build_label_is_compact_without_losing_short_names() {
-        assert_eq!(short_build("build-a"), "build-a");
-        assert_eq!(short_build("0123456789abcdef"), "0123456789ab…");
-    }
 }

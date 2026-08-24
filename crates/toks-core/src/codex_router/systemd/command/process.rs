@@ -73,7 +73,8 @@ fn matches_until(
     let process = PathBuf::from(format!("/proc/{pid}"));
     let mut environment = environment.clone();
     if socket_activated {
-        environment.extend(super::super::runtime_process::activation_environment(pid));
+        environment
+            .extend(crate::codex_router::systemd::runtime_process::activation_environment(pid));
     }
     Ok(process_matches(
         &process,

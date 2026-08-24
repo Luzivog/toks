@@ -38,6 +38,6 @@ pub(super) fn usage_unavailable() -> Response<Body> {
     build_response(
         StatusCode::TOO_MANY_REQUESTS,
         headers,
-        Body::from(super::super::protocol::ALL_UNAVAILABLE_FRAME),
+        Body::from(crate::codex_router::proxy::protocol::ALL_UNAVAILABLE_FRAME),
     )
 }

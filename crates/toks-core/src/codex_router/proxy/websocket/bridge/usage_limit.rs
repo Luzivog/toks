@@ -5,9 +5,9 @@ use tokio_tungstenite::tungstenite::Message as ServerMessage;
 use crate::accounts::AccountId;
 use crate::rotation::{UsageLimitPhase, UsageLimitTierOrigin};
 
-use super::super::connect::UpstreamSocket;
 use super::{message::to_client, Turn};
 use crate::codex_router::proxy::protocol::{UsageBlock, RETRY_FRAME};
+use crate::codex_router::proxy::websocket::connect::UpstreamSocket;
 use crate::codex_router::proxy::{
     engine::{AttemptedTier, ResponseDelivery, UsageLimitAction},
     Engine,

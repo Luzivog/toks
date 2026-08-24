@@ -6,10 +6,10 @@ use crate::rotation::{
     RotationRuntimeStore, RotationSettings, RotationSettingsStore, ThreadId, WorkerConnectionOwner,
 };
 
-use super::super::super::catalogue::Catalogue;
-use super::super::super::types::SharedCredentials;
-use super::super::{Engine, EngineConfig};
 use super::Credentials;
+use crate::codex_router::proxy::catalogue::Catalogue;
+use crate::codex_router::proxy::engine::{Engine, EngineConfig};
+use crate::codex_router::proxy::types::SharedCredentials;
 
 struct Reconciliation {
     _directory: tempfile::TempDir,

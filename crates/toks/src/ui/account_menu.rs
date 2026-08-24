@@ -11,10 +11,14 @@ use toks_core::Provider;
 use super::action_button;
 
 mod activation;
+#[cfg(test)]
+mod activation_tests;
 pub(super) use activation::{
     AccountActivationHandler, AccountActivationToggleHandler, AccountActivationView,
 };
 mod removal;
+#[cfg(test)]
+mod removal_tests;
 use removal::confirmation_body;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

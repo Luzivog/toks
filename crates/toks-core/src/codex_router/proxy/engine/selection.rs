@@ -3,12 +3,12 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::accounts::AccountId;
-use crate::rotation::ThreadId;
+use crate::rotation::{ThreadId, UnixMillis};
 use crate::storage::StoreUpdate;
 
-use super::super::headers::ResumeMarker;
-use super::super::types::{CredentialFailure, RouteCredential};
-use super::{now, Engine};
+use super::Engine;
+use crate::codex_router::proxy::headers::ResumeMarker;
+use crate::codex_router::proxy::types::{CredentialFailure, RouteCredential};
 
 mod claims;
 mod policy;
@@ -37,7 +37,7 @@ impl Engine {
         self.runtime.update(|runtime| {
             runtime.auth_failed_for_credential(
                 account,
-                now(),
+                UnixMillis::now(),
                 rejected.map(RouteCredential::fingerprint).as_deref(),
             );
             StoreUpdate::Changed(())
@@ -143,7 +143,7 @@ impl Engine {
             // newly enrolled account can route before the next UI poll.
             settings.reconcile(&discovered);
             let selected = self.runtime.update(|runtime| {
-                let at = now();
+                let at = UnixMillis::now();
                 let selected =
                     selected_account(settings, runtime, &discovered, thread, marker, skipped, at);
                 let mut changed = false;

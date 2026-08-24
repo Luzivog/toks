@@ -28,7 +28,7 @@ fn replacement_between_profile_discovery_and_auth_read_cannot_mislabel_the_new_t
 
     assert!(matches!(
         error,
-        super::super::CredentialError::NeedsSignIn(_)
+        crate::codex_router::credentials::CredentialError::NeedsSignIn(_)
     ));
 }
 

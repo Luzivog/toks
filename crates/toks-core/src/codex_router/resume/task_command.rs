@@ -13,7 +13,7 @@ pub(super) async fn run_codex(
     thread: ThreadId,
     cwd: PathBuf,
 ) -> Result<std::process::ExitStatus> {
-    let executable = super::super::codex_binary::discover()?;
+    let executable = crate::codex_router::codex_binary::discover()?;
     let mut command = resume_command(&executable, attempt, &thread, &cwd);
     command
         .stdin(Stdio::null())

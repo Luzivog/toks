@@ -13,6 +13,8 @@ use super::paths::HostPaths;
 use crate::codex_router::host::GenerationId;
 
 mod connection;
+#[cfg(test)]
+mod connection_tests;
 mod session;
 #[cfg(test)]
 mod session_tests;

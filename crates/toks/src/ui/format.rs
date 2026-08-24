@@ -73,7 +73,7 @@ pub(super) fn fmt_exact_local(at: DateTime<Utc>) -> String {
     )
 }
 
-fn zone_suffix(zone: &str, offset: &str) -> String {
+pub(super) fn zone_suffix(zone: &str, offset: &str) -> String {
     if zone == offset {
         offset.to_owned()
     } else {
@@ -96,40 +96,4 @@ pub(super) fn fmt_age(now: DateTime<Utc>, at: DateTime<Utc>) -> String {
 
 pub(super) fn fmt_as_of(at: DateTime<Utc>) -> String {
     format!("as of {}", at.with_timezone(&Local).format("%b %-d, %H:%M"))
-}
-
-#[cfg(test)]
-mod tests {
-    use chrono::{TimeZone, Utc};
-
-    use super::{fmt_reset, zone_suffix};
-
-    #[test]
-    fn multi_day_reset_countdowns_include_minutes() {
-        let now = Utc
-            .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
-            .single()
-            .unwrap();
-        assert_eq!(
-            fmt_reset(now, Some(now + chrono::Duration::days(6))),
-            "resets in 6d 0h 0m"
-        );
-        assert_eq!(
-            fmt_reset(
-                now,
-                Some(now + chrono::Duration::days(6) + chrono::Duration::minutes(5))
-            ),
-            "resets in 6d 0h 5m"
-        );
-    }
-
-    #[test]
-    fn numeric_timezone_is_not_repeated() {
-        assert_eq!(zone_suffix("+02:00", "+02:00"), "+02:00");
-    }
-
-    #[test]
-    fn named_timezone_keeps_its_numeric_offset() {
-        assert_eq!(zone_suffix("CEST", "+02:00"), "CEST (+02:00)");
-    }
 }

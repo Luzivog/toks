@@ -5,8 +5,8 @@ use anyhow::Result;
 use crate::accounts::AccountId;
 use crate::storage::StoreUpdate;
 
-use super::super::super::types::RouteCredential;
-use super::super::Engine;
+use crate::codex_router::proxy::engine::Engine;
+use crate::codex_router::proxy::types::RouteCredential;
 
 impl Engine {
     pub(super) async fn repaired_credentials(

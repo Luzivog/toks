@@ -3,12 +3,12 @@ use tokio_tungstenite::tungstenite::Message as ServerMessage;
 
 use crate::accounts::AccountId;
 
-use super::super::super::protocol::{
+use super::{message::to_client, usage_limit, Turn};
+use crate::codex_router::proxy::protocol::{
     starts_response_delivery, websocket_usage_block, ResponseLifecycleEnd,
 };
-use super::super::super::Engine;
-use super::super::connect::UpstreamSocket;
-use super::{message::to_client, usage_limit, Turn};
+use crate::codex_router::proxy::websocket::connect::UpstreamSocket;
+use crate::codex_router::proxy::Engine;
 
 pub(super) async fn handle(
     client: &mut WebSocket,

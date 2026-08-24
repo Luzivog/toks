@@ -3,11 +3,11 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::accounts::AccountId;
-use crate::rotation::{RotationEventKind, ThreadId};
+use crate::rotation::{RotationEventKind, ThreadId, UnixMillis};
 use crate::storage::StoreUpdate;
 
-use super::super::{now, Engine, RouteTier};
 use super::{policy::selected_account, RouteSelection};
+use crate::codex_router::proxy::engine::{Engine, RouteTier};
 
 impl Engine {
     pub fn attach_authorized(
@@ -17,7 +17,7 @@ impl Engine {
         resume_attempt: Option<&str>,
     ) -> Result<bool> {
         let discovered = self.credentials.account_ids();
-        let at = now();
+        let at = UnixMillis::now();
         self.settings.update(|settings| {
             settings.reconcile(&discovered);
             let attached = self.runtime.update(|runtime| {
@@ -30,7 +30,7 @@ impl Engine {
                     runtime,
                     &discovered,
                     Some(thread),
-                    super::super::super::headers::ResumeMarker::from_attempt(resume_attempt),
+                    crate::codex_router::proxy::headers::ResumeMarker::from_attempt(resume_attempt),
                     &BTreeSet::new(),
                     at,
                 );
@@ -58,7 +58,7 @@ impl Engine {
         resume_attempt: Option<&str>,
     ) -> Result<Option<RouteTier>> {
         let discovered = self.credentials.account_ids();
-        let at = now();
+        let at = UnixMillis::now();
         self.settings.update(|settings| {
             settings.reconcile(&discovered);
             let routed = self.runtime.update(|runtime| {
@@ -71,7 +71,7 @@ impl Engine {
                     runtime,
                     &discovered,
                     Some(thread),
-                    super::super::super::headers::ResumeMarker::from_attempt(resume_attempt),
+                    crate::codex_router::proxy::headers::ResumeMarker::from_attempt(resume_attempt),
                     &BTreeSet::new(),
                     at,
                 );

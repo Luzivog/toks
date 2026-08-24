@@ -1,9 +1,9 @@
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocket};
 
-use super::super::super::engine::{Engine, RouteSelection};
-use super::super::super::protocol::{ALL_UNAVAILABLE_FRAME, BAD_THREAD_FRAME};
 use crate::accounts::AccountId;
+use crate::codex_router::proxy::engine::{Engine, RouteSelection};
+use crate::codex_router::proxy::protocol::{ALL_UNAVAILABLE_FRAME, BAD_THREAD_FRAME};
 use crate::rotation::ThreadId;
 
 pub(super) fn select(

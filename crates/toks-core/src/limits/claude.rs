@@ -1,15 +1,15 @@
 //! Claude Code plan limits from local and live usage responses.
 
 mod principal;
-
-pub(crate) use principal::read_principal_material;
-
+#[cfg(test)]
+mod principal_tests;
 use super::{
     humanize_id, parse_rfc3339, read_claude_plan, LimitSnapshot, LimitWindow, PlanMultiplier,
     Provider,
 };
 use anyhow::{Context, Result};
 use chrono::{DateTime, TimeZone, Utc};
+pub(crate) use principal::read_principal_material;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 

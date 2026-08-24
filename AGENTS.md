@@ -40,6 +40,10 @@ seams. Keep hand-written production files below 200 lines and tests below 500;
 split by responsibility. Avoid internal wildcard imports/re-exports. Generated
 exceptions require a generated path/name and marker. Existing ingest debt is
 ratcheted: entries may shrink, never grow.
+Use Rust 2018 module roots: `foo.rs` with an optional `foo/` directory; do not
+add `mod.rs` files. Put a module's tests in sibling `foo_tests.rs`, or use
+`foo/tests.rs` plus `foo/tests/*.rs` for multi-file suites; do not define inline
+test modules in production files.
 
 ## Testing Guidelines
 
