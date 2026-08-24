@@ -14,7 +14,6 @@ crates/toks-ingest/src/pricing/lookup.rs	2613	0	0
 crates/toks-ingest/src/pricing/mod.rs	532	0	0
 crates/toks-ingest/src/pricing/openrouter.rs	347	0	0
 crates/toks-ingest/src/provider_identity.rs	315	0	0
-crates/toks-ingest/src/scanner.rs	2178	0	0
 crates/toks-ingest/src/sessionize.rs	418	0	0
 crates/toks-ingest/src/sessions/amp.rs	335	0	0
 crates/toks-ingest/src/sessions/antigravity_cli.rs	522	0	0
