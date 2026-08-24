@@ -7,7 +7,7 @@ use super::RotationRuntime;
 impl RotationRuntime {
     pub(in crate::rotation) fn normalize(&mut self) -> Result<()> {
         for state in self.accounts.values_mut() {
-            state.normalize_rejected_credentials();
+            state.auth.normalize_rejected_credentials();
             if state.quota_drain.is_none() && !state.block_confirmed {
                 state.grandfathered_threads.clear();
                 state.provisional_threads.clear();

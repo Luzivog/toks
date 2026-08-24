@@ -1,8 +1,6 @@
 use crate::accounts::AccountId;
 
-use super::super::{RotationEventKind, RotationRuntime, UnixMillis};
-
-type AuthFailure = (u64, Option<UnixMillis>, Option<String>);
+use super::super::{account_auth::AuthFailure, RotationEventKind, RotationRuntime, UnixMillis};
 
 impl RotationRuntime {
     pub fn auth_failed(&mut self, account: &AccountId, at: UnixMillis) -> bool {
@@ -16,13 +14,7 @@ impl RotationRuntime {
         rejected_fingerprint: Option<&str>,
     ) -> bool {
         let state = self.accounts.entry(account.clone()).or_default();
-        state.auth_failure_revision = state.auth_failure_revision.saturating_add(1);
-        state.auth_failed_at = Some(state.auth_failed_at.map_or(at, |previous| previous.max(at)));
-        if let Some(fingerprint) = rejected_fingerprint {
-            state.rejected_credential_fingerprint = Some(fingerprint.to_owned());
-            state.remember_rejected_credential(fingerprint);
-        }
-        if std::mem::replace(&mut state.needs_sign_in, true) {
+        if !state.auth.record_failure(at, rejected_fingerprint) {
             return false;
         }
         self.push_event(
@@ -37,13 +29,13 @@ impl RotationRuntime {
     pub(crate) fn auth_failure(&self, account: &AccountId) -> Option<AuthFailure> {
         self.accounts
             .get(account)
-            .and_then(|state| state.auth_failure())
+            .and_then(|state| state.auth.failure())
     }
 
     pub(crate) fn credential_was_rejected(&self, account: &AccountId, fingerprint: &str) -> bool {
         self.accounts
             .get(account)
-            .is_some_and(|state| state.credential_was_rejected(fingerprint))
+            .is_some_and(|state| state.auth.credential_was_rejected(fingerprint))
     }
 
     pub(crate) fn sign_in_restored_by_proof(
@@ -53,22 +45,9 @@ impl RotationRuntime {
         credential_fingerprint: &str,
     ) -> bool {
         self.accounts.get_mut(account).is_some_and(|state| {
-            if state.auth_failure() != Some(expected.clone())
-                || state.credential_was_rejected(credential_fingerprint)
-                || expected
-                    .2
-                    .as_deref()
-                    .is_some_and(|rejected| rejected == credential_fingerprint)
-            {
-                return false;
-            }
-            restore(state);
-            true
+            state
+                .auth
+                .restore_by_proof(expected, credential_fingerprint)
         })
     }
-}
-
-fn restore(state: &mut super::super::AccountRuntime) {
-    state.needs_sign_in = false;
-    state.rejected_credential_fingerprint = None;
 }

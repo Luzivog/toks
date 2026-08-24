@@ -7,6 +7,7 @@ use crate::accounts::AccountId;
 use super::{RotationEvent, RotationEventKind, ThreadId, UnixMillis};
 
 mod account;
+mod account_auth;
 mod active_threads;
 mod connection_owner;
 mod events;
@@ -52,15 +53,8 @@ pub struct AccountRuntime {
     provisional_threads: BTreeSet<ThreadId>,
     #[serde(default)]
     thread_usage: BTreeMap<ThreadId, account::ThreadUsage>,
-    needs_sign_in: bool,
-    #[serde(default)]
-    auth_failure_revision: u64,
-    #[serde(default)]
-    auth_failed_at: Option<UnixMillis>,
-    #[serde(default)]
-    rejected_credential_fingerprint: Option<String>,
-    #[serde(default)]
-    rejected_credential_history: VecDeque<String>,
+    #[serde(flatten)]
+    auth: account_auth::AccountAuthState,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
