@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::accounts::AccountId;
-use crate::rotation::{ThreadId, WaitingId, WaitingThread};
+use crate::rotation::{ResumeTerminal, ThreadId, WaitingId, WaitingThread};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +22,17 @@ pub(in crate::codex_router::resume) enum ResumeTerminalState {
     Cancelled,
     Discarded,
     Abandoned,
+}
+
+impl From<ResumeTerminal> for ResumeTerminalState {
+    fn from(terminal: ResumeTerminal) -> Self {
+        match terminal {
+            ResumeTerminal::Success => Self::Success,
+            ResumeTerminal::Failure => Self::Failure,
+            ResumeTerminal::Cancelled => Self::Cancelled,
+            ResumeTerminal::Discarded => Self::Discarded,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

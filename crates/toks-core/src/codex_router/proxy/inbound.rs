@@ -5,6 +5,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use sha2::{Digest, Sha256};
 
 use crate::accounts::AccountId;
+use crate::rotation::UnixMillis;
 use crate::storage::StoreUpdate;
 
 use super::types::SharedCredentials;
@@ -42,7 +43,7 @@ impl InboundTokens {
         let active = credentials.account_ids().into_iter().collect();
         let admissions = store
             .update(|admissions| {
-                let changed = prune(admissions, &active, now());
+                let changed = prune(admissions, &active, UnixMillis::now());
                 StoreUpdate::from_changed(admissions.clone(), changed)
             })
             .unwrap_or_default();
@@ -58,7 +59,7 @@ impl InboundTokens {
     pub fn accepts(&self, token: &str) -> bool {
         let digest = Sha256::digest(token.as_bytes()).into();
         let mut validated = self.validated.lock().expect("inbound token cache poisoned");
-        let now = now();
+        let now = UnixMillis::now();
         let active = self.credentials.account_ids().into_iter().collect();
         let changed = prune(&mut validated, &active, now);
         if validated.contains_key(&digest) {
@@ -110,7 +111,7 @@ impl InboundTokens {
         &self,
         validated: &mut BTreeMap<[u8; 32], Admission>,
         active: &BTreeSet<AccountId>,
-        now: i64,
+        now: UnixMillis,
     ) {
         if let Ok(current) = self.store.update(|admissions| {
             let changed = prune(admissions, active, now);
@@ -126,14 +127,14 @@ fn admission(
     token: &str,
     digest: [u8; 32],
     active: &BTreeSet<AccountId>,
-    now: i64,
+    now: UnixMillis,
 ) -> Option<Admission> {
     let account_id = credentials.incoming_account(token)?;
     if !active.contains(&account_id) {
         return None;
     }
     let expires_at = token_expiry(token);
-    if expires_at.is_some_and(|expiry| expiry <= now) {
+    if expires_at.is_some_and(|expiry| expiry <= now.get().div_euclid(1_000)) {
         return None;
     }
     Some(Admission {
@@ -158,14 +159,15 @@ fn merge_store_state(
 fn prune(
     admissions: &mut BTreeMap<[u8; 32], Admission>,
     active: &BTreeSet<AccountId>,
-    now: i64,
+    now: UnixMillis,
 ) -> bool {
+    let now_seconds = now.get().div_euclid(1_000);
     let before = admissions.len();
     admissions.retain(|_, admission| {
         active.contains(&admission.account_id)
             && admission
                 .expires_at
-                .is_none_or(|expires_at| expires_at > now)
+                .is_none_or(|expires_at| expires_at > now_seconds)
     });
     while admissions.len() > MAX_ADMISSIONS {
         let oldest = admissions
@@ -185,8 +187,4 @@ fn token_expiry(token: &str) -> Option<i64> {
         .ok()?
         .get("exp")?
         .as_i64()
-}
-
-fn now() -> i64 {
-    chrono::Utc::now().timestamp()
 }

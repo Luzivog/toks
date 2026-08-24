@@ -17,6 +17,10 @@ impl UnixMillis {
         Self(value)
     }
 
+    pub fn now() -> Self {
+        Self::new(chrono::Utc::now().timestamp_millis())
+    }
+
     pub const fn get(self) -> i64 {
         self.0
     }

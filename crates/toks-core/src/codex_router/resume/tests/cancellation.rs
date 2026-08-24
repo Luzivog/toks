@@ -78,7 +78,7 @@ fn cancellation_committed_after_authorization_prevents_launch() {
     assert_eq!(
         harness
             .supervisor()
-            .authorize(&mut state, &thread, &attempt, NOW)
+            .authorize(&mut state, &thread, &attempt)
             .unwrap(),
         super::super::supervisor::AuthorizationOutcome::Cancelled
     );

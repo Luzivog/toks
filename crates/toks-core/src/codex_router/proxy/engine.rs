@@ -41,15 +41,17 @@ pub(super) struct Engine {
 impl Engine {
     pub fn close(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
         self.mutate(|runtime| match self.connection_owner {
-            Some(owner) => runtime.connection_closed_by(owner, account, thread, now()),
-            None => runtime.connection_closed(account, thread, now()),
+            Some(owner) => runtime.connection_closed_by(owner, account, thread, UnixMillis::now()),
+            None => runtime.connection_closed(account, thread, UnixMillis::now()),
         })
     }
 
     pub fn continue_response(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
         self.mutate(|runtime| match self.connection_owner {
-            Some(owner) => runtime.connection_continues_by(owner, account, thread, now()),
-            None => runtime.connection_continues(account, thread, now()),
+            Some(owner) => {
+                runtime.connection_continues_by(owner, account, thread, UnixMillis::now())
+            }
+            None => runtime.connection_continues(account, thread, UnixMillis::now()),
         })
     }
 
@@ -76,7 +78,7 @@ impl Engine {
     #[cfg(test)]
     pub fn claim_waiting(&self, thread: &ThreadId, account: &AccountId) -> Result<bool> {
         self.runtime.update(|runtime| {
-            let claimed = runtime.resumed(thread, account, now());
+            let claimed = runtime.resumed(thread, account, UnixMillis::now());
             StoreUpdate::from_changed(claimed, claimed)
         })
     }
@@ -87,7 +89,7 @@ impl Engine {
         account: &AccountId,
     ) -> Result<bool> {
         self.runtime.update(|runtime| {
-            let claimed = runtime.resumed_waiting(waiting, account, now());
+            let claimed = runtime.resumed_waiting(waiting, account, UnixMillis::now());
             StoreUpdate::from_changed(claimed, claimed)
         })
     }
@@ -99,7 +101,7 @@ impl Engine {
     ) -> Result<Option<WaitingThread>> {
         anyhow::ensure!(replacement.is_recognized(), "unrecognized waiting identity");
         self.runtime.update(|runtime| {
-            let requeued = runtime.waiting_after_attempt(waiting, replacement, now());
+            let requeued = runtime.waiting_after_attempt(waiting, replacement, UnixMillis::now());
             let changed = requeued.is_some();
             StoreUpdate::from_changed(requeued, changed)
         })
@@ -122,7 +124,7 @@ impl Engine {
                     waiting,
                     attempt,
                     account,
-                    now(),
+                    UnixMillis::now(),
                 );
                 StoreUpdate::from_changed(
                     authorization,
@@ -145,7 +147,8 @@ impl Engine {
             anyhow::ensure!(replacement.is_recognized(), "unrecognized waiting identity");
         }
         self.runtime.update(|runtime| {
-            let queued = runtime.finish_resume(waiting, attempt, terminal, replacement, now());
+            let queued =
+                runtime.finish_resume(waiting, attempt, terminal, replacement, UnixMillis::now());
             StoreUpdate::Changed(queued)
         })
     }
@@ -163,7 +166,7 @@ impl Engine {
 
     #[cfg(test)]
     pub fn reset_connections(&self) -> Result<()> {
-        self.mutate(|runtime| runtime.reset_connections(now()))
+        self.mutate(|runtime| runtime.reset_connections(UnixMillis::now()))
     }
 
     pub fn reconcile_connection_owners(&self, surviving: &BTreeMap<u64, u64>) -> Result<()> {
@@ -185,5 +188,5 @@ fn validate_resume_attempt(attempt: &str) -> Result<()> {
 }
 
 pub(super) fn now() -> UnixMillis {
-    UnixMillis::new(chrono::Utc::now().timestamp_millis())
+    UnixMillis::now()
 }

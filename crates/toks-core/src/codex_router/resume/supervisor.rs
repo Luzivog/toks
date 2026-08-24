@@ -2,11 +2,12 @@ use anyhow::Result;
 use std::collections::BTreeMap;
 
 use super::state::{ResumeAttempt, ResumePhase, ResumeState, ResumeStore};
-use crate::rotation::{RotationSettings, RotationSettingsStore, ThreadId, UnixMillis};
+use crate::rotation::{RotationSettingsStore, ThreadId, UnixMillis};
 
 mod errors;
 mod launch;
 mod prune;
+mod reconcile;
 #[cfg(test)]
 pub(in crate::codex_router::resume) use launch::AuthorizationOutcome;
 mod queue;
@@ -119,79 +120,5 @@ impl<Q: ResumeQueue, U: TaskUnits> Supervisor<Q, U> {
             );
         }
         errors::finish(errors)
-    }
-
-    fn reconcile_attempts(
-        &mut self,
-        state: &mut ResumeState,
-        settings: &RotationSettings,
-        now: UnixMillis,
-    ) -> Result<()> {
-        let threads = state.attempts.keys().cloned().collect::<Vec<_>>();
-        let mut outcomes = BTreeMap::new();
-        for thread in &threads {
-            if let Some(success) = self.store.outcome(&state.attempts[thread].id)? {
-                outcomes.insert(thread.clone(), success);
-            }
-        }
-        let attempts = threads
-            .iter()
-            .filter(|thread| {
-                !outcomes.contains_key(*thread)
-                    && state.attempts[*thread].phase != ResumePhase::Authorizing
-                    && state.attempts[*thread].phase != ResumePhase::Cleaning
-            })
-            .map(|thread| state.attempts[thread].id.clone())
-            .collect::<Vec<_>>();
-        let inventory = self.units.inventory(&attempts)?;
-        for thread in threads {
-            let attempt = state.attempts[&thread].clone();
-            if attempt.phase == ResumePhase::Cleaning {
-                continue;
-            }
-            if self.thread_sources.is_known_subagent(&thread) {
-                let task = inventory
-                    .get(&attempt.id)
-                    .copied()
-                    .unwrap_or(TaskState::Missing);
-                self.stage_discarded(state, &thread, &attempt, task, now)?;
-                continue;
-            }
-            if let Some(success) = outcomes.remove(&thread) {
-                self.stage_finished(state, &thread, &attempt, success, now)?;
-                continue;
-            }
-            if attempt.phase == ResumePhase::Authorizing {
-                if settings.cancelled_threads().contains(&thread) {
-                    self.stage_unlaunched_cancel(state, &thread, &attempt, now)?;
-                } else {
-                    self.authorize(state, &thread, &attempt, now)?;
-                }
-                continue;
-            }
-            let task = inventory
-                .get(&attempt.id)
-                .copied()
-                .unwrap_or(TaskState::Missing);
-            match task {
-                TaskState::Missing
-                | TaskState::Starting
-                | TaskState::Running
-                | TaskState::Failed
-                    if settings.cancelled_threads().contains(&thread) =>
-                {
-                    self.stage_cancelled(state, &thread, &attempt, task, now)?
-                }
-                TaskState::Missing if attempt.phase == ResumePhase::Launching => {
-                    self.authorize(state, &thread, &attempt, now)?;
-                }
-                TaskState::Missing => self.stage_finished(state, &thread, &attempt, false, now)?,
-                TaskState::Starting => {}
-                TaskState::Running => self.mark_running(state, &thread)?,
-                TaskState::Succeeded => self.stage_finished(state, &thread, &attempt, true, now)?,
-                TaskState::Failed => self.stage_finished(state, &thread, &attempt, false, now)?,
-            }
-        }
-        Ok(())
     }
 }

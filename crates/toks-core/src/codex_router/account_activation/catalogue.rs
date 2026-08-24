@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::rotation::UnixMillis;
+
 const MAX_CACHE_AGE_MS: i64 = 24 * 60 * 60 * 1_000;
 const MAX_CLOCK_SKEW_MS: i64 = 5 * 60 * 1_000;
 
@@ -42,15 +44,13 @@ struct Reasoning {
 }
 
 pub(super) fn best_for_profile(config: &Path) -> ModelChoice {
-    best_at(
-        &config.join("models_cache.json"),
-        chrono::Utc::now().timestamp_millis(),
-    )
-    .unwrap_or_else(|| ModelChoice {
-        // With no fresh catalogue for this exact account, let its Codex CLI
-        // choose the current default instead of imposing another account's model.
-        slug: None,
-        reasoning: "low".into(),
+    best_at(&config.join("models_cache.json"), UnixMillis::now().get()).unwrap_or_else(|| {
+        ModelChoice {
+            // With no fresh catalogue for this exact account, let its Codex CLI
+            // choose the current default instead of imposing another account's model.
+            slug: None,
+            reasoning: "low".into(),
+        }
     })
 }
 

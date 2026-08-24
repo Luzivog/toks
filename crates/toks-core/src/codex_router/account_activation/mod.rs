@@ -4,6 +4,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 
 use crate::accounts::{AccountId, ProviderLimitCollection};
+use crate::rotation::UnixMillis;
 use crate::storage::StoreUpdate;
 
 mod authority;
@@ -30,7 +31,7 @@ pub enum ManualRequest {
 /// Queues one exact `test` prompt for the selected account. Repeated calls
 /// while that account already has a manual task do not create another task.
 pub fn request_test(account: &AccountId) -> Result<ManualRequest> {
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = UnixMillis::now().get();
     let owner = owner::ProcessOwner::current()
         .ok_or_else(|| anyhow::anyhow!("could not identify the activation worker process"))?;
     let result = Store::discover()?.update(|document| {
@@ -63,7 +64,7 @@ pub fn set_automatic(account: &AccountId, enabled: bool) -> Result<()> {
 }
 
 pub fn status(account: &AccountId) -> Result<AccountActivationStatus> {
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = UnixMillis::now().get();
     Store::discover()?.update(|document| {
         let before = document.clone();
         requests::reconcile_account(document, account, now_ms);
@@ -86,7 +87,7 @@ pub(crate) fn observe_and_launch(
 
 fn run_manual_pass(account: AccountId) {
     let collection = crate::accounts::collect_provider_limits(crate::limits::Provider::Codex);
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = UnixMillis::now().get();
     let launches = claim(&collection, now_ms, Some(&account)).unwrap_or_default();
     let Some(launch) = launches
         .into_iter()
@@ -120,7 +121,7 @@ fn run_manual_pass(account: AccountId) {
 }
 
 fn mark_pending_failed(account: &AccountId, reason: FailureReason) {
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = UnixMillis::now().get();
     let _ = Store::discover().and_then(|store| {
         store.update(|document| {
             let changed = planner::fail_pending_manual(document, account, reason, now_ms);
@@ -153,7 +154,7 @@ async fn execute_and_record(launch: model::Launch) {
 }
 
 fn record_outcome(id: &str, result: std::result::Result<(), FailureReason>) -> Result<()> {
-    let now_ms = Utc::now().timestamp_millis();
+    let now_ms = UnixMillis::now().get();
     let (success, reason) = match result {
         Ok(()) => (true, FailureReason::Unsuccessful),
         Err(reason) => (false, reason),

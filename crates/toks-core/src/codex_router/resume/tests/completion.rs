@@ -1,6 +1,29 @@
 use super::*;
 
 #[test]
+fn resume_terminal_state_wire_values_remain_stable() {
+    use super::super::state::ResumeTerminalState;
+
+    let states = [
+        ResumeTerminalState::Success,
+        ResumeTerminalState::Failure,
+        ResumeTerminalState::Cancelled,
+        ResumeTerminalState::Discarded,
+        ResumeTerminalState::Abandoned,
+    ];
+    let json = serde_json::to_string(&states).unwrap();
+
+    assert_eq!(
+        json,
+        r#"["success","failure","cancelled","discarded","abandoned"]"#
+    );
+    assert_eq!(
+        serde_json::from_str::<[ResumeTerminalState; 5]>(&json).unwrap(),
+        states
+    );
+}
+
+#[test]
 fn success_receipt_wins_even_before_unit_exit_and_clears_once() {
     let harness = Harness::new("success");
     harness.supervisor().tick(NOW).unwrap();

@@ -30,7 +30,7 @@ pub(super) async fn run_supervisor() -> Result<()> {
     let codex = super::codex_binary::discover()?;
     let mut supervisor = Supervisor::new(store, runtime, SystemdTasks::new(executable, codex)?)?;
     loop {
-        if let Err(error) = supervisor.tick(now()) {
+        if let Err(error) = supervisor.tick(UnixMillis::now()) {
             eprintln!("{}", tick_error_message(&error));
         }
         tokio::time::sleep(POLL_INTERVAL).await;
@@ -95,10 +95,6 @@ fn task_workspace(
 
 fn task_failure_message(status: std::process::ExitStatus) -> String {
     format!("resumed Codex task exited unsuccessfully ({status})")
-}
-
-fn now() -> UnixMillis {
-    UnixMillis::new(chrono::Utc::now().timestamp_millis())
 }
 
 #[cfg(test)]

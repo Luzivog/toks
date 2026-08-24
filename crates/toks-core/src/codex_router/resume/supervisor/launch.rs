@@ -67,7 +67,7 @@ impl<Q: ResumeQueue, U: TaskUnits> Supervisor<Q, U> {
                 };
                 state.attempts.insert(thread, attempt.clone());
                 self.store.save(state)?;
-                match self.authorize(state, &attempt.waiting.thread_id.clone(), &attempt, now)? {
+                match self.authorize(state, &attempt.waiting.thread_id.clone(), &attempt)? {
                     AuthorizationOutcome::Launched | AuthorizationOutcome::Cancelled => {
                         return Ok(())
                     }
@@ -83,7 +83,6 @@ impl<Q: ResumeQueue, U: TaskUnits> Supervisor<Q, U> {
         state: &mut super::ResumeState,
         thread: &crate::rotation::ThreadId,
         attempt: &ResumeAttempt,
-        now: UnixMillis,
     ) -> Result<AuthorizationOutcome> {
         match self
             .queue
@@ -93,7 +92,7 @@ impl<Q: ResumeQueue, U: TaskUnits> Supervisor<Q, U> {
                 let settings = self.settings.clone();
                 settings.update(|settings| {
                     let outcome = if settings.cancelled_threads().contains(thread) {
-                        self.stage_unlaunched_cancel(state, thread, attempt, now)
+                        self.stage_unlaunched_cancel(state, thread, attempt)
                             .map(|()| AuthorizationOutcome::Cancelled)
                     } else {
                         state
@@ -110,7 +109,7 @@ impl<Q: ResumeQueue, U: TaskUnits> Supervisor<Q, U> {
                 })?
             }
             crate::rotation::ResumeAuthorization::Cancelled => {
-                self.stage_unlaunched_cancel(state, thread, attempt, now)?;
+                self.stage_unlaunched_cancel(state, thread, attempt)?;
                 Ok(AuthorizationOutcome::Cancelled)
             }
             crate::rotation::ResumeAuthorization::Stale
