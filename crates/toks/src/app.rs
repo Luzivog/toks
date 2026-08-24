@@ -55,6 +55,16 @@ impl Page {
     }
 }
 
+impl From<UsagePeriod> for Page {
+    fn from(period: UsagePeriod) -> Self {
+        match period {
+            UsagePeriod::Hourly => Self::Hourly,
+            UsagePeriod::Daily => Self::Daily,
+            UsagePeriod::Monthly => Self::Monthly,
+        }
+    }
+}
+
 pub struct ToksApp {
     navigation: navigation::PageNavigation,
     pub(crate) sidebar_open: bool,

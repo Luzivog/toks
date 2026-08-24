@@ -7,6 +7,18 @@ use std::time::{Duration, Instant};
 use toks_core::history::UsagePeriod;
 
 #[test]
+fn usage_periods_map_to_their_pages() {
+    for (period, page) in [
+        (UsagePeriod::Hourly, Page::Hourly),
+        (UsagePeriod::Daily, Page::Daily),
+        (UsagePeriod::Monthly, Page::Monthly),
+    ] {
+        assert_eq!(Page::from(period), page);
+        assert_eq!(page.usage_period(), Some(period));
+    }
+}
+
+#[test]
 fn sidebar_closes_when_entering_compact_layout() {
     assert!(!sidebar_open_for_layout(true, Some(false), true));
 }

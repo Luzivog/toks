@@ -1,4 +1,4 @@
-use gpui::{div, prelude::*, px, App};
+use gpui::{div, prelude::*, px, App, Hsla};
 use gpui_component::{h_flex, ActiveTheme, StyledExt};
 use toks_core::history::{UsageBucket, UsagePeriod};
 
@@ -24,7 +24,7 @@ pub(super) fn usage_data_row(
         selector,
         label,
         bucket,
-        highlighted,
+        highlighted.then(|| page_accent(Page::from(period), cx)),
         layout,
         active_sort,
         cx,
@@ -35,7 +35,7 @@ pub(super) fn usage_metric_row(
     selector: String,
     label: String,
     bucket: &UsageBucket,
-    highlighted: bool,
+    highlight_color: Option<Hsla>,
     layout: TableLayout,
     active_sort: Option<UsageSortColumn>,
     cx: &App,
@@ -49,11 +49,7 @@ pub(super) fn usage_metric_row(
         .border_t_1()
         .border_color(cx.theme().border)
         .text_sm()
-        .text_color(if highlighted {
-            page_accent(Page::Daily, cx)
-        } else {
-            cx.theme().foreground
-        })
+        .text_color(highlight_color.unwrap_or(cx.theme().foreground))
         .child(div().flex_1().min_w(px(130.)).font_medium().child(label));
     for column in layout.usage_columns(active_sort) {
         row = row.child(metric_cell(
