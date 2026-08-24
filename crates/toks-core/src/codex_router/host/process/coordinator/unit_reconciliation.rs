@@ -51,9 +51,9 @@ impl Coordinator {
     async fn reconcile_worker_units_once(&mut self) -> Result<bool> {
         let generations = self.deployment.snapshot().generations;
         let needs_inventory = generations.iter().any(|generation| {
-            is_terminal(generation.status) && !self.stopped_workers.contains(&generation.id)
+            is_terminal(generation.status) && !self.workers.is_stopped(generation.id)
                 || is_live(generation.status)
-                    && !self.worker_ready(generation.id)
+                    && !self.workers.is_ready(generation.id)
                     && !self
                         .deployment_wait
                         .is_armed(WaitKey::WorkerReady(generation.id))
@@ -65,7 +65,7 @@ impl Coordinator {
         let terminal = generations
             .iter()
             .filter(|generation| {
-                is_terminal(generation.status) && !self.stopped_workers.contains(&generation.id)
+                is_terminal(generation.status) && !self.workers.is_stopped(generation.id)
             })
             .map(|generation| generation.id)
             .collect::<BTreeSet<_>>();
@@ -77,13 +77,13 @@ impl Coordinator {
         if !loaded_terminal.is_empty() {
             self.command_workers("stop", loaded_terminal).await?;
         }
-        self.stopped_workers.extend(terminal);
+        self.workers.mark_stopped_generations(terminal);
 
         let starts = generations
             .iter()
             .filter(|generation| {
                 is_live(generation.status)
-                    && !self.worker_ready(generation.id)
+                    && !self.workers.is_ready(generation.id)
                     && !self
                         .deployment_wait
                         .is_armed(WaitKey::WorkerReady(generation.id))

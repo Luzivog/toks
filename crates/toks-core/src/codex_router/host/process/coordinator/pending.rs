@@ -19,7 +19,7 @@ pub(super) struct PendingConnection {
     armed: Instant,
 }
 
-pub(super) struct Pending {
+pub(in crate::codex_router::host::process) struct Pending {
     epoch: u64,
     sequence: u64,
     capacity: usize,

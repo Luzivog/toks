@@ -20,11 +20,11 @@ async fn delayed_pause_ack_never_reopens_the_previous_worker() {
     let (_directory, mut coordinator, previous, target) = prepared_fixture().await;
     let (previous_channel, previous_peer) = channel_pair();
     let (target_channel, _target_peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         previous,
         accepting_worker(previous_channel, 1, WorkerInstanceId::new(1).unwrap()),
     );
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         target,
         ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
     );
@@ -141,7 +141,7 @@ async fn crash_after_recording_previous_failure_resumes_from_durable_state() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut recovered = Coordinator::new(listener, paths, deployment).unwrap();
     let (target_channel, target_peer) = channel_pair();
-    recovered.workers.insert(
+    recovered.workers.replace(
         target,
         ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
     );
@@ -157,14 +157,14 @@ async fn crash_after_recording_previous_failure_resumes_from_durable_state() {
 #[tokio::test]
 async fn cold_start_reestablishes_bounded_control_absence_before_takeover() {
     let (_directory, mut coordinator, previous, target) = prepared_fixture().await;
-    assert!(coordinator.disconnected_workers.contains(&previous));
+    assert!(coordinator.workers.is_disconnected(previous));
     let _calls = record_commands(&mut coordinator);
     set_inventory(
         &mut coordinator,
         BTreeMap::from([(previous, Liveness::Stopped)]),
     );
     let (target_channel, target_peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         target,
         ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
     );
@@ -255,11 +255,11 @@ async fn disconnect_previous_while_pausing(
 ) -> Arc<AsyncChannel> {
     let (previous_channel, previous_peer) = channel_pair();
     let (target_channel, target_peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         previous,
         accepting_worker(previous_channel, 1, WorkerInstanceId::new(1).unwrap()),
     );
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         target,
         ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
     );
@@ -268,7 +268,7 @@ async fn disconnect_previous_while_pausing(
         previous_peer.receive().await.unwrap(),
         Received::Control(Control::Drain { .. })
     ));
-    coordinator.workers.remove(&previous);
+    coordinator.workers.remove_registered(previous);
     coordinator.deployment_wait.clear_generation(previous);
     coordinator.worker_disconnected(previous).unwrap();
     coordinator.advance().await.unwrap();

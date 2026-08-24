@@ -49,10 +49,8 @@ async fn normal_ack_order_commits_without_retransferring_the_descriptor() {
     let coordinator_channel = fixture
         .coordinator
         .workers
-        .get(&fixture.generation)
-        .unwrap()
-        .channel
-        .clone();
+        .channel_for(fixture.generation)
+        .unwrap();
     spawn_reader(fixture.generation, 1, coordinator_channel, events.clone());
     fixture
         .peer
@@ -103,7 +101,7 @@ async fn graceful_shutdown_waits_through_prepared_worker_reconnect() {
         tokio::time::Instant::now(),
     ));
 
-    drop(fixture.coordinator.workers.remove(&generation));
+    drop(fixture.coordinator.workers.remove_registered(generation));
     drop(first);
     let adopted = accept_worker(&listener, generation, 0, 51).await;
     activate(&adopted, generation).await;
@@ -246,8 +244,8 @@ impl CoordinatorFixture {
     async fn with_channel(channel: Arc<AsyncChannel>, generation: GenerationId) -> Self {
         let (directory, mut coordinator, peer, _fixture_generation) = fixture().await;
         coordinator.active = Some(generation);
-        coordinator.workers.clear();
-        coordinator.workers.insert(
+        coordinator.workers.clear_registered();
+        coordinator.workers.replace(
             generation,
             accepting_worker(channel, 1, WorkerInstanceId::new(1).unwrap()),
         );
@@ -260,7 +258,7 @@ impl CoordinatorFixture {
     }
 
     fn insert_worker(&mut self, channel: Arc<AsyncChannel>, registration: u64) {
-        self.coordinator.workers.insert(
+        self.coordinator.workers.replace(
             self.generation,
             accepting_worker(channel, registration, WorkerInstanceId::new(1).unwrap()),
         );

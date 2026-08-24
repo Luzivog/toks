@@ -12,7 +12,7 @@ impl Coordinator {
         &mut self,
         generation: GenerationId,
     ) -> Result<()> {
-        self.disconnected_workers.insert(generation);
+        self.workers.disconnect(generation);
         let plan = self.current_plan()?;
         let target = match plan {
             DeployPlan::StageTarget { target, .. }
@@ -40,17 +40,12 @@ impl Coordinator {
             Control::Ready { generation: found } if found == wire_generation => {
                 self.deployment_wait
                     .acknowledge(WaitKey::WorkerReady(generation));
-                if let Some(worker) = self.workers.get_mut(&generation) {
-                    worker.ready = true;
-                }
+                self.workers.mark_ready(generation);
             }
             Control::AdmissionsPaused { generation: found } if found == wire_generation => {
                 self.deployment_wait
                     .acknowledge(WaitKey::AdmissionsPaused(generation));
-                if let Some(worker) = self.workers.get_mut(&generation) {
-                    worker.accepting = false;
-                    worker.draining = true;
-                }
+                self.workers.mark_admissions_paused(generation);
                 let plan = self.current_plan()?;
                 if let DeployPlan::PauseAdmissions {
                     previous: Some(previous),
@@ -67,15 +62,7 @@ impl Coordinator {
                     .acknowledge(WaitKey::TargetAccepting(generation));
                 self.deployment_wait
                     .acknowledge(WaitKey::AdmissionsResumed(generation));
-                let reconcile_pending = if let Some(worker) = self.workers.get_mut(&generation) {
-                    worker.accepting = true;
-                    worker.draining = false;
-                    let reconcile = !worker.pending_reconciled;
-                    worker.pending_reconciled = true;
-                    reconcile
-                } else {
-                    false
-                };
+                let reconcile_pending = self.workers.mark_accepting(generation);
                 let plan = self.current_plan()?;
                 match plan {
                     DeployPlan::StartAccepting { target } if target == generation => {

@@ -1,17 +1,19 @@
 use anyhow::Result;
 use futures_util::future::BoxFuture;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::codex_router::handoff::{Connection, HandoffId, WorkerInstanceId};
 use crate::codex_router::host::{BuildId, DeploymentState, GenerationId, GenerationStatus};
 
+use self::workers::Workers;
 use super::super::channel::AsyncChannel;
 use super::super::paths::HostPaths;
 use super::pending::Pending;
 use super::wait::DeploymentWait;
 
 mod admission;
+mod workers;
 
 pub(super) const CONTROL_SEND_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(100);
 
@@ -34,21 +36,19 @@ pub(in crate::codex_router::host::process) struct WorkerSlot {
 }
 
 pub(in crate::codex_router::host::process) struct Coordinator {
-    pub(super) listener: tokio::net::TcpListener,
+    pub(in crate::codex_router::host::process) listener: tokio::net::TcpListener,
     pub(in crate::codex_router::host::process) paths: HostPaths,
     pub(in crate::codex_router::host::process) deployment: DeploymentState,
-    pub(super) build: BuildId,
-    pub(super) pending: Pending,
-    pub(in crate::codex_router::host::process) workers: HashMap<GenerationId, WorkerSlot>,
+    pub(in crate::codex_router::host::process) build: BuildId,
+    pub(in crate::codex_router::host::process) pending: Pending,
+    pub(in crate::codex_router::host::process) workers: Workers,
     pub(in crate::codex_router::host::process) active: Option<GenerationId>,
-    pub(super) worker_command: WorkerCommand,
-    pub(super) worker_inventory: WorkerInventory,
-    pub(super) deployment_wait: DeploymentWait,
-    pub(super) stopped_workers: BTreeSet<GenerationId>,
-    pub(super) disconnected_workers: BTreeSet<GenerationId>,
-    pub(super) consumed_retry_intent: Option<crate::codex_router::host::RetryIntent>,
-    pub(super) retry_cursor: usize,
-    pub(super) next_registration: u64,
+    pub(in crate::codex_router::host::process) worker_command: WorkerCommand,
+    pub(in crate::codex_router::host::process) worker_inventory: WorkerInventory,
+    pub(in crate::codex_router::host::process) deployment_wait: DeploymentWait,
+    pub(in crate::codex_router::host::process) consumed_retry_intent:
+        Option<crate::codex_router::host::RetryIntent>,
+    pub(in crate::codex_router::host::process) retry_cursor: usize,
 }
 
 impl Coordinator {
@@ -103,7 +103,7 @@ impl Coordinator {
             deployment,
             build,
             pending: Pending::new()?,
-            workers: HashMap::new(),
+            workers: Workers::new(disconnected_workers),
             active,
             worker_command: Arc::new(|action, generations| {
                 Box::pin(super::worker_unit::run(action, generations))
@@ -113,11 +113,8 @@ impl Coordinator {
             #[cfg(test)]
             worker_inventory: Arc::new(|| Box::pin(async { Ok(BTreeMap::new()) })),
             deployment_wait: DeploymentWait::default(),
-            stopped_workers: BTreeSet::new(),
-            disconnected_workers,
             consumed_retry_intent,
             retry_cursor: 0,
-            next_registration: 1,
         })
     }
 
@@ -139,10 +136,8 @@ impl Coordinator {
                 )
             })
             .map(|generation| {
-                let worker = self.workers.get(&generation.id)?;
-                worker
-                    .ready
-                    .then_some((generation.id.get(), worker.instance.raw()))
+                let instance = self.workers.ready_instance(generation.id)?;
+                Some((generation.id.get(), instance))
             })
             .collect()
     }
@@ -162,10 +157,8 @@ impl Coordinator {
     ) -> Result<()> {
         let channel = self
             .workers
-            .get(&generation)
-            .ok_or_else(|| anyhow::anyhow!("worker disconnected"))?
-            .channel
-            .clone();
+            .channel_for(generation)
+            .ok_or_else(|| anyhow::anyhow!("worker disconnected"))?;
         let wire_generation = generation.into();
         let (stream, duplicate) = self
             .pending

@@ -24,7 +24,7 @@ pub(super) async fn fixture() -> (
     let mut coordinator = Coordinator::new(listener, paths, deployment).unwrap();
     let (channel, peer) = channel_pair();
     coordinator.active = Some(generation);
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         generation,
         accepting_worker(
             channel,

@@ -141,7 +141,7 @@ async fn current_worker_is_reactivated_while_the_prior_plan_is_recovered() {
     let (_directory, mut coordinator, previous, _target, _prior) =
         fixture(PriorPhase::StageTarget).await;
     let (channel, peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         previous,
         ready_worker(channel, 1, WorkerInstanceId::new(7).unwrap()),
     );

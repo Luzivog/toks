@@ -14,7 +14,7 @@ impl Coordinator {
             save_state(&self.paths.state, &self.deployment)?;
             if let DeployPlan::Retire { generation } = plan {
                 self.command_worker("stop", generation).await?;
-                self.stopped_workers.insert(generation);
+                self.workers.mark_stopped(generation);
                 self.record(DeploymentEvent::Retired { generation })?;
                 continue;
             }
@@ -35,13 +35,13 @@ impl Coordinator {
             }
             match plan {
                 DeployPlan::StageTarget { target, .. } => {
-                    if !self.worker_ready(target) {
+                    if !self.workers.is_ready(target) {
                         return Ok(());
                     }
                     self.record(DeploymentEvent::Prepared { target })?;
                 }
                 DeployPlan::PauseAdmissions { previous, target } => {
-                    if !self.worker_ready(target) {
+                    if !self.workers.is_ready(target) {
                         return Ok(());
                     }
                     let Some(previous) = previous else {
@@ -62,7 +62,7 @@ impl Coordinator {
                         self.record(DeploymentEvent::PreviousPaused { target })?;
                         continue;
                     }
-                    if !self.worker_ready(previous) {
+                    if !self.workers.is_ready(previous) {
                         return Ok(());
                     }
                     if self.pending.has_generation(previous.into()) {
@@ -74,9 +74,7 @@ impl Coordinator {
                     if self.waiting_for(wait) {
                         return Ok(());
                     }
-                    if let Some(worker) = self.workers.get_mut(&previous) {
-                        worker.accepting = false;
-                    }
+                    self.workers.mark_not_accepting(previous);
                     let control = Control::Drain {
                         generation: previous.into(),
                     };
@@ -86,7 +84,7 @@ impl Coordinator {
                     return Ok(());
                 }
                 DeployPlan::StartAccepting { target } => {
-                    if !self.worker_ready(target) {
+                    if !self.workers.is_ready(target) {
                         return Ok(());
                     }
                     let wait = WaitKey::TargetAccepting(target);
@@ -105,7 +103,7 @@ impl Coordinator {
                     previous,
                     failed_target: _,
                 } => {
-                    if !self.worker_ready(previous) {
+                    if !self.workers.is_ready(previous) {
                         return Ok(());
                     }
                     let wait = WaitKey::AdmissionsResumed(previous);
@@ -123,7 +121,7 @@ impl Coordinator {
                 DeployPlan::Retire { .. } => unreachable!("handled before unit reconciliation"),
                 DeployPlan::Settled { active } => {
                     self.active = active;
-                    if active.is_some_and(|active| !self.worker_ready(active)) {
+                    if active.is_some_and(|active| !self.workers.is_ready(active)) {
                         return Ok(());
                     }
                     self.reconcile_workers().await?;
@@ -134,7 +132,7 @@ impl Coordinator {
                     active,
                 } => {
                     self.active = active;
-                    if active.is_some_and(|active| !self.worker_ready(active)) {
+                    if active.is_some_and(|active| !self.workers.is_ready(active)) {
                         return Ok(());
                     }
                     self.reconcile_workers().await?;

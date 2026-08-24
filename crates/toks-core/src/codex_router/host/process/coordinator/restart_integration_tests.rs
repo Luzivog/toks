@@ -165,7 +165,7 @@ async fn attach(
         })
         .await
         .unwrap();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         generation,
         connected_worker(
             channel.clone(),

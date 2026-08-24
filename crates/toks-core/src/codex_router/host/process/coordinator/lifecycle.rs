@@ -24,14 +24,10 @@ impl Coordinator {
         let Some(active) = active else {
             return Ok(false);
         };
-        if !self.worker_ready(active) {
+        if !self.workers.is_ready(active) {
             return Ok(true);
         }
-        if self
-            .workers
-            .get(&active)
-            .is_some_and(|worker| worker.accepting)
-        {
+        if self.workers.is_accepting(active) {
             return Ok(false);
         }
         let wait = WaitKey::TargetAccepting(active);
@@ -72,7 +68,7 @@ impl Coordinator {
                     reason: "previous worker disconnected and remained stopped through the recovery deadline"
                         .into(),
                 })?;
-                self.stopped_workers.insert(*previous);
+                self.workers.mark_stopped(*previous);
                 self.record(DeploymentEvent::PreviousPaused { target: *target })?;
                 return Ok(());
             }
@@ -103,7 +99,7 @@ impl Coordinator {
                 reason: "worker activation acknowledgement timed out".into(),
             })?;
             if self.command_worker("stop", target).await.is_ok() {
-                self.stopped_workers.insert(target);
+                self.workers.mark_stopped(target);
             }
         }
         Ok(())
@@ -114,9 +110,9 @@ impl Coordinator {
         previous: crate::codex_router::host::GenerationId,
         target: crate::codex_router::host::GenerationId,
     ) -> bool {
-        if !self.disconnected_workers.contains(&previous)
-            || self.worker_ready(previous)
-            || !self.worker_ready(target)
+        if !self.workers.is_disconnected(previous)
+            || self.workers.is_ready(previous)
+            || !self.workers.is_ready(target)
         {
             return false;
         }

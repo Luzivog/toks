@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::codex_router::handoff::Control;
 use crate::codex_router::host::GenerationId;
 
-use super::core::{Coordinator, WorkerSlot};
+use super::core::Coordinator;
 use super::events::{spawn_reader, WorkerEvent};
 
 impl Coordinator {
@@ -23,21 +23,7 @@ impl Coordinator {
                 {
                     return Ok(());
                 }
-                let registration = self.next_registration;
-                self.next_registration = self.next_registration.saturating_add(1);
-                self.disconnected_workers.remove(&generation);
-                self.workers.insert(
-                    generation,
-                    WorkerSlot {
-                        registration,
-                        instance,
-                        ready: false,
-                        accepting: false,
-                        draining: false,
-                        pending_reconciled: false,
-                        channel: channel.clone(),
-                    },
-                );
+                let registration = self.workers.register(generation, instance, channel.clone());
                 spawn_reader(generation, registration, channel, events);
             }
             WorkerEvent::Message {
@@ -51,7 +37,6 @@ impl Coordinator {
                 generation,
                 registration,
             } if self.current(generation, registration) => {
-                self.workers.remove(&generation);
                 self.deployment_wait.clear_generation(generation);
                 self.worker_disconnected(generation)?;
             }
@@ -62,9 +47,7 @@ impl Coordinator {
     }
 
     fn current(&self, generation: GenerationId, registration: u64) -> bool {
-        self.workers
-            .get(&generation)
-            .is_some_and(|worker| worker.registration == registration)
+        self.workers.is_current(generation, registration)
     }
 
     fn known_generation(&self, generation: GenerationId) -> bool {

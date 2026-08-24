@@ -222,7 +222,7 @@ async fn unrelated_worker_ready_timeout_does_not_fail_the_candidate() {
 async fn paused_draining_worker_is_not_commanded_to_drain_again() {
     let (_directory, mut coordinator, previous, _target) = fixture(Phase::Prepared).await;
     let (channel, peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         previous,
         accepting_worker(channel, 1, WorkerInstanceId::new(1).unwrap()),
     );
@@ -249,14 +249,14 @@ async fn paused_draining_worker_is_not_commanded_to_drain_again() {
 async fn owner_reconciliation_waits_for_every_live_generation() {
     let (_directory, mut coordinator, previous, target) = fixture(Phase::Prepared).await;
     let (previous_channel, _previous_peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         previous,
         ready_worker(previous_channel, 1, WorkerInstanceId::new(101).unwrap()),
     );
     assert!(coordinator.reconcilable_worker_instances().is_none());
 
     let (target_channel, _target_peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         target,
         ready_worker(target_channel, 1, WorkerInstanceId::new(202).unwrap()),
     );

@@ -16,17 +16,11 @@ enum Retry {
 impl Coordinator {
     pub(super) async fn reconcile_workers(&mut self) -> Result<()> {
         for generation in self.deployment.snapshot().generations {
-            if !self.worker_ready(generation.id) {
+            if !self.workers.is_ready(generation.id) {
                 continue;
             }
-            let accepting = self
-                .workers
-                .get(&generation.id)
-                .is_some_and(|worker| worker.accepting);
-            let draining = self
-                .workers
-                .get(&generation.id)
-                .is_some_and(|worker| worker.draining);
+            let accepting = self.workers.is_accepting(generation.id);
+            let draining = self.workers.is_draining(generation.id);
             let (control, wait) = match generation.status {
                 GenerationStatus::Active if !accepting => (
                     Some(Control::Activate {
@@ -74,11 +68,7 @@ impl Coordinator {
     }
 
     pub(super) async fn retry_all_pending(&mut self) {
-        let generations = self
-            .workers
-            .iter()
-            .filter_map(|(generation, worker)| worker.ready.then_some(*generation))
-            .collect::<Vec<_>>();
+        let generations = self.workers.ready_generations();
         let mut deliveries = Vec::new();
         for generation in generations {
             deliveries.extend(
@@ -132,10 +122,8 @@ impl Coordinator {
     pub(super) async fn send(&self, generation: GenerationId, control: Control) -> Result<()> {
         let channel = self
             .workers
-            .get(&generation)
-            .context("worker disconnected")?
-            .channel
-            .clone();
+            .channel_for(generation)
+            .context("worker disconnected")?;
         tokio::time::timeout(
             super::core::CONTROL_SEND_TIMEOUT,
             channel.send_control(&control),
@@ -143,12 +131,6 @@ impl Coordinator {
         .await
         .map_err(|_| anyhow::anyhow!("worker control send timed out"))??;
         Ok(())
-    }
-
-    pub(super) fn worker_ready(&self, generation: GenerationId) -> bool {
-        self.workers
-            .get(&generation)
-            .is_some_and(|worker| worker.ready)
     }
 
     pub(super) fn host_generation(&self, generation: GenerationId) -> Option<GenerationId> {

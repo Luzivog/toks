@@ -8,7 +8,7 @@ use crate::codex_router::host::GenerationId;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Liveness {
+pub(in crate::codex_router::host::process) enum Liveness {
     Running,
     Stopped,
     Unknown,

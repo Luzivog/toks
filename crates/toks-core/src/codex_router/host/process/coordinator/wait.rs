@@ -16,7 +16,7 @@ pub(super) enum WaitKey {
 }
 
 #[derive(Default)]
-pub(super) struct DeploymentWait {
+pub(in crate::codex_router::host::process) struct DeploymentWait {
     waits: BTreeMap<WaitKey, Instant>,
 }
 

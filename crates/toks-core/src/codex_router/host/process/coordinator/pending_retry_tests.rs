@@ -92,7 +92,7 @@ async fn lost_finalization_ack_is_retried_after_same_epoch_reconnect() {
     ));
 
     let (replacement, replacement_peer) = channel_pair();
-    coordinator.workers.insert(
+    coordinator.workers.replace(
         generation,
         accepting_worker(replacement, 1, WorkerInstanceId::new(1).unwrap()),
     );
@@ -161,9 +161,8 @@ async fn stalled_finalization_retry_cannot_monopolize_the_coordinator() {
         .begin_finalizing(WireGenerationId::new(generation.get()), id));
     coordinator
         .workers
-        .get(&generation)
+        .channel_for(generation)
         .unwrap()
-        .channel
         .fill_send_buffer();
 
     let started = tokio::time::Instant::now();
