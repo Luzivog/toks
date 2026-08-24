@@ -1,13 +1,28 @@
 use std::collections::BTreeSet;
 
 use crate::accounts::AccountId;
-use crate::rotation::{BlockWindow, FastLimitDisposition, FastLimitOutcome};
+use crate::rotation::{BlockWindow, FastLimitDisposition, FastLimitOutcome, UsageLimitIncident};
 
 use super::super::{
     account::ThreadUsage, AccountRuntime, RotationEventKind, RotationRuntime, ThreadId, UnixMillis,
 };
 
 impl RotationRuntime {
+    pub(crate) fn usage_limited(
+        &mut self,
+        account: &AccountId,
+        incident: UsageLimitIncident,
+        at: UnixMillis,
+    ) {
+        self.push_event(
+            at,
+            RotationEventKind::UsageLimited {
+                account_id: account.clone(),
+                incident,
+            },
+        );
+    }
+
     pub fn block_admission(
         &mut self,
         account: &AccountId,
@@ -15,14 +30,16 @@ impl RotationRuntime {
         at: UnixMillis,
     ) -> bool {
         let drainable = self.drainable_threads(account);
-        let changed = {
+        let material_changed = {
             let state = self.accounts.entry(account.clone()).or_default();
             let before = state.clone();
             state.grandfathered_threads.extend(drainable);
             extend_admission_block(state, window);
-            state != &before
+            let changed = state != &before;
+            state.advance_quota_authority();
+            changed
         };
-        if changed {
+        if material_changed {
             self.push_event(
                 at,
                 RotationEventKind::Blocked {
@@ -31,7 +48,7 @@ impl RotationRuntime {
                 },
             );
         }
-        changed
+        material_changed
     }
 
     pub fn thread_blocked(
@@ -42,7 +59,7 @@ impl RotationRuntime {
         at: UnixMillis,
     ) -> bool {
         let drainable = self.drainable_threads(account);
-        let changed = {
+        let material_changed = {
             let state = self.accounts.entry(account.clone()).or_default();
             let before = state.clone();
             if state.quota_drain.is_none() {
@@ -61,9 +78,11 @@ impl RotationRuntime {
                     },
                 );
             }
-            state != &before
+            let changed = state != &before;
+            state.advance_quota_authority();
+            changed
         };
-        if changed {
+        if material_changed {
             self.push_event(
                 at,
                 RotationEventKind::ThreadBlocked {
@@ -73,7 +92,7 @@ impl RotationRuntime {
                 },
             );
         }
-        changed
+        material_changed
     }
 
     pub(crate) fn fast_limit_reached(
@@ -85,6 +104,7 @@ impl RotationRuntime {
         at: UnixMillis,
     ) -> (FastLimitOutcome, bool) {
         let state = self.accounts.entry(account.clone()).or_default();
+        state.advance_quota_authority();
         match state.thread_usage.get(thread) {
             Some(ThreadUsage::StandardOnly { until }) if *until > at => {
                 return (FastLimitOutcome::UseStandard, false);

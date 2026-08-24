@@ -10,6 +10,13 @@ use toks_core::Provider;
 
 use super::action_button;
 
+mod activation;
+pub(super) use activation::{
+    AccountActivationHandler, AccountActivationToggleHandler, AccountActivationView,
+};
+mod removal;
+use removal::confirmation_body;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AccountRemovalState {
     Ready,
@@ -42,11 +49,18 @@ impl AccountRemovalView {
 pub(super) type AccountRemovalHandler =
     Rc<dyn Fn(AccountOrderKey, &mut Window, &mut App) + 'static>;
 
+pub(super) struct AccountMenuHandlers {
+    pub(super) test: AccountActivationHandler,
+    pub(super) toggle_automatic: AccountActivationToggleHandler,
+    pub(super) prompt_removal: AccountRemovalHandler,
+    pub(super) remove: AccountRemovalHandler,
+    pub(super) cancel_removal: AccountRemovalHandler,
+}
+
 pub(super) fn account_menu(
     view: AccountRemovalView,
-    on_prompt: AccountRemovalHandler,
-    on_remove: AccountRemovalHandler,
-    on_cancel: AccountRemovalHandler,
+    activation: Option<AccountActivationView>,
+    handlers: AccountMenuHandlers,
     cx: &App,
 ) -> gpui::Div {
     let slug = view.key.provider.slug();
@@ -61,7 +75,10 @@ pub(super) fn account_menu(
     };
 
     let menu_view = view.clone();
-    let menu_handler = on_prompt.clone();
+    let menu_handler = handlers.prompt_removal.clone();
+    let activation_view = activation.clone();
+    let test_handler = handlers.test.clone();
+    let toggle_handler = handlers.toggle_automatic.clone();
     let action = action_button(action_selector, cx)
         .compact()
         .child(div().text_sm().child("⋯"))
@@ -73,10 +90,17 @@ pub(super) fn account_menu(
         .loading(pending)
         .disabled(pending)
         .dropdown_menu_with_anchor(Corner::TopRight, move |menu, _, _| {
+            let mut menu = menu.min_w(px(220.));
+            if let Some(view) = activation_view.clone() {
+                for item in activation::items(view, test_handler.clone(), toggle_handler.clone()) {
+                    menu = menu.item(item);
+                }
+                menu = menu.separator();
+            }
             let item_view = menu_view.clone();
             let rendered_view = item_view.clone();
             let item_handler = menu_handler.clone();
-            menu.min_w(px(220.)).item(
+            menu.item(
                 PopupMenuItem::element(move |_, _| {
                     let selector = format!(
                         "remove-account-{}-{}",
@@ -99,9 +123,9 @@ pub(super) fn account_menu(
 
     let confirmation = confirming.then(|| {
         let remove_key = view.key.clone();
-        let remove_handler = on_remove.clone();
+        let remove_handler = handlers.remove.clone();
         let cancel_key = view.key.clone();
-        let cancel_handler = on_cancel.clone();
+        let cancel_handler = handlers.cancel_removal.clone();
         let body = confirmation_body(view.origin, view.key.provider.display_name());
         div()
             .debug_selector(|| "account-removal-confirmation".to_string())
@@ -152,37 +176,4 @@ pub(super) fn account_menu(
         })
         .when_some(confirmation, |row, confirmation| row.child(confirmation))
         .child(action)
-}
-
-fn confirmation_body(origin: AccountOrigin, provider: &str) -> String {
-    let action = match origin {
-        AccountOrigin::Managed => {
-            "Its Toks-managed profile and saved credentials will be removed from this device."
-        }
-        AccountOrigin::Current => {
-            "It will be hidden in Toks. Your current CLI credentials will not be changed."
-        }
-        AccountOrigin::Mixed => {
-            "Toks-managed profiles will be removed and the current CLI account will be hidden. Your current CLI credentials will not be changed."
-        }
-        AccountOrigin::Unknown => {
-            "It will be removed from Toks. Your provider credentials will not be changed."
-        }
-    };
-    format!("{action} Your {provider} usage history will be kept.")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{confirmation_body, AccountOrigin};
-
-    #[test]
-    fn removal_copy_matches_capability() {
-        assert!(confirmation_body(AccountOrigin::Managed, "Codex")
-            .contains("saved credentials will be removed"));
-        assert!(confirmation_body(AccountOrigin::Current, "Codex")
-            .contains("credentials will not be changed"));
-        assert!(confirmation_body(AccountOrigin::Mixed, "Claude Code")
-            .contains("profiles will be removed"));
-    }
 }

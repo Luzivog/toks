@@ -76,3 +76,33 @@ fn persisted_admissions_are_bounded() {
     let stored: serde_json::Value = serde_json::from_slice(&std::fs::read(store).unwrap()).unwrap();
     assert_eq!(stored["admissions"].as_array().unwrap().len(), 64);
 }
+
+#[test]
+fn overlapping_generations_preserve_each_others_admissions() {
+    let first_token = jwt("generation-one", 4_102_444_800);
+    let second_token = jwt("generation-two", 4_102_444_800);
+    let harness = Harness::new(&[("a", &first_token), ("b", &second_token)]);
+    let store = harness._directory.path().join("inbound-tokens.json");
+    let first = InboundTokens::at(harness.runtime.credentials.clone(), store.clone());
+    let second = InboundTokens::at(harness.runtime.credentials.clone(), store.clone());
+    let ready = std::sync::Arc::new(std::sync::Barrier::new(3));
+
+    let first_ready = ready.clone();
+    let first_writer = std::thread::spawn(move || {
+        first_ready.wait();
+        first.accepts(&first_token)
+    });
+    let second_ready = ready.clone();
+    let second_writer = std::thread::spawn(move || {
+        second_ready.wait();
+        second.accepts(&second_token)
+    });
+    ready.wait();
+    assert!(first_writer.join().unwrap());
+    assert!(second_writer.join().unwrap());
+
+    harness.credentials.incoming.lock().unwrap().clear();
+    let recovered = InboundTokens::at(harness.runtime.credentials.clone(), store);
+    assert!(recovered.accepts(&jwt("generation-one", 4_102_444_800)));
+    assert!(recovered.accepts(&jwt("generation-two", 4_102_444_800)));
+}

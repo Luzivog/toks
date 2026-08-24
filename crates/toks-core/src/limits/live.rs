@@ -7,7 +7,7 @@ use std::time::Duration;
 use chrono::Utc;
 
 use super::{LimitIssue, LimitIssueKind, LimitSnapshot, SnapshotFreshness, SnapshotStatus};
-use crate::accounts::{AccountProfile, CredentialProfileId};
+use crate::accounts::{AccountProfile, CodexAuthProof, CredentialProfileId};
 
 const LIVE_TTL: Duration = Duration::from_secs(60);
 const FAILURE_BACKOFF_MAX: Duration = Duration::from_secs(15 * 60);
@@ -16,6 +16,7 @@ const FAILURE_BACKOFF_MAX: Duration = Duration::from_secs(15 * 60);
 pub(crate) struct RefreshOutcome {
     pub(crate) snapshot: Option<LimitSnapshot>,
     pub(crate) issue: Option<LimitIssue>,
+    pub(crate) codex_auth: Option<CodexAuthProof>,
 }
 
 pub(super) fn failure_backoff(failures: u32) -> Duration {
@@ -30,11 +31,19 @@ pub(crate) fn hydrate(profile: &AccountProfile) -> Option<LimitSnapshot> {
     super::snapshot_cache::load_or_seed(profile).map(|snapshot| normalize(snapshot, profile))
 }
 pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
+    refresh_using(profile, || super::live_fetch::fetch(profile))
+}
+
+fn refresh_using(
+    profile: &AccountProfile,
+    fetch: impl FnOnce() -> Result<super::live_fetch::LiveFetch, super::http::LiveError>,
+) -> RefreshOutcome {
     let baseline = hydrate(profile);
     if !credentials_present(profile) {
         return RefreshOutcome {
             snapshot: baseline,
             issue: None,
+            codex_auth: None,
         };
     }
 
@@ -49,8 +58,9 @@ pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
     }
 
     let previous_failures = memo::previous_failures(&key);
-    let (outcome, failures, retry_for) = match super::live_fetch::fetch(profile) {
-        Ok(mut snapshot) => {
+    let (outcome, failures, retry_for, remembered_revision) = match fetch() {
+        Ok(fetched) if fetch_is_current(profile, fetched.codex_auth.as_ref()) => {
+            let mut snapshot = fetched.snapshot;
             snapshot.status = SnapshotStatus::at(SnapshotFreshness::Live);
             snapshot.status.last_attempted_at = Some(Utc::now());
             snapshot.source = "live".into();
@@ -59,14 +69,32 @@ pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
                 let issue = LimitIssue::new(LimitIssueKind::Storage, error.to_string());
                 snapshot.status.issue = Some(issue.clone());
             }
+            if !fetch_is_current(profile, fetched.codex_auth.as_ref()) {
+                let _ = super::snapshot_cache::remove_for_profile(
+                    profile.provider,
+                    &profile.profile_id,
+                );
+                return stale_codex_refresh(baseline);
+            }
             (
                 RefreshOutcome {
                     snapshot: Some(snapshot),
                     issue: None,
+                    codex_auth: fetched.codex_auth.clone(),
                 },
                 0,
                 LIVE_TTL,
+                fetched
+                    .codex_auth
+                    .map(|proof| {
+                        super::credentials::CredentialRevision::from_digest(proof.revision())
+                    })
+                    .or(credential_revision),
             )
+        }
+        Ok(fetched) => {
+            drop(fetched);
+            return stale_codex_refresh(baseline);
         }
         Err(error)
             if baseline.is_none()
@@ -75,18 +103,31 @@ pub(crate) fn refresh(profile: &AccountProfile) -> RefreshOutcome {
             return RefreshOutcome {
                 snapshot: None,
                 issue: Some(error.issue),
+                codex_auth: None,
             };
         }
-        Err(error) => failed_refresh(error.issue, baseline, previous_failures + 1),
+        Err(error) => {
+            let (outcome, failures, retry_for) =
+                failed_refresh(error.issue, baseline, previous_failures + 1);
+            (outcome, failures, retry_for, credential_revision)
+        }
     };
     memo::remember(
         key,
         outcome.clone(),
         failures,
         retry_for,
-        super::credentials::revision(profile),
+        remembered_revision,
     );
     outcome
+}
+
+#[cfg(test)]
+pub(crate) fn refresh_for_test(
+    profile: &AccountProfile,
+    fetch: impl FnOnce() -> Result<super::live_fetch::LiveFetch, super::http::LiveError>,
+) -> RefreshOutcome {
+    refresh_using(profile, fetch)
 }
 
 fn failed_refresh(
@@ -112,10 +153,26 @@ fn failed_refresh(
         RefreshOutcome {
             snapshot,
             issue: Some(issue),
+            codex_auth: None,
         },
         failures,
         retry_for,
     )
+}
+
+fn fetch_is_current(profile: &AccountProfile, proof: Option<&CodexAuthProof>) -> bool {
+    proof.is_none_or(|proof| proof.is_current(profile))
+}
+
+fn stale_codex_refresh(baseline: Option<LimitSnapshot>) -> RefreshOutcome {
+    RefreshOutcome {
+        snapshot: baseline,
+        issue: Some(LimitIssue::new(
+            LimitIssueKind::Authentication,
+            "Codex credentials changed while usage was refreshing",
+        )),
+        codex_auth: None,
+    }
 }
 
 pub(crate) fn forget_profile(provider: crate::Provider, profile_id: &CredentialProfileId) {

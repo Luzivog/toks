@@ -8,11 +8,22 @@ use super::{RotationEvent, RotationEventKind, ThreadId, UnixMillis};
 
 mod account;
 mod active_threads;
+mod connection_owner;
+mod events;
 mod mutations;
 mod reconcile;
+mod resume_admissions;
+mod validation;
+mod waiting;
+
+pub use active_threads::ThreadAccountConflict;
+pub(crate) use active_threads::ThreadOwnership;
+pub(crate) use connection_owner::WorkerConnectionOwner;
+use connection_owner::{AttachedThread, WorkerConnectionCount};
+pub(crate) use resume_admissions::{ResumeAuthorization, ResumeRoute, ResumeTerminal};
+pub use waiting::{WaitingId, WaitingThread};
 
 pub(super) const RUNTIME_VERSION: u8 = 1;
-const EVENT_LIMIT: usize = 100;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +42,8 @@ pub struct AccountRuntime {
     block_confirmed: bool,
     #[serde(default)]
     block_reset_known: bool,
+    #[serde(default)]
+    quota_authority_revision: u64,
     #[serde(default, rename = "quotaExhaustion")]
     quota_drain: Option<QuotaDrainState>,
     #[serde(default)]
@@ -40,6 +53,14 @@ pub struct AccountRuntime {
     #[serde(default)]
     thread_usage: BTreeMap<ThreadId, account::ThreadUsage>,
     needs_sign_in: bool,
+    #[serde(default)]
+    auth_failure_revision: u64,
+    #[serde(default)]
+    auth_failed_at: Option<UnixMillis>,
+    #[serde(default)]
+    rejected_credential_fingerprint: Option<String>,
+    #[serde(default)]
+    rejected_credential_history: VecDeque<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,12 +68,6 @@ pub struct AccountRuntime {
 struct QuotaDrainState {
     until: UnixMillis,
     reset_known: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct AttachedThread {
-    account: AccountId,
-    connections: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,13 +86,6 @@ pub enum AccountAvailability {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WaitingThread {
-    pub thread_id: ThreadId,
-    pub since: UnixMillis,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RotationRuntime {
     version: u8,
     health: RouterHealth,
@@ -85,8 +93,10 @@ pub struct RotationRuntime {
     accounts: BTreeMap<AccountId, AccountRuntime>,
     #[serde(default)]
     active_threads: BTreeMap<ThreadId, active_threads::ActiveThread>,
-    #[serde(skip)]
+    #[serde(default)]
     attached_threads: BTreeMap<ThreadId, AttachedThread>,
+    #[serde(default)]
+    resume_admissions: BTreeMap<WaitingId, resume_admissions::ResumeAdmission>,
     waiting_threads: Vec<WaitingThread>,
     events: VecDeque<RotationEvent>,
 }
@@ -100,6 +110,7 @@ impl Default for RotationRuntime {
             accounts: BTreeMap::new(),
             active_threads: BTreeMap::new(),
             attached_threads: BTreeMap::new(),
+            resume_admissions: BTreeMap::new(),
             waiting_threads: Vec::new(),
             events: VecDeque::new(),
         }
@@ -142,6 +153,12 @@ impl RotationRuntime {
             .is_none_or(|state| state.availability(now) == AccountAvailability::Available)
     }
 
+    pub(crate) fn quota_authority_revision(&self, account: &AccountId) -> u64 {
+        self.accounts
+            .get(account)
+            .map_or(0, |state| state.quota_authority_revision())
+    }
+
     pub fn can_drain(&self, account: &AccountId, thread: &ThreadId, now: UnixMillis) -> bool {
         self.accounts
             .get(account)
@@ -164,26 +181,6 @@ impl RotationRuntime {
             .iter()
             .find(|(_, state)| state.can_drain(thread, now))
             .map(|(account, _)| account.clone())
-    }
-
-    pub(super) fn push_event(&mut self, at: UnixMillis, event: RotationEventKind) {
-        self.events.push_front(RotationEvent { at, event });
-        self.events.truncate(EVENT_LIMIT);
-    }
-
-    pub(super) fn normalize(&mut self) {
-        let mut seen = BTreeSet::new();
-        self.waiting_threads
-            .retain(|waiting| seen.insert(waiting.thread_id.clone()));
-        for state in self.accounts.values_mut() {
-            if state.quota_drain.is_none() && !state.block_confirmed {
-                state.grandfathered_threads.clear();
-                state.provisional_threads.clear();
-                state.thread_usage.clear();
-            }
-        }
-        self.attached_threads.clear();
-        self.events.truncate(EVENT_LIMIT);
     }
 
     pub(super) fn version(&self) -> u8 {

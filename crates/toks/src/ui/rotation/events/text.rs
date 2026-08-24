@@ -160,6 +160,31 @@ pub(super) fn event_text(app: &ToksApp, event: &RotationEvent) -> EventText {
             .thread(thread_id.as_str())
             .plain(" resumed on ")
             .account(&account_name(app, account_id), account_id),
+        RotationEventKind::UsageLimited {
+            account_id,
+            incident,
+        } => {
+            let mut text = EventText::default();
+            if let Some(thread) = incident.thread_id() {
+                text = text.plain("Thread ").thread(thread.as_str()).plain(" hit ");
+            } else {
+                text = text.plain("Upstream ");
+            }
+            text = text
+                .plain(incident.tier().label())
+                .plain(" usage limit on ")
+                .account(&account_name(app, account_id), account_id)
+                .plain(" via ")
+                .plain(incident.phase().label())
+                .plain(" (")
+                .plain(incident.evidence().classification().label());
+            if let Some(model) = incident.model() {
+                text = text.plain(", ").plain(model);
+            }
+            text.plain(", ")
+                .plain(incident.tier().origin().label())
+                .plain(")")
+        }
         RotationEventKind::RouterFailure => EventText::default().plain("Router failure recorded"),
     }
 }

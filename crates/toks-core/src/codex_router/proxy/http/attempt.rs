@@ -6,14 +6,15 @@ use axum::http::{Response, StatusCode};
 use futures_util::StreamExt;
 
 use crate::accounts::AccountId;
-use crate::rotation::ThreadId;
+use crate::rotation::{ThreadId, UsageLimitPhase, UsageLimitTier};
 
-use super::super::engine::{AttemptedTier, ResponseDelivery, RouteTier, UsageLimitAction};
+use super::super::engine::{AttemptedTier, ResponseDelivery, UsageLimitAction};
 use super::super::headers::response_headers;
 use super::super::lease::StreamLease;
-use super::super::protocol::{requested_model, usage_block, with_service_tier, ResponseLifecycle};
+use super::super::protocol::{usage_block, ResponseLifecycle};
 use super::super::ProxyState;
-use super::{build_response, stream};
+use super::response::{body_is_identity_encoded, build_response};
+use super::stream;
 
 const MAX_SSE_PREFETCH_BYTES: usize = 4 * 1024 * 1024;
 
@@ -24,40 +25,31 @@ pub(super) enum Attempt {
     Failed,
 }
 
-pub(super) fn request_body(
-    state: &ProxyState,
-    tier: RouteTier,
-    thread: &Option<ThreadId>,
-    body: Bytes,
-) -> (Bytes, bool) {
-    let Some((_thread, text)) = thread.as_ref().zip(std::str::from_utf8(&body).ok()) else {
-        return (body, false);
-    };
-    let upgraded = match tier {
-        RouteTier::Original => None,
-        RouteTier::Standard => with_service_tier(text, "default").map(|body| (body, false)),
-        RouteTier::Fast => requested_model(text)
-            .and_then(|model| state.engine.fast_tier_for(&model))
-            .and_then(|tier| with_service_tier(text, tier))
-            .map(|upgraded| {
-                let forced = upgraded.as_bytes() != body.as_ref();
-                (upgraded, forced)
-            }),
-    };
-    match upgraded {
-        Some((upgraded, forced)) => (upgraded.into(), forced),
-        None => (body, false),
-    }
+pub(super) struct ResponseContext {
+    pub(super) account: AccountId,
+    pub(super) thread: Option<ThreadId>,
+    pub(super) lease: Option<StreamLease>,
+    pub(super) forced_fast: bool,
+    pub(super) model: Option<String>,
+    pub(super) request_tier: UsageLimitTier,
 }
 
 pub(super) async fn classify_response(
     state: &ProxyState,
     response: reqwest::Response,
-    account: AccountId,
-    thread: &Option<ThreadId>,
-    lease: Option<StreamLease>,
-    forced_fast: bool,
+    context: ResponseContext,
 ) -> Attempt {
+    let ResponseContext {
+        account,
+        thread,
+        lease,
+        forced_fast,
+        model,
+        request_tier,
+    } = context;
+    if !body_is_identity_encoded(response.headers()) {
+        return Attempt::Failed;
+    }
     let status = response.status();
     let headers = response_headers(response.headers());
     if status == StatusCode::TOO_MANY_REQUESTS {
@@ -75,6 +67,12 @@ pub(super) async fn classify_response(
                 tier,
                 ResponseDelivery::NothingDelivered,
                 block.resets_at,
+                block.incident(
+                    thread.clone(),
+                    model.as_deref(),
+                    request_tier.clone(),
+                    UsageLimitPhase::HttpResponse,
+                ),
             ) {
                 Ok(UsageLimitAction::RetrySameAccountAtStandardTier) => {
                     return Attempt::RetrySameAccountAtStandardTier;
@@ -92,7 +90,7 @@ pub(super) async fn classify_response(
             if eligible.ok().flatten().is_some() {
                 return Attempt::TryNext(account);
             }
-            if let Some(thread) = thread {
+            if let Some(thread) = &thread {
                 let _ = state.engine.waiting(thread);
             }
         }
@@ -146,6 +144,12 @@ pub(super) async fn classify_response(
             tier,
             delivery,
             block.resets_at,
+            block.incident(
+                thread.clone(),
+                model.as_deref(),
+                request_tier.clone(),
+                UsageLimitPhase::HttpStream,
+            ),
         ) {
             Ok(UsageLimitAction::RetrySameAccountAtStandardTier) => {
                 Attempt::RetrySameAccountAtStandardTier
@@ -175,8 +179,10 @@ pub(super) async fn classify_response(
         stream::UsageContext {
             engine: state.engine.clone(),
             account,
-            thread: thread.clone(),
+            thread,
             tier,
+            model,
+            request_tier,
         },
     );
     Attempt::Response(build_response(status, headers, body))

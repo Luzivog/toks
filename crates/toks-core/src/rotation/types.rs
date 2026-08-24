@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::accounts::AccountId;
 
+mod usage_limit;
+pub use usage_limit::{
+    UsageLimitClassification, UsageLimitEvidence, UsageLimitIncident, UsageLimitPhase,
+    UsageLimitTier, UsageLimitTierOrigin,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct UnixMillis(i64);
@@ -114,7 +120,17 @@ pub enum RotationEventKind {
         thread_id: ThreadId,
         account_id: AccountId,
     },
+    UsageLimited {
+        account_id: AccountId,
+        incident: UsageLimitIncident,
+    },
     RouterFailure,
+}
+
+impl RotationEventKind {
+    pub(super) const fn is_incident(&self) -> bool {
+        matches!(self, Self::UsageLimited { .. } | Self::RouterFailure)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

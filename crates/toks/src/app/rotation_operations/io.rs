@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use toks_core::{
     accounts::AccountId,
-    codex_router::{self, RouterInstallStatus},
+    codex_router::{self, RouterDeploymentStatus, RouterInstallStatus},
     rotation::{RotationRuntime, RotationRuntimeStore, RotationSettings, RotationSettingsStore},
 };
 
@@ -11,6 +11,7 @@ pub(super) struct LoadedRotation {
     pub settings: RotationSettings,
     pub runtime: RotationRuntime,
     pub install: RouterInstallStatus,
+    pub deployment: RouterDeploymentStatus,
 }
 
 pub(super) fn change_settings(
@@ -18,45 +19,44 @@ pub(super) fn change_settings(
     accounts: Option<&[AccountId]>,
 ) -> Result<LoadedRotation> {
     let store = RotationSettingsStore::discover()?;
-    let mut settings = store.load()?;
-    if let Some(accounts) = accounts {
-        settings.reconcile(accounts);
-    }
-    match action {
-        SettingsAction::Include(account, included) => {
-            settings.set_included(&account, included);
+    store.update(|settings| {
+        if let Some(accounts) = accounts {
+            settings.reconcile(accounts);
         }
-        SettingsAction::MoveAccount(account, index) => {
-            settings.move_to(&account, index);
+        match action {
+            SettingsAction::Include(account, included) => {
+                settings.set_included(&account, included);
+            }
+            SettingsAction::MoveAccount(account, index) => {
+                settings.move_to(&account, index);
+            }
+            SettingsAction::Cancel(thread) => {
+                settings.cancel_waiting(&thread);
+            }
+            SettingsAction::MoveWaiting(thread, index) => {
+                settings.move_waiting_to(&thread, index);
+            }
         }
-        SettingsAction::Cancel(thread) => {
-            settings.cancel_waiting(&thread);
-        }
-        SettingsAction::MoveWaiting(thread, index) => {
-            settings.move_waiting_to(&thread, index);
-        }
-    }
-    store.save(&settings)?;
+        ((), true)
+    })?;
     load_rotation(accounts)
 }
 
 pub(super) fn load_rotation(accounts: Option<&[AccountId]>) -> Result<LoadedRotation> {
     let settings_store = RotationSettingsStore::discover()?;
     let runtime = RotationRuntimeStore::discover()?.load()?;
-    let mut settings = settings_store.load()?;
-    let waiting: Vec<_> = runtime
-        .waiting_threads()
-        .iter()
-        .map(|entry| entry.thread_id.clone())
-        .collect();
-    let accounts_changed = accounts.is_some_and(|accounts| settings.reconcile(accounts));
-    if accounts_changed | settings.reconcile_waiting(&waiting) {
-        settings_store.save(&settings)?;
-    }
+    let deployment = codex_router::deployment_status(&runtime)?;
+    let waiting = runtime.queued_or_resuming_threads();
+    let settings = settings_store.update(|settings| {
+        let accounts_changed = accounts.is_some_and(|accounts| settings.reconcile(accounts));
+        let changed = accounts_changed | settings.reconcile_waiting(&waiting);
+        (settings.clone(), changed)
+    })?;
     Ok(LoadedRotation {
         settings,
         runtime,
         install: codex_router::status(),
+        deployment,
     })
 }
 

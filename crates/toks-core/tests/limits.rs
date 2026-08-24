@@ -227,18 +227,18 @@ fn reset_elapsed_detection() {
 }
 
 #[test]
-fn remaining_percent_never_goes_negative() {
+fn out_of_range_usage_windows_are_rejected() {
     let rl = serde_json::json!({
         "primary": {"used_percent": 140.0, "window_minutes": 300, "resets_at": 1786999999}
     });
     let snap = codex::parse(&rl, None, "test".into());
-    assert_eq!(snap.windows[0].percent_remaining(), 0.0);
+    assert!(snap.windows.is_empty());
 
     let rl = serde_json::json!({
         "primary": {"used_percent": -20.0, "window_minutes": 300, "resets_at": 1786999999}
     });
     let snap = codex::parse(&rl, None, "test".into());
-    assert_eq!(snap.windows[0].percent_remaining(), 100.0);
+    assert!(snap.windows.is_empty());
 }
 
 #[test]
@@ -248,5 +248,7 @@ fn invalid_usage_never_looks_like_full_quota() {
     });
     let mut snap = codex::parse(&rl, None, "test".into());
     snap.windows[0].percent_used = f64::NAN;
+    assert_eq!(snap.windows[0].percent_remaining(), 0.0);
+    snap.windows[0].percent_used = -1.0;
     assert_eq!(snap.windows[0].percent_remaining(), 0.0);
 }

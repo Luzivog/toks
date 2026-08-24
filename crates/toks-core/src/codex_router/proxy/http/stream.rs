@@ -7,7 +7,7 @@ use futures_util::stream::BoxStream;
 use futures_util::StreamExt;
 
 use crate::accounts::AccountId;
-use crate::rotation::ThreadId;
+use crate::rotation::{ThreadId, UsageLimitPhase, UsageLimitTier};
 
 use super::super::engine::{AttemptedTier, Engine, ResponseDelivery};
 use super::super::lease::StreamLease;
@@ -20,6 +20,8 @@ pub(super) struct UsageContext {
     pub account: AccountId,
     pub thread: Option<ThreadId>,
     pub tier: AttemptedTier,
+    pub model: Option<String>,
+    pub request_tier: UsageLimitTier,
 }
 
 pub(super) fn body(
@@ -62,6 +64,12 @@ async fn next_chunk(mut state: StreamState) -> Option<(Result<Bytes, io::Error>,
                             state.usage.tier,
                             ResponseDelivery::Delivered,
                             block.resets_at,
+                            block.incident(
+                                state.usage.thread.clone(),
+                                state.usage.model.as_deref(),
+                                state.usage.request_tier.clone(),
+                                UsageLimitPhase::HttpStream,
+                            ),
                         ) {
                             return Some((Err(io::Error::other(error)), state));
                         }

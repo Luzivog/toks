@@ -1,17 +1,17 @@
-use std::collections::{BTreeMap, BTreeSet};
-
-use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use anyhow::Result;
+use chrono::Utc;
 
 use crate::accounts::AccountId;
-use crate::limits::LimitSnapshot;
 use crate::rotation::{
     account_quota_drain, BlockWindow, FastLimitDisposition, FastLimitOutcome, ThreadId, UnixMillis,
+    UsageLimitIncident,
 };
 
 use super::{now, Engine};
 
 const REPROBE_AFTER_MILLIS: i64 = 60_000;
+
+mod snapshots;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AttemptedTier {
@@ -33,29 +33,25 @@ pub(crate) enum UsageLimitAction {
 }
 
 impl Engine {
-    pub fn apply_snapshots(
-        &self,
-        snapshots: &[LimitSnapshot],
-        observed_at: DateTime<Utc>,
-    ) -> Result<()> {
-        let discovered = self.credentials.account_ids();
-        let known: BTreeSet<_> = discovered.iter().cloned().collect();
-        let draining = snapshots
-            .iter()
-            .filter_map(|snapshot| account_quota_drain(snapshot, observed_at))
-            .filter(|drain| known.contains(&drain.account_id))
-            .map(|drain| (drain.account_id, drain.reset_at))
-            .collect::<BTreeMap<_, _>>();
-        let at = now();
-        let mut runtime = self.runtime.lock().expect("router runtime poisoned");
-        let before = runtime.clone();
-        runtime.reconcile(&discovered, at);
-        runtime.replace_quota_drain(&draining, at);
-        runtime.heartbeat(at);
-        if let Err(error) = self.runtime_store.save(&runtime) {
-            *runtime = before;
-            return Err(error);
+    pub fn waiting(&self, thread: &ThreadId) -> Result<()> {
+        if self.thread_sources.is_known_subagent(thread) {
+            return Ok(());
         }
+        self.mutate(|runtime| runtime.waiting(thread, now()))
+    }
+
+    pub fn release_reservation(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        self.mutate(|runtime| runtime.release_reservation(account, thread))
+    }
+
+    pub fn reserve_retry(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        let at = now();
+        self.runtime.update(
+            |runtime| match runtime.reserve_thread(account, thread, at) {
+                Ok(()) => (Ok(()), true),
+                Err(conflict) => (Err(conflict), false),
+            },
+        )??;
         Ok(())
     }
 
@@ -71,7 +67,9 @@ impl Engine {
         tier: AttemptedTier,
         delivery: ResponseDelivery,
         reset: Option<UnixMillis>,
+        incident: UsageLimitIncident,
     ) -> Result<UsageLimitAction> {
+        debug_assert_eq!(incident.thread_id(), thread);
         if tier == AttemptedTier::ToksForcedFast {
             let Some(thread) = thread else {
                 return Ok(UsageLimitAction::ForwardFailure);
@@ -82,20 +80,12 @@ impl Engine {
             };
             let at = now();
             let window = block_window(account, reset);
-            let mut runtime = self.runtime.lock().expect("router runtime poisoned");
-            let before = runtime.clone();
-            let (outcome, changed) =
-                runtime.fast_limit_reached(account, thread, window, disposition, at);
-            if changed {
-                if let Err(error) = self
-                    .runtime_store
-                    .save(&runtime)
-                    .context("saving router runtime")
-                {
-                    *runtime = before;
-                    return Err(error);
-                }
-            }
+            let outcome = self.runtime.update(|runtime| {
+                let (outcome, _material_changed) =
+                    runtime.fast_limit_reached(account, thread, window, disposition, at);
+                runtime.usage_limited(account, incident, at);
+                (outcome, true)
+            })?;
             return Ok(match (outcome, delivery) {
                 (FastLimitOutcome::UseStandard, ResponseDelivery::NothingDelivered) => {
                     UsageLimitAction::RetrySameAccountAtStandardTier
@@ -115,10 +105,16 @@ impl Engine {
         let window = block_window(account, reset);
         let at = now();
         match thread {
-            Some(thread) => {
-                self.mutate(|runtime| runtime.thread_blocked(account, thread, window, at))?
-            }
-            None => self.mutate(|runtime| runtime.block_admission(account, window, at))?,
+            Some(thread) => self.runtime.update(|runtime| {
+                runtime.thread_blocked(account, thread, window, at);
+                runtime.usage_limited(account, incident, at);
+                ((), true)
+            })?,
+            None => self.runtime.update(|runtime| {
+                runtime.block_admission(account, window, at);
+                runtime.usage_limited(account, incident, at);
+                ((), true)
+            })?,
         }
         Ok(match delivery {
             ResponseDelivery::NothingDelivered => UsageLimitAction::TryAnotherAccount,
@@ -126,10 +122,29 @@ impl Engine {
         })
     }
 
+    #[cfg(test)]
     pub fn block_admission(&self, account: &AccountId, reset: Option<UnixMillis>) -> Result<()> {
         let at = now();
         let window = block_window(account, reset);
-        self.mutate(|runtime| runtime.block_admission(account, window, at))
+        self.runtime.update(|runtime| {
+            runtime.block_admission(account, window, at);
+            ((), true)
+        })
+    }
+
+    pub fn upstream_admission_usage_limited(
+        &self,
+        account: &AccountId,
+        reset: Option<UnixMillis>,
+        incident: UsageLimitIncident,
+    ) -> Result<()> {
+        let at = now();
+        let window = block_window(account, reset);
+        self.runtime.update(|runtime| {
+            runtime.block_admission(account, window, at);
+            runtime.usage_limited(account, incident, at);
+            ((), true)
+        })
     }
 }
 

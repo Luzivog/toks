@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
@@ -25,7 +25,11 @@ impl AdmissionStore {
         Self { path }
     }
 
-    pub fn load(&self) -> Result<BTreeMap<[u8; 32], Admission>> {
+    pub fn is_persistent(&self) -> bool {
+        self.path.is_some()
+    }
+
+    fn load(&self) -> Result<BTreeMap<[u8; 32], Admission>> {
         let Some(path) = &self.path else {
             return Ok(BTreeMap::new());
         };
@@ -49,7 +53,7 @@ impl AdmissionStore {
             .collect())
     }
 
-    pub fn save(&self, admissions: &BTreeMap<[u8; 32], Admission>) -> Result<()> {
+    fn save(&self, admissions: &BTreeMap<[u8; 32], Admission>) -> Result<()> {
         let Some(path) = &self.path else {
             return Ok(());
         };
@@ -63,5 +67,47 @@ impl AdmissionStore {
             admissions: durable,
         })?;
         crate::rotation::write_private_atomic(path, &bytes, "inbound token admissions")
+    }
+
+    /// Serializes the complete admission read-modify-write across workers.
+    pub fn update<T>(
+        &self,
+        change: impl FnOnce(&mut BTreeMap<[u8; 32], Admission>) -> (T, bool),
+    ) -> Result<T> {
+        let Some(path) = &self.path else {
+            let mut admissions = BTreeMap::new();
+            return Ok(change(&mut admissions).0);
+        };
+        let parent = path
+            .parent()
+            .context("inbound token admission path has no parent")?;
+        fs::create_dir_all(parent).context("creating inbound token admission directory")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
+        }
+        let mut lock_name = path
+            .file_name()
+            .context("inbound token admission path has no file name")?
+            .to_os_string();
+        lock_name.push(".lock");
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let lock = options
+            .open(parent.join(lock_name))
+            .context("opening inbound token admission lock")?;
+        lock.lock().context("locking inbound token admissions")?;
+        let mut admissions = self.load()?;
+        let (value, changed) = change(&mut admissions);
+        if changed {
+            self.save(&admissions)?;
+        }
+        Ok(value)
     }
 }

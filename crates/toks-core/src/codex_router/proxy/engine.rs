@@ -1,19 +1,24 @@
-use std::sync::{Arc, Mutex};
-
-use anyhow::{Context, Result};
-
-use crate::accounts::AccountId;
-use crate::rotation::{
-    RotationRuntime, RotationRuntimeStore, RotationSettingsStore, ThreadId, UnixMillis,
-    WaitingThread,
-};
+use std::collections::BTreeMap;
 
 use super::catalogue::Catalogue;
-use super::types::{CredentialFailure, RouteCredential, SharedCredentials};
+use super::types::SharedCredentials;
+use crate::accounts::AccountId;
+use crate::rotation::{
+    ResumeAuthorization, ResumeTerminal, RotationRuntime, RotationSettingsStore, ThreadId,
+    UnixMillis, WaitingId, WaitingThread, WorkerConnectionOwner,
+};
+use anyhow::Result;
 
+mod construction;
+#[cfg(test)]
+mod process_safety_tests;
 mod quota;
+mod runtime_writer;
 mod selection;
+use crate::codex_router::thread_source::ThreadSourceStore;
 pub(crate) use quota::{AttemptedTier, ResponseDelivery, UsageLimitAction};
+use runtime_writer::RuntimeWriter;
+pub(super) use selection::RouteSelection;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RouteTier {
@@ -25,130 +30,155 @@ pub(crate) enum RouteTier {
 pub(super) struct Engine {
     credentials: SharedCredentials,
     settings: RotationSettingsStore,
-    runtime_store: RotationRuntimeStore,
-    runtime: Mutex<RotationRuntime>,
+    runtime: RuntimeWriter,
     catalogue: Catalogue,
+    connection_owner: Option<WorkerConnectionOwner>,
+    thread_sources: ThreadSourceStore,
 }
 
 impl Engine {
-    pub fn discover(credentials: SharedCredentials) -> Result<Arc<Self>> {
-        let settings = RotationSettingsStore::discover()?;
-        let runtime_store = RotationRuntimeStore::discover()?;
-        Self::with_stores(credentials, settings, runtime_store)
-    }
-
-    pub fn with_stores(
-        credentials: SharedCredentials,
-        settings: RotationSettingsStore,
-        runtime_store: RotationRuntimeStore,
-    ) -> Result<Arc<Self>> {
-        Self::with_catalogue(credentials, settings, runtime_store, Catalogue::discover())
-    }
-
-    pub fn with_catalogue(
-        credentials: SharedCredentials,
-        settings: RotationSettingsStore,
-        runtime_store: RotationRuntimeStore,
-        catalogue: Catalogue,
-    ) -> Result<Arc<Self>> {
-        let mut runtime = runtime_store.load()?;
-        let now = now();
-        runtime.reconcile(&credentials.account_ids(), now);
-        runtime.reset_connections(now);
-        runtime.heartbeat(now);
-        runtime_store.save(&runtime)?;
-        Ok(Arc::new(Self {
-            credentials,
-            settings,
-            runtime_store,
-            runtime: Mutex::new(runtime),
-            catalogue,
-        }))
-    }
-
-    pub async fn refresh(&self, account: &AccountId) -> Result<Option<RouteCredential>> {
-        match self.credentials.refresh(account).await {
-            Ok(credential) => Ok(Some(credential)),
-            Err(CredentialFailure::NeedsSignIn) => {
-                self.auth_failed(account)?;
-                Ok(None)
-            }
-            Err(CredentialFailure::Temporary(error)) => Err(error),
-        }
-    }
-
-    pub fn waiting(&self, thread: &ThreadId) -> Result<()> {
-        self.mutate(|runtime| runtime.waiting(thread, now()))
-    }
-
-    pub fn release_reservation(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
-        self.mutate(|runtime| runtime.release_reservation(account, thread))
-    }
-
-    pub fn reserve_retry(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
-        let at = now();
-        self.mutate(|runtime| {
-            runtime.reserve_thread(account, thread, at);
-            true
+    pub fn close(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
+        self.mutate(|runtime| match self.connection_owner {
+            Some(owner) => runtime.connection_closed_by(owner, account, thread, now()),
+            None => runtime.connection_closed(account, thread, now()),
         })
     }
 
-    pub fn close(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
-        self.mutate(|runtime| runtime.connection_closed(account, thread, now()))
-    }
-
     pub fn continue_response(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
-        self.mutate(|runtime| runtime.connection_continues(account, thread, now()))
+        self.mutate(|runtime| match self.connection_owner {
+            Some(owner) => runtime.connection_continues_by(owner, account, thread, now()),
+            None => runtime.connection_continues(account, thread, now()),
+        })
     }
 
     pub fn detach(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
-        self.mutate(|runtime| runtime.thread_detached(account, thread))
+        self.mutate(|runtime| match self.connection_owner {
+            Some(owner) => runtime.thread_detached_by(owner, account, thread),
+            None => runtime.thread_detached(account, thread),
+        })
     }
 
     pub fn waiting_threads(&self) -> Vec<WaitingThread> {
         self.runtime
-            .lock()
-            .expect("router runtime poisoned")
-            .waiting_threads()
-            .to_vec()
+            .latest(|runtime| runtime.waiting_threads().to_vec())
+            .unwrap_or_else(|_| {
+                self.runtime
+                    .cached(|runtime| runtime.waiting_threads().to_vec())
+            })
     }
 
+    pub fn discard_waiting_entries(&self, discarded: &[WaitingThread]) -> Result<()> {
+        self.mutate(|runtime| runtime.discard_waiting_entries(discarded))
+    }
+
+    #[cfg(test)]
     pub fn claim_waiting(&self, thread: &ThreadId, account: &AccountId) -> Result<bool> {
-        let mut runtime = self.runtime.lock().expect("router runtime poisoned");
-        let claimed = runtime.resumed(thread, account, now());
-        if claimed {
-            self.runtime_store.save(&runtime)?;
+        self.runtime.update(|runtime| {
+            let claimed = runtime.resumed(thread, account, now());
+            (claimed, claimed)
+        })
+    }
+
+    pub fn claim_waiting_entry(
+        &self,
+        waiting: &WaitingThread,
+        account: &AccountId,
+    ) -> Result<bool> {
+        self.runtime.update(|runtime| {
+            let claimed = runtime.resumed_waiting(waiting, account, now());
+            (claimed, claimed)
+        })
+    }
+
+    pub fn waiting_after_attempt(
+        &self,
+        waiting: &WaitingThread,
+        replacement: crate::rotation::WaitingId,
+    ) -> Result<Option<WaitingThread>> {
+        anyhow::ensure!(replacement.is_recognized(), "unrecognized waiting identity");
+        self.runtime.update(|runtime| {
+            let requeued = runtime.waiting_after_attempt(waiting, replacement, now());
+            let changed = requeued.is_some();
+            (requeued, changed)
+        })
+    }
+
+    pub fn authorize_resume(
+        &self,
+        waiting: &WaitingThread,
+        attempt: &str,
+        account: &AccountId,
+    ) -> Result<ResumeAuthorization> {
+        validate_resume_attempt(attempt)?;
+        let discovered = self.credentials.account_ids();
+        self.settings.update(|settings| {
+            settings.reconcile(&discovered);
+            let authorization = self.runtime.update(|runtime| {
+                let authorization = runtime.authorize_resume(
+                    settings,
+                    &discovered,
+                    waiting,
+                    attempt,
+                    account,
+                    now(),
+                );
+                (
+                    authorization,
+                    authorization == ResumeAuthorization::Acquired,
+                )
+            });
+            (authorization, false)
+        })?
+    }
+
+    pub fn finish_resume(
+        &self,
+        waiting: &WaitingThread,
+        attempt: &str,
+        terminal: ResumeTerminal,
+        replacement: WaitingId,
+    ) -> Result<Option<WaitingThread>> {
+        validate_resume_attempt(attempt)?;
+        if terminal == ResumeTerminal::Failure {
+            anyhow::ensure!(replacement.is_recognized(), "unrecognized waiting identity");
         }
-        Ok(claimed)
+        self.runtime.update(|runtime| {
+            let queued = runtime.finish_resume(waiting, attempt, terminal, replacement, now());
+            (queued, true)
+        })
     }
 
-    fn auth_failed(&self, account: &AccountId) -> Result<()> {
-        self.mutate(|runtime| runtime.auth_failed(account, now()))
+    pub fn forget_resume(&self, waiting: &WaitingThread, attempt: &str) -> Result<()> {
+        validate_resume_attempt(attempt)?;
+        let forgotten = self.runtime.update(|runtime| {
+            let forgotten = runtime.forget_resume(waiting, attempt);
+            let changed = forgotten == Ok(true);
+            (forgotten, changed)
+        })?;
+        forgotten.map_err(|()| anyhow::anyhow!("resume admission is not terminal"))?;
+        Ok(())
     }
 
-    pub fn permanent_auth_failure(&self, account: &AccountId) -> Result<()> {
-        self.auth_failed(account)
+    #[cfg(test)]
+    pub fn reset_connections(&self) -> Result<()> {
+        self.mutate(|runtime| runtime.reset_connections(now()))
     }
 
-    pub fn banked_reset_consumed(&self, account: &AccountId) -> Result<()> {
-        self.mutate(|runtime| runtime.banked_reset_consumed(account))
+    pub fn reconcile_connection_owners(&self, surviving: &BTreeMap<u64, u64>) -> Result<()> {
+        self.mutate(|runtime| runtime.reconcile_connection_owners(surviving))
     }
 
     fn mutate(&self, change: impl FnOnce(&mut RotationRuntime) -> bool) -> Result<()> {
-        let mut runtime = self.runtime.lock().expect("router runtime poisoned");
-        let before = runtime.clone();
-        if change(&mut runtime) {
-            if let Err(error) = self
-                .runtime_store
-                .save(&runtime)
-                .context("saving router runtime")
-            {
-                *runtime = before;
-                return Err(error);
-            }
-        }
-        Ok(())
+        self.runtime.update(|runtime| ((), change(runtime)))
     }
+}
+fn validate_resume_attempt(attempt: &str) -> Result<()> {
+    let parsed = uuid::Uuid::parse_str(attempt)?;
+    anyhow::ensure!(
+        parsed.to_string() == attempt,
+        "non-canonical resume attempt id"
+    );
+    Ok(())
 }
 
 pub(super) fn now() -> UnixMillis {

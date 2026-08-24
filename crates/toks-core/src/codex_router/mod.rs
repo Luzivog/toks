@@ -1,24 +1,31 @@
 //! Installation and runtime support for routing local Codex model traffic.
 
+pub mod account_activation;
 pub(crate) mod codex_binary;
 mod codex_config;
 pub(crate) mod credentials;
+mod deployment_status;
+mod handoff;
+pub(crate) mod host;
+mod lifecycle;
+#[cfg(test)]
+mod lifecycle_tests;
 pub mod proxy;
-mod reset_ack;
 mod resume;
 mod systemd;
+mod thread_source;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+pub use deployment_status::{
+    RouterDeploymentStatus, RouterGenerationRole, RouterGenerationSummary,
+};
+pub use lifecycle::{disable, enable, install_router_service, install_router_service_for};
+
 pub const ROUTER_PORT: u16 = 47_837;
 pub const ROUTER_BASE_URL: &str = "http://127.0.0.1:47837/backend-api/codex";
-
-#[derive(Debug, Deserialize, Serialize)]
-struct BankedResetConsumed {
-    account_id: crate::accounts::AccountId,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RouterInstallStatus {
@@ -30,47 +37,30 @@ pub struct RouterInstallStatus {
 pub fn status() -> RouterInstallStatus {
     RouterInstallStatus {
         configured: codex_config::is_configured().unwrap_or(false),
-        service_installed: systemd::unit_path().is_ok_and(|path| path.is_file()),
-        service_active: systemd::is_active(),
+        service_installed: systemd::is_installed(),
+        service_active: systemd::is_active() && systemd::is_ready(),
     }
+}
+
+pub fn deployment_status(
+    runtime: &crate::rotation::RotationRuntime,
+) -> Result<RouterDeploymentStatus> {
+    deployment_status::load(runtime)
 }
 
 pub(crate) fn acknowledge_banked_reset(account: &crate::accounts::AccountId) -> Result<()> {
-    if systemd::is_active() {
-        reset_ack::notify_router(account)
-    } else {
-        reset_ack::update_stored_runtime(account)
-    }
+    let store = crate::rotation::RotationRuntimeStore::discover()?;
+    acknowledge_banked_reset_in(&store, account)
 }
 
-/// Install and start the router before directing new Codex processes to it.
-pub fn enable(router_executable: &Path) -> Result<()> {
-    if !router_executable.is_file() {
-        anyhow::bail!(
-            "Codex router executable was not found at {}",
-            router_executable.display()
-        );
-    }
-    systemd::install(router_executable, &codex_binary::discover()?)?;
-    set_enabled(true)?;
-    systemd::wait_until_ready()?;
-    codex_config::configure()?;
-    Ok(())
-}
-
-/// Restore Codex configuration and remove the background user service.
-pub fn disable() -> Result<()> {
-    codex_config::restore()?;
-    set_enabled(false)?;
-    systemd::uninstall()
-}
-
-fn set_enabled(enabled: bool) -> Result<()> {
-    let store = crate::rotation::RotationSettingsStore::discover()?;
-    let mut settings = store.load()?;
-    settings.reconcile(&credentials::account_ids());
-    settings.set_enabled(enabled);
-    store.save(&settings)
+fn acknowledge_banked_reset_in(
+    store: &crate::rotation::RotationRuntimeStore,
+    account: &crate::accounts::AccountId,
+) -> Result<()> {
+    store.update(|runtime| {
+        runtime.banked_reset_consumed(account);
+        ((), true)
+    })
 }
 
 pub fn router_executable_for(app_executable: &Path) -> Result<PathBuf> {
@@ -80,10 +70,53 @@ pub fn router_executable_for(app_executable: &Path) -> Result<PathBuf> {
     Ok(parent.join("toks-router"))
 }
 
+/// Replaces the systemd entry process with an exact-environment coordinator.
+pub fn launch_router_host() -> Result<()> {
+    systemd::launch_host()
+}
+
+/// Replaces the systemd entry process with an exact-environment resume supervisor.
+pub fn launch_router_resume_supervisor() -> Result<()> {
+    systemd::launch_resume_supervisor()
+}
+
+/// Replaces a transient systemd entry process with an exact-environment task.
+pub fn launch_router_resume_task(encoded: &str) -> Result<()> {
+    resume::launch_task(encoded)
+}
+
 pub async fn run_router() -> Result<()> {
     let runtime = proxy::RouterRuntimeHandle::discover()?;
-    tokio::spawn(resume::run(runtime.clone()));
     proxy::serve(runtime).await
+}
+
+/// Runs the restartable coordinator. Transport workers outlive this process.
+pub async fn run_router_host() -> Result<()> {
+    let runtime = proxy::RouterRuntimeHandle::discover()?;
+    tokio::spawn(proxy::heartbeat(runtime.clone()));
+    host::run_coordinator(runtime).await
+}
+
+/// Runs the task-resume supervisor independently from the coordinator.
+pub async fn run_resume_supervisor() -> Result<()> {
+    resume::run_supervisor().await
+}
+
+/// Runs one resume attempt inside its independently owned task unit.
+pub async fn run_resume_task(attempt: &str, thread: &str, cwd: PathBuf) -> Result<()> {
+    resume::run_task(attempt, crate::rotation::ThreadId::new(thread), cwd).await
+}
+
+/// Runs one independently managed transport-worker generation.
+pub async fn run_router_worker(generation: u64) -> Result<()> {
+    anyhow::ensure!(generation != 0, "router generation must be nonzero");
+    host::run_worker(host::GenerationId::from_raw(generation)).await
+}
+
+/// Replaces this process with a worker using its persisted generation contract.
+pub fn launch_router_worker(generation: u64, contract: &Path) -> Result<()> {
+    anyhow::ensure!(generation != 0, "router generation must be nonzero");
+    systemd::launch_generation(contract, generation)
 }
 
 #[cfg(test)]

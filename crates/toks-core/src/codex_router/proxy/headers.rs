@@ -3,11 +3,54 @@ use axum::http::{header, HeaderMap, HeaderName, HeaderValue};
 use super::types::RouteCredential;
 
 const ACCOUNT_HEADER: HeaderName = HeaderName::from_static("chatgpt-account-id");
+const RESUME_ATTEMPT_HEADER: HeaderName = HeaderName::from_static("x-toks-resume-attempt");
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ResumeMarker<'a> {
+    Absent,
+    Canonical(&'a str),
+    Invalid,
+}
+
+impl<'a> ResumeMarker<'a> {
+    pub(super) fn from_attempt(attempt: Option<&'a str>) -> Self {
+        attempt.map_or(Self::Absent, Self::Canonical)
+    }
+
+    pub(super) fn attempt(self) -> Option<&'a str> {
+        match self {
+            Self::Canonical(attempt) => Some(attempt),
+            Self::Absent | Self::Invalid => None,
+        }
+    }
+
+    pub(super) fn is_present(self) -> bool {
+        !matches!(self, Self::Absent)
+    }
+}
 
 pub(super) fn bearer_token(headers: &HeaderMap) -> Option<&str> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let (scheme, token) = value.split_once(' ')?;
     (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
+}
+
+pub(super) fn resume_marker(headers: &HeaderMap) -> ResumeMarker<'_> {
+    let mut values = headers.get_all(&RESUME_ATTEMPT_HEADER).iter();
+    let Some(value) = values.next() else {
+        return ResumeMarker::Absent;
+    };
+    if values.next().is_some() {
+        return ResumeMarker::Invalid;
+    }
+    let Ok(attempt) = value.to_str() else {
+        return ResumeMarker::Invalid;
+    };
+    if uuid::Uuid::parse_str(attempt).is_ok_and(|parsed| parsed.to_string() == attempt) {
+        ResumeMarker::Canonical(attempt)
+    } else {
+        ResumeMarker::Invalid
+    }
 }
 
 pub(super) fn upstream_headers(
@@ -27,6 +70,12 @@ pub(super) fn upstream_headers(
         .expect("stored account ID is a valid HTTP header");
     outgoing.insert(header::AUTHORIZATION, authorization);
     outgoing.insert(ACCOUNT_HEADER, account);
+    if !websocket {
+        outgoing.insert(
+            header::ACCEPT_ENCODING,
+            HeaderValue::from_static("identity"),
+        );
+    }
     outgoing
 }
 
@@ -42,7 +91,9 @@ fn excluded(name: &HeaderName, websocket: bool) -> bool {
     name == header::AUTHORIZATION
         || name == header::HOST
         || name == header::CONTENT_LENGTH
+        || name == header::ACCEPT_ENCODING
         || name == ACCOUNT_HEADER
+        || name == RESUME_ATTEMPT_HEADER
         || hop_header(name)
         || (websocket && name.as_str().starts_with("sec-websocket-"))
 }

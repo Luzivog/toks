@@ -6,6 +6,8 @@ mod account_removal_interactions;
 mod banked_reset_interaction;
 #[path = "ui_interactions/email_privacy_interaction.rs"]
 mod email_privacy_interaction;
+#[path = "ui_interactions/generation_status_interactions.rs"]
+mod generation_status_interactions;
 #[path = "ui_interactions/navigate_button_interactions.rs"]
 mod navigate_button_interactions;
 #[path = "ui_interactions/reauth_interactions.rs"]

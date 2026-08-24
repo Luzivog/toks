@@ -2,9 +2,9 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::UNIX_EPOCH;
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use super::http::LiveError;
 use super::{LimitIssueKind, Provider};
@@ -14,28 +14,26 @@ static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CredentialRevision {
-    modified_ns: u128,
-    length: u64,
+    digest: [u8; 32],
+}
+
+impl CredentialRevision {
+    pub(crate) fn from_digest(digest: [u8; 32]) -> Self {
+        Self { digest }
+    }
 }
 
 pub(crate) fn present(profile: &AccountProfile) -> bool {
     path(profile).is_file()
 }
 
-/// A token rotation must invalidate live backoff immediately. Metadata is
-/// enough for change detection and avoids retaining or hashing credentials.
+/// A token rotation must invalidate live backoff immediately, including an
+/// atomic same-size replacement whose filesystem timestamp is unchanged.
 pub(crate) fn revision(profile: &AccountProfile) -> Option<CredentialRevision> {
-    let metadata = fs::metadata(path(profile)).ok()?;
-    let modified_ns = metadata
-        .modified()
-        .ok()?
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_nanos();
-    Some(CredentialRevision {
-        modified_ns,
-        length: metadata.len(),
-    })
+    let bytes = fs::read(path(profile)).ok()?;
+    Some(CredentialRevision::from_digest(
+        Sha256::digest(bytes).into(),
+    ))
 }
 
 fn path(profile: &AccountProfile) -> PathBuf {

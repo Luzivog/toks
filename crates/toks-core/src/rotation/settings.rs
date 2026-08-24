@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::accounts::AccountId;
 
-use super::{RotationRuntime, ThreadId};
+use super::{RotationRuntime, ThreadId, ThreadOwnership};
 
 mod queue;
 
@@ -111,6 +111,40 @@ impl RotationSettings {
             .iter()
             .find(|account| eligible(account))
             .cloned()
+    }
+
+    pub(crate) fn select_account_for_thread(
+        &self,
+        runtime: &RotationRuntime,
+        discovered: &[AccountId],
+        thread: &ThreadId,
+        now: super::UnixMillis,
+    ) -> Option<AccountId> {
+        if !self.enabled {
+            return None;
+        }
+        let eligible = |account: &AccountId| {
+            discovered.contains(account)
+                && !self.excluded.contains(account)
+                && runtime.is_available(account, now)
+        };
+        match runtime.thread_ownership(thread) {
+            ThreadOwnership::Owned(account) => (discovered.contains(&account)
+                && !self.excluded.contains(&account)
+                && (runtime.is_available(&account, now)
+                    || runtime.can_drain(&account, thread, now)))
+            .then_some(account),
+            ThreadOwnership::Conflicting => None,
+            ThreadOwnership::Unowned => runtime
+                .draining_account(thread, now)
+                .filter(|account| discovered.contains(account) && !self.excluded.contains(account))
+                .or_else(|| {
+                    self.priority
+                        .iter()
+                        .find(|account| eligible(account))
+                        .cloned()
+                }),
+        }
     }
 
     pub(super) fn version(&self) -> u8 {

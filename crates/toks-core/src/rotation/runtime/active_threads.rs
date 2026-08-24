@@ -1,58 +1,79 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::accounts::AccountId;
 
-use super::{RotationEventKind, RotationRuntime, ThreadId, UnixMillis};
+use super::{RotationRuntime, ThreadId, UnixMillis};
 
 const ABANDONED_FOLLOW_UP_MILLIS: i64 = 24 * 60 * 60 * 1_000;
 
+mod account_claim;
+mod ownership;
 mod reservations;
+
+pub use account_claim::ThreadAccountConflict;
+pub(crate) use account_claim::ThreadOwnership;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ActiveThread {
     pub(super) account_id: AccountId,
+    /// Streams owned by the legacy single-process router. New workers record
+    /// ownership in `stream_owners`; keeping this scalar preserves old files.
+    #[serde(default)]
     streams: u32,
+    #[serde(default)]
+    stream_owners: BTreeMap<u64, super::WorkerConnectionCount>,
     #[serde(default)]
     reservations: u32,
     awaiting_follow_up: bool,
+    #[serde(default)]
+    started_at: Option<UnixMillis>,
     last_activity_at: UnixMillis,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct GenerationWorkload {
+    pub(crate) task_count: u32,
+    pub(crate) oldest_task_at: Option<UnixMillis>,
+}
+
 impl RotationRuntime {
-    pub fn connection_opened(&mut self, account: &AccountId, thread: &ThreadId, at: UnixMillis) {
-        self.accounts.entry(account.clone()).or_default();
-        if let Some(state) = self.accounts.get_mut(account) {
-            state.provisional_threads.remove(thread);
+    pub(crate) fn generation_workloads(&self) -> BTreeMap<u64, GenerationWorkload> {
+        let mut workloads = BTreeMap::<u64, GenerationWorkload>::new();
+        for active in self.active_threads.values() {
+            let started_at = active.started_at.unwrap_or(active.last_activity_at);
+            for generation in active.stream_owners.keys() {
+                let workload = workloads.entry(*generation).or_default();
+                workload.task_count = workload.task_count.saturating_add(1);
+                workload.oldest_task_at = Some(
+                    workload
+                        .oldest_task_at
+                        .map_or(started_at, |oldest| oldest.min(started_at)),
+                );
+            }
         }
-        let active = self
-            .active_threads
-            .entry(thread.clone())
-            .or_insert_with(|| ActiveThread {
-                account_id: account.clone(),
-                streams: 0,
-                reservations: 0,
-                awaiting_follow_up: false,
-                last_activity_at: at,
-            });
-        if &active.account_id != account {
-            active.account_id = account.clone();
-            active.streams = 0;
-            active.reservations = 0;
-        }
-        active.reservations = active.reservations.saturating_sub(1);
-        active.awaiting_follow_up = false;
-        active.streams = active.streams.saturating_add(1);
-        active.last_activity_at = at;
-        self.push_event(
-            at,
-            RotationEventKind::Routed {
-                thread_id: thread.clone(),
-                account_id: account.clone(),
-            },
-        );
+        workloads
+    }
+
+    pub fn connection_opened(
+        &mut self,
+        account: &AccountId,
+        thread: &ThreadId,
+        at: UnixMillis,
+    ) -> Result<(), ThreadAccountConflict> {
+        self.connection_opened_for(None, account, thread, at)
+    }
+
+    pub(crate) fn connection_opened_by(
+        &mut self,
+        owner: super::WorkerConnectionOwner,
+        account: &AccountId,
+        thread: &ThreadId,
+        at: UnixMillis,
+    ) -> Result<(), ThreadAccountConflict> {
+        self.connection_opened_for(Some(owner), account, thread, at)
     }
 
     pub fn connection_closed(
@@ -61,22 +82,17 @@ impl RotationRuntime {
         thread: &ThreadId,
         at: UnixMillis,
     ) -> bool {
-        let Some(active) = self
-            .active_threads
-            .get_mut(thread)
-            .filter(|active| &active.account_id == account)
-        else {
-            return false;
-        };
-        let Some(streams) = active.streams.checked_sub(1) else {
-            return false;
-        };
-        active.streams = streams;
-        active.last_activity_at = at;
-        if streams == 0 && active.reservations == 0 && !active.awaiting_follow_up {
-            self.active_threads.remove(thread);
-        }
-        true
+        self.connection_closed_for(None, account, thread, at)
+    }
+
+    pub(crate) fn connection_closed_by(
+        &mut self,
+        owner: super::WorkerConnectionOwner,
+        account: &AccountId,
+        thread: &ThreadId,
+        at: UnixMillis,
+    ) -> bool {
+        self.connection_closed_for(Some(owner), account, thread, at)
     }
 
     pub fn connection_continues(
@@ -85,20 +101,16 @@ impl RotationRuntime {
         thread: &ThreadId,
         at: UnixMillis,
     ) -> bool {
-        let Some(active) = self
-            .active_threads
-            .get_mut(thread)
-            .filter(|active| &active.account_id == account)
-        else {
-            return false;
-        };
-        let Some(streams) = active.streams.checked_sub(1) else {
-            return false;
-        };
-        active.streams = streams;
-        active.awaiting_follow_up = true;
-        active.last_activity_at = at;
-        true
+        self.connection_continues_for(None, account, thread, at)
+    }
+    pub(crate) fn connection_continues_by(
+        &mut self,
+        owner: super::WorkerConnectionOwner,
+        account: &AccountId,
+        thread: &ThreadId,
+        at: UnixMillis,
+    ) -> bool {
+        self.connection_continues_for(Some(owner), account, thread, at)
     }
 
     pub fn reset_connections(&mut self, _at: UnixMillis) -> bool {
@@ -110,6 +122,7 @@ impl RotationRuntime {
                 return false;
             }
             active.streams = 0;
+            active.stream_owners.clear();
             active.reservations = 0;
             true
         });
@@ -118,7 +131,10 @@ impl RotationRuntime {
 
     pub(super) fn cancel_active_thread(&mut self, account: &AccountId, thread: &ThreadId) -> bool {
         if self.active_threads.get(thread).is_some_and(|active| {
-            &active.account_id == account && active.streams == 0 && active.reservations == 0
+            &active.account_id == account
+                && active.stream_count() == 0
+                && active.reservations == 0
+                && !active.awaiting_follow_up
         }) {
             self.active_threads.remove(thread);
             true
@@ -133,13 +149,13 @@ impl RotationRuntime {
         now: UnixMillis,
     ) -> bool {
         let before = self.active_threads.clone();
-        let reservations_changed = self.expire_reservations(now);
+        let reservations_changed = self.expire_reservations(known, now);
         self.active_threads.retain(|_, thread| {
-            known.contains(&thread.account_id)
-                && (thread.streams > 0
-                    || thread.reservations > 0
-                    || (thread.awaiting_follow_up
-                        && thread
+            thread.stream_count() > 0
+                || thread.reservations > 0
+                || (thread.awaiting_follow_up
+                    && (!known.contains(&thread.account_id)
+                        || thread
                             .last_activity_at
                             .get()
                             .saturating_add(ABANDONED_FOLLOW_UP_MILLIS)

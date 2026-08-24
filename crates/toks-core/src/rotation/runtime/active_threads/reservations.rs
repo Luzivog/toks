@@ -1,35 +1,40 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use crate::accounts::AccountId;
 
-use super::{ActiveThread, RotationRuntime, ThreadId, UnixMillis};
+use super::{ActiveThread, RotationRuntime, ThreadAccountConflict, ThreadId, UnixMillis};
 
 const ABANDONED_RESERVATION_MILLIS: i64 = 5 * 60 * 1_000;
 
 impl ActiveThread {
     pub(in crate::rotation::runtime) fn reservation_only(&self) -> bool {
-        self.reservations > 0 && self.streams == 0 && !self.awaiting_follow_up
+        self.reservations > 0 && self.stream_count() == 0 && !self.awaiting_follow_up
     }
 }
 
 impl RotationRuntime {
-    pub fn reserve_thread(&mut self, account: &AccountId, thread: &ThreadId, at: UnixMillis) {
+    pub fn reserve_thread(
+        &mut self,
+        account: &AccountId,
+        thread: &ThreadId,
+        at: UnixMillis,
+    ) -> Result<(), ThreadAccountConflict> {
+        self.claim_thread_account(account, thread)?;
         let active = self
             .active_threads
             .entry(thread.clone())
             .or_insert_with(|| ActiveThread {
                 account_id: account.clone(),
                 streams: 0,
+                stream_owners: BTreeMap::new(),
                 reservations: 0,
                 awaiting_follow_up: false,
+                started_at: Some(at),
                 last_activity_at: at,
             });
-        if &active.account_id != account {
-            active.account_id = account.clone();
-            active.streams = 0;
-            active.reservations = 0;
-            active.awaiting_follow_up = false;
-        }
         active.reservations = active.reservations.saturating_add(1);
         active.last_activity_at = at;
+        Ok(())
     }
 
     pub fn release_reservation(&mut self, account: &AccountId, thread: &ThreadId) -> bool {
@@ -41,7 +46,7 @@ impl RotationRuntime {
             return false;
         };
         active.reservations -= 1;
-        if active.reservations == 0 && active.streams == 0 && !active.awaiting_follow_up {
+        if active.reservations == 0 && active.stream_count() == 0 && !active.awaiting_follow_up {
             self.active_threads.remove(thread);
             self.clear_provisional(account, thread);
         }
@@ -62,13 +67,18 @@ impl RotationRuntime {
             })
     }
 
-    pub(super) fn expire_reservations(&mut self, now: UnixMillis) -> bool {
+    pub(super) fn expire_reservations(
+        &mut self,
+        known: &BTreeSet<AccountId>,
+        now: UnixMillis,
+    ) -> bool {
         let before = self.active_threads.clone();
         let expired = self
             .active_threads
             .iter()
             .filter(|(_, thread)| {
-                thread.reservation_only()
+                known.contains(&thread.account_id)
+                    && thread.reservation_only()
                     && thread
                         .last_activity_at
                         .get()
@@ -82,7 +92,8 @@ impl RotationRuntime {
             changed |= self.clear_provisional(&account, &thread);
         }
         self.active_threads.retain(|_, thread| {
-            if thread.reservations > 0
+            if known.contains(&thread.account_id)
+                && thread.reservations > 0
                 && thread
                     .last_activity_at
                     .get()

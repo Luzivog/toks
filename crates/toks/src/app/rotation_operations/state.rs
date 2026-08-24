@@ -1,5 +1,5 @@
 use toks_core::{
-    codex_router::RouterInstallStatus,
+    codex_router::{RouterDeploymentStatus, RouterInstallStatus},
     rotation::{RotationRuntime, RotationSettings},
 };
 
@@ -15,6 +15,7 @@ impl Default for RotationUiState {
                 service_installed: false,
                 service_active: false,
             },
+            deployment: RouterDeploymentStatus::default(),
             error: None,
             busy: None,
             remote: Default::default(),

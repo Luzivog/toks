@@ -4,7 +4,7 @@ use anyhow::Result;
 use gpui::{AppContext, Context};
 use toks_core::{
     accounts::AccountId,
-    codex_router::RouterInstallStatus,
+    codex_router::{RouterDeploymentStatus, RouterInstallStatus},
     rotation::{RotationRuntime, RotationSettings, ThreadId},
     Provider,
 };
@@ -35,6 +35,7 @@ pub(crate) struct RotationUiState {
     pub settings: RotationSettings,
     pub runtime: RotationRuntime,
     pub install: RouterInstallStatus,
+    pub deployment: RouterDeploymentStatus,
     pub error: Option<String>,
     pub busy: Option<&'static str>,
     pub remote: RemoteControlUiState,
@@ -160,6 +161,7 @@ impl ToksApp {
                 self.rotation.settings = loaded.settings;
                 self.rotation.runtime = loaded.runtime;
                 self.rotation.install = loaded.install;
+                self.rotation.deployment = loaded.deployment;
                 self.rotation.error = None;
             }
             Err(error) => self.rotation.error = Some(error.to_string()),
@@ -172,6 +174,7 @@ impl ToksApp {
                 self.rotation.settings = loaded.settings;
                 self.rotation.runtime = loaded.runtime;
                 self.rotation.install = loaded.install;
+                self.rotation.deployment = loaded.deployment;
             }
             Err(error) if self.rotation.error.is_none() => {
                 self.rotation.error = Some(error.to_string());

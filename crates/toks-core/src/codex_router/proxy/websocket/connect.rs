@@ -10,7 +10,8 @@ use super::super::headers::upstream_headers;
 use super::super::protocol::usage_block;
 use super::super::types::RouteCredential;
 use super::super::ProxyState;
-use crate::rotation::ThreadId;
+use super::super::{engine::RouteSelection, headers::ResumeMarker};
+use crate::rotation::{ThreadId, UsageLimitPhase, UsageLimitTier};
 
 pub(super) type UpstreamSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -25,30 +26,33 @@ pub(super) async fn upstream(
     uri: &Uri,
     incoming: &HeaderMap,
     thread: Option<&ThreadId>,
-) -> Result<Option<Connected>, ConnectFailure> {
+    marker: ResumeMarker<'_>,
+) -> Result<RouteSelection<Connected>, ConnectFailure> {
     let mut skipped = BTreeSet::new();
     loop {
-        let Some(mut credential) = state
+        let mut credential = match state
             .engine
-            .select_for_thread(thread, &skipped)
+            .select_for_thread_authorized(thread, marker, &skipped)
             .await
             .map_err(|_| ConnectFailure::Upstream)?
-        else {
-            return Ok(None);
+        {
+            RouteSelection::Selected(credential) => credential,
+            RouteSelection::ResumeDenied => return Ok(RouteSelection::ResumeDenied),
+            RouteSelection::Unavailable => return Ok(RouteSelection::Unavailable),
         };
         let mut refreshed = false;
         loop {
             match connect(state, uri, incoming, &credential).await {
-                Ok(connected) => return Ok(Some(connected)),
+                Ok(connected) => return Ok(RouteSelection::Selected(connected)),
                 Err(WsError::Http(response)) if response.status() == StatusCode::UNAUTHORIZED => {
                     if refreshed {
                         release(state, thread, &credential.account_id);
-                        let _ = state.engine.permanent_auth_failure(&credential.account_id);
+                        let _ = state.engine.permanent_auth_failure(&credential);
                         skipped.insert(credential.account_id);
                         break;
                     }
                     refreshed = true;
-                    match state.engine.refresh(&credential.account_id).await {
+                    match state.engine.refresh(&credential).await {
                         Ok(Some(updated)) => credential = updated,
                         Ok(None) => {
                             release(state, thread, &credential.account_id);
@@ -77,14 +81,23 @@ pub(super) async fn upstream(
                         .expect("guard classified usage block");
                     state
                         .engine
-                        .block_admission(&credential.account_id, block.resets_at)
+                        .upstream_admission_usage_limited(
+                            &credential.account_id,
+                            block.resets_at,
+                            block.incident(
+                                thread.cloned(),
+                                None,
+                                UsageLimitTier::unspecified(),
+                                UsageLimitPhase::WebSocketHandshake,
+                            ),
+                        )
                         .map_err(|_| ConnectFailure::Upstream)?;
                     skipped.insert(credential.account_id);
                     break;
                 }
-                Err(WsError::Http(response)) => {
+                Err(WsError::Http(_)) => {
                     release(state, thread, &credential.account_id);
-                    return Err(ConnectFailure::Http(response.status()));
+                    return Err(ConnectFailure::Http);
                 }
                 Err(_) => {
                     release(state, thread, &credential.account_id);
@@ -127,7 +140,7 @@ async fn connect(
 
 #[derive(Debug)]
 pub(super) enum ConnectFailure {
-    Http(StatusCode),
+    Http,
     Upstream,
 }
 

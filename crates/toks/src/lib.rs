@@ -108,6 +108,13 @@ pub mod test_support {
         };
     }
 
+    pub fn set_router_deployment(
+        app: &mut ToksApp,
+        deployment: toks_core::codex_router::RouterDeploymentStatus,
+    ) {
+        app.rotation.deployment = deployment;
+    }
+
     pub fn set_rotation_active_threads(app: &mut ToksApp, account: &str, count: u32) {
         let account = toks_core::accounts::AccountId::new(account);
         let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());

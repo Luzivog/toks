@@ -13,22 +13,33 @@ use tempfile::TempDir;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use crate::accounts::AccountId;
-use crate::rotation::{RotationRuntimeStore, RotationSettings, RotationSettingsStore};
+use crate::rotation::{
+    RotationEventKind, RotationRuntimeStore, RotationSettings, RotationSettingsStore,
+    UsageLimitClassification, UsageLimitPhase, UsageLimitTier, UsageLimitTierOrigin,
+};
 
 use super::engine::Engine;
-use super::headers::upstream_headers;
 use super::protocol::{usage_block, websocket_usage_block, RETRY_FRAME};
 use super::types::{CredentialFailure, CredentialSource, RouteCredential, SharedCredentials};
 use super::{app, InboundTokens, ProxyState, RouterRuntimeHandle, Upstream};
 
+mod auth_quarantine;
 mod auth_refresh;
+mod binary_frames;
 mod control_frames;
 mod fast_drain;
 mod fast_failover;
 mod fixtures;
+mod follow_up_reconnect;
+mod handoff_connection;
+mod http_compression;
 mod http_failover;
 mod inbound;
+mod incident_observability;
 mod remote_control;
+mod resume_boundary;
+mod terminal_tombstone;
+mod thread_identity;
 
 struct FakeCredentials {
     ids: Vec<AccountId>,
@@ -181,6 +192,8 @@ impl Harness {
                 http_origin,
                 ws_origin,
             },
+            lifetime: super::ConnectionLifetime::new(|| {}),
+            resume_denial_gate: None,
         }
     }
 }
@@ -198,97 +211,21 @@ fn engine_routes_fresh_accounts_without_mutating_ui_settings() {
     assert!(settings.priority().is_empty());
 }
 
-#[test]
-fn usage_blocks_match_structured_and_message_frames() {
-    // Structured legacy/synthetic shape: still gated on 429 for HTTP.
-    let structured = json!({"error":{"type":"usage_limit_reached","resets_at":2_000_000_000}});
-    assert!(usage_block(429, structured.to_string().as_bytes()).is_some());
-    assert!(usage_block(500, structured.to_string().as_bytes()).is_none());
-    assert!(websocket_usage_block(&structured.to_string()).is_some());
-
-    // Real upstream frames: no `status`, no `error.type`, message-based.
-    let error_frame = json!({
-        "type":"error",
-        "message":"You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Jul 20th, 2026 7:53 AM."
-    });
-    assert!(websocket_usage_block(&error_frame.to_string()).is_some());
-    let turn_failed = json!({
-        "type":"turn.failed",
-        "error":{"message":"You've hit your usage limit. Add credits to continue, or try again at Aug 29, 2026, 6:59 AM."}
-    });
-    assert!(websocket_usage_block(&turn_failed.to_string()).is_some());
-
-    // A retryable rate limit without the usage marker is left alone.
-    let other = json!({"error":{"type":"rate_limit_reached"}});
-    assert!(usage_block(429, other.to_string().as_bytes()).is_none());
-    // A reconnect notice is an error frame but not a usage limit.
-    let reconnect = json!({"type":"error","message":"Reconnecting... 2/5 (401 Unauthorized)"});
-    assert!(websocket_usage_block(&reconnect.to_string()).is_none());
-    // Normal streamed model text that merely mentions a usage limit is not a block.
-    let visible = json!({"type":"response.output_text.delta","delta":"your usage limit is 100"});
-    assert!(websocket_usage_block(&visible.to_string()).is_none());
-}
-
-#[test]
-fn upstream_headers_replace_identity_and_drop_hop_headers() {
-    let mut incoming = HeaderMap::new();
-    incoming.insert("authorization", "Bearer caller".parse().unwrap());
-    incoming.insert("chatgpt-account-id", "caller-account".parse().unwrap());
-    incoming.insert("connection", "keep-alive".parse().unwrap());
-    incoming.insert("content-length", "7".parse().unwrap());
-    incoming.insert("x-codex-test", "kept".parse().unwrap());
-    let account = AccountId::new("a");
-    let outgoing = upstream_headers(
-        &incoming,
-        &RouteCredential {
-            account_id: account,
-            access_token: "selected".into(),
-            chatgpt_account_id: "selected-account".into(),
-        },
-        false,
-    );
-    assert_eq!(outgoing["authorization"], "Bearer selected");
-    assert_eq!(outgoing["chatgpt-account-id"], "selected-account");
-    assert_eq!(outgoing["x-codex-test"], "kept");
-    assert!(!outgoing.contains_key("connection"));
-    assert!(!outgoing.contains_key("content-length"));
-}
-
 #[tokio::test]
-async fn http_rotates_only_for_an_exact_usage_block() {
-    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
-    let upstream_calls = calls.clone();
-    let upstream = Router::new().fallback(any(move |headers: HeaderMap| {
-        let calls = upstream_calls.clone();
-        async move {
-            let auth = headers["authorization"].to_str().unwrap().to_string();
-            calls.lock().unwrap().push(auth.clone());
-            if auth == "Bearer token-a" {
-                (
-                    StatusCode::TOO_MANY_REQUESTS,
-                    axum::Json(json!({
-                        "error":{"type":"usage_limit_reached","resets_at":2_000_000_000}
-                    })),
-                )
-                    .into_response()
-            } else {
-                (StatusCode::OK, "account-b").into_response()
-            }
-        }
-    }));
-    let upstream_origin = spawn(upstream).await;
-    let harness = Harness::new(&[("a", "token-a"), ("b", "token-b")]);
-    let proxy = spawn(app(harness.state(upstream_origin.clone(), upstream_origin))).await;
+async fn reset_acknowledgement_is_not_exposed_over_http() {
+    let harness = Harness::new(&[("a", "token-a")]);
+    let upstream = Router::new().fallback(any(|| async { StatusCode::OK }));
+    let origin = spawn(upstream).await;
+    let proxy = spawn(app(harness.state(origin.clone(), origin))).await;
+
     let response = reqwest::Client::new()
-        .post(format!("{proxy}/backend-api/codex/responses"))
-        .bearer_auth("token-b")
-        .json(&json!({"client_metadata":{"thread_id":"thread-http"}}))
+        .post(format!("{proxy}/banked-reset-consumed"))
+        .json(&json!({"accountId":"a"}))
         .send()
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(response.text().await.unwrap(), "account-b");
-    assert_eq!(*calls.lock().unwrap(), ["Bearer token-a", "Bearer token-b"]);
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

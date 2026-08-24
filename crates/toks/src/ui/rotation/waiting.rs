@@ -7,7 +7,8 @@ use crate::{app::SettingsAction, ToksApp};
 use super::{card, empty_row};
 
 pub(super) fn waiting_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
-    let waiting: Vec<_> = app
+    let resuming: Vec<_> = app.rotation.runtime.resuming_threads().collect();
+    let mut pending: Vec<_> = app
         .rotation
         .settings
         .waiting_priority()
@@ -18,14 +19,36 @@ pub(super) fn waiting_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
                 .waiting_threads()
                 .iter()
                 .find(|waiting| &waiting.thread_id == thread)
+                .map(|waiting| (waiting, false))
+                .or_else(|| {
+                    resuming
+                        .iter()
+                        .find(|waiting| &waiting.thread_id == thread)
+                        .map(|waiting| (*waiting, true))
+                })
         })
         .collect();
-    let mut panel = card("Waiting threads", waiting.len().to_string(), cx);
-    if waiting.is_empty() {
-        return panel.child(empty_row("No threads are waiting for an account.", cx));
+    for waiting in resuming {
+        if !pending
+            .iter()
+            .any(|(current, _)| current.thread_id == waiting.thread_id)
+        {
+            pending.push((waiting, true));
+        }
     }
-    for (index, thread) in waiting.iter().enumerate() {
-        panel = panel.child(waiting_row(app, thread, index, waiting.len(), cx));
+    let mut panel = card("Pending threads", pending.len().to_string(), cx);
+    if pending.is_empty() {
+        return panel.child(empty_row("No threads are waiting or resuming.", cx));
+    }
+    for (index, (thread, resuming)) in pending.iter().enumerate() {
+        panel = panel.child(waiting_row(
+            app,
+            thread,
+            *resuming,
+            index,
+            pending.len(),
+            cx,
+        ));
     }
     panel
 }
@@ -33,12 +56,14 @@ pub(super) fn waiting_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
 fn waiting_row(
     app: &ToksApp,
     waiting: &WaitingThread,
+    resuming: bool,
     index: usize,
     count: usize,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
     let thread = waiting.thread_id.clone();
     let busy = app.rotation.busy.is_some();
+    let stopping = app.rotation.settings.cancelled_threads().contains(&thread);
     h_flex()
         .min_h(px(50.))
         .gap_3()
@@ -69,10 +94,15 @@ fn waiting_row(
                     div()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(format!(
-                            "Waiting {}",
-                            super::format::age(app.now, waiting.since)
-                        )),
+                        .child(if resuming {
+                            if stopping {
+                                "Stopping Toks resume…".to_owned()
+                            } else {
+                                "Resuming in Toks · stop before opening in Codex".to_owned()
+                            }
+                        } else {
+                            format!("Waiting {}", super::format::age(app.now, waiting.since))
+                        }),
                 ),
         )
         .child(
@@ -83,7 +113,7 @@ fn waiting_row(
                     "↑",
                     &thread,
                     index.saturating_sub(1),
-                    index == 0 || busy,
+                    resuming || index == 0 || busy,
                     cx,
                 ))
                 .child(move_button(
@@ -91,21 +121,22 @@ fn waiting_row(
                     "↓",
                     &thread,
                     index + 1,
-                    index + 1 >= count || busy,
+                    resuming || index + 1 >= count || busy,
                     cx,
                 )),
         )
         .child(
             super::super::text_action(
                 format!("rotation-cancel-thread-{}", thread.as_str()),
-                "Cancel",
+                if resuming { "Stop" } else { "Cancel" },
                 cx,
             )
-            .disabled(busy)
-            .tooltip(format!(
-                "Queued since {}",
-                super::format::exact_time(waiting.since)
-            ))
+            .disabled(busy || stopping)
+            .tooltip(if resuming {
+                "Stop Toks' background writer so this task can open in Codex".to_owned()
+            } else {
+                format!("Queued since {}", super::format::exact_time(waiting.since))
+            })
             .on_click(cx.listener(move |app, _, _, cx| {
                 app.change_rotation_settings(SettingsAction::Cancel(thread.clone()), cx);
             })),

@@ -7,11 +7,16 @@ use toks_core::{limits::SnapshotFreshness, LimitSnapshot};
 
 use crate::ToksApp;
 
+mod account_activation;
+
 use super::{
     accent_for_provider,
     account_drag::reorder_handle,
     account_email::account_email,
-    account_menu::{account_menu, AccountRemovalHandler, AccountRemovalState, AccountRemovalView},
+    account_menu::{
+        account_menu, AccountMenuHandlers, AccountRemovalHandler, AccountRemovalState,
+        AccountRemovalView,
+    },
     banked_reset_badge, limit_header_status, limit_issue_row, pending_limit_row,
     plan_badge::plan_badge_label,
     quota_row,
@@ -49,11 +54,18 @@ pub(super) fn account_limits_group(
             cx.notify();
         });
     });
+    let activation = account_activation::view(s);
+    let (test_handler, automatic_handler) = account_activation::handlers(cx);
     let removal_menu = account_menu(
         AccountRemovalView::new(s.provider, &s.account, removal_state),
-        prompt_handler,
-        removal_handler,
-        cancel_handler,
+        activation,
+        AccountMenuHandlers {
+            test: test_handler,
+            toggle_automatic: automatic_handler,
+            prompt_removal: prompt_handler,
+            remove: removal_handler,
+            cancel_removal: cancel_handler,
+        },
         cx,
     );
     let mut group = v_flex()

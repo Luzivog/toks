@@ -4,6 +4,7 @@ use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
 use crate::ToksApp;
 
 mod controls;
+mod generations;
 mod state;
 use controls::routing_controls;
 use state::{health_label, selected_account, SelectedAccount};
@@ -93,6 +94,7 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
                     )
                 }),
         )
+        .when_some(generations::rows(app, cx), |panel, rows| panel.child(rows))
         .child(super::remote_control::row(app, cx))
         .when(!install.configured, |panel| {
             panel.child(

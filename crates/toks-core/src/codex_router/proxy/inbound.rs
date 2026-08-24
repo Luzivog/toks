@@ -40,9 +40,12 @@ impl InboundTokens {
 
     fn with_store(credentials: SharedCredentials, store: AdmissionStore) -> Self {
         let active = credentials.account_ids().into_iter().collect();
-        let mut admissions = store.load().unwrap_or_default();
-        prune(&mut admissions, &active, now());
-        let _ = store.save(&admissions);
+        let admissions = store
+            .update(|admissions| {
+                let changed = prune(admissions, &active, now());
+                (admissions.clone(), changed)
+            })
+            .unwrap_or_default();
         Self {
             validated: Mutex::new(admissions),
             credentials,
@@ -58,34 +61,98 @@ impl InboundTokens {
         let now = now();
         let active = self.credentials.account_ids().into_iter().collect();
         let changed = prune(&mut validated, &active, now);
-        if changed {
-            let _ = self.store.save(&validated);
-        }
         if validated.contains_key(&digest) {
+            if changed {
+                self.refresh_from_store(&mut validated, &active, now);
+            }
             return true;
         }
-        let Some(account_id) = self.credentials.incoming_account(token) else {
-            return false;
-        };
-        if !active.contains(&account_id) {
-            return false;
+        if !self.store.is_persistent() {
+            return admission(&self.credentials, token, digest, &active, now).is_some_and(
+                |admission| {
+                    validated.insert(digest, admission);
+                    prune(&mut validated, &active, now);
+                    true
+                },
+            );
         }
-        let expires_at = token_expiry(token);
-        if expires_at.is_some_and(|expiry| expiry <= now) {
-            return false;
+        match self.store.update(|admissions| {
+            let mut changed = prune(admissions, &active, now);
+            let accepted = if let std::collections::btree_map::Entry::Vacant(entry) =
+                admissions.entry(digest)
+            {
+                admission(&self.credentials, token, digest, &active, now).is_some_and(|admission| {
+                    entry.insert(admission);
+                    changed = true;
+                    true
+                })
+            } else {
+                true
+            };
+            changed |= prune(admissions, &active, now);
+            ((accepted, admissions.clone()), changed)
+        }) {
+            Ok((accepted, current)) => {
+                merge_store_state(&mut validated, current);
+                accepted
+            }
+            Err(_) => {
+                admission(&self.credentials, token, digest, &active, now).is_some_and(|admission| {
+                    validated.insert(digest, admission);
+                    prune(&mut validated, &active, now);
+                    true
+                })
+            }
         }
-        validated.insert(
-            digest,
-            Admission {
-                digest,
-                account_id,
-                expires_at,
-            },
-        );
-        prune(&mut validated, &active, now);
-        let _ = self.store.save(&validated);
-        true
     }
+
+    fn refresh_from_store(
+        &self,
+        validated: &mut BTreeMap<[u8; 32], Admission>,
+        active: &BTreeSet<AccountId>,
+        now: i64,
+    ) {
+        if let Ok(current) = self.store.update(|admissions| {
+            let changed = prune(admissions, active, now);
+            (admissions.clone(), changed)
+        }) {
+            merge_store_state(validated, current);
+        }
+    }
+}
+
+fn admission(
+    credentials: &SharedCredentials,
+    token: &str,
+    digest: [u8; 32],
+    active: &BTreeSet<AccountId>,
+    now: i64,
+) -> Option<Admission> {
+    let account_id = credentials.incoming_account(token)?;
+    if !active.contains(&account_id) {
+        return None;
+    }
+    let expires_at = token_expiry(token);
+    if expires_at.is_some_and(|expiry| expiry <= now) {
+        return None;
+    }
+    Some(Admission {
+        digest,
+        account_id,
+        expires_at,
+    })
+}
+
+fn merge_store_state(
+    validated: &mut BTreeMap<[u8; 32], Admission>,
+    mut current: BTreeMap<[u8; 32], Admission>,
+) {
+    for (digest, admission) in validated.iter() {
+        if admission.expires_at.is_none() {
+            current.insert(*digest, admission.clone());
+        }
+    }
+    *validated = current;
 }
 
 fn prune(

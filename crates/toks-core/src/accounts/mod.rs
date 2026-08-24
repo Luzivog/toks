@@ -5,6 +5,7 @@
 //! homes where the provider's own CLI remains credential owner.
 
 mod catalog;
+mod codex_auth;
 mod collection;
 mod discovery;
 mod lifecycle;
@@ -17,8 +18,11 @@ mod suppression;
 mod types;
 
 pub use catalog::{AccountBinding, AccountTransition};
-pub(crate) use collection::collect_provider_limits;
+#[cfg(test)]
+pub(crate) use codex_auth::read_for_test as read_codex_auth_for_test;
+pub(crate) use codex_auth::{credential_fingerprint, CodexAuthProof, CodexAuthSnapshot};
 pub use collection::{collect_limits, hydrate_limits};
+pub(crate) use collection::{collect_provider_limits, ProviderLimitCollection};
 pub use lifecycle::{
     remove_account, AccountRemovalPlan, AccountRemovalResult, ManagedProfileRemoval,
     ManagedRemovalState,
@@ -40,7 +44,9 @@ pub(crate) use suppression::filter_hidden_accounts;
 pub(crate) use types::AccountProfile;
 
 use catalog::coalesce_snapshots;
-pub(crate) use catalog::provider_principal_id;
+#[cfg(test)]
+pub(crate) use catalog::codex_auth_account_id_for_test;
+pub(crate) use catalog::{codex_auth_account_id, provider_principal_id};
 use discovery::account_email;
 use storage::{
     now_millis, now_nanos, profiles_root, restrict_directory, write_metadata, PROFILE_VERSION,
@@ -49,6 +55,8 @@ use types::ProfileMetadata;
 
 #[cfg(test)]
 mod catalog_tests;
+#[cfg(test)]
+mod collection_auth_tests;
 #[cfg(test)]
 mod order_tests;
 #[cfg(test)]

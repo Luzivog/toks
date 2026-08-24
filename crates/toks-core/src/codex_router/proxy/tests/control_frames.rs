@@ -20,7 +20,7 @@ async fn ping_before_a_fast_limit_does_not_prevent_the_standard_retry() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     socket

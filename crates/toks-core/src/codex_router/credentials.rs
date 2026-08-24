@@ -1,13 +1,13 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{Duration, Utc};
 use serde_json::Value;
-use std::fs;
 use std::path::Path;
 
-use crate::accounts::{AccountId, AccountProfile};
-use crate::limits::Provider;
+use crate::accounts::AccountId;
 
 mod refresh;
+mod snapshot;
+use snapshot::preferred_snapshot;
 
 pub(crate) struct Credential {
     pub account_id: AccountId,
@@ -22,69 +22,36 @@ pub(crate) enum CredentialError {
 }
 
 pub(crate) fn account_ids() -> Vec<AccountId> {
-    let mut ids = profiles()
-        .into_iter()
-        .map(|profile| profile.account.id)
-        .collect::<Vec<_>>();
+    let mut ids = snapshot::account_ids();
     ids.sort();
     ids.dedup();
     ids
 }
 
 pub(crate) fn incoming_token_account(token: &str) -> Option<AccountId> {
-    profiles().into_iter().find_map(|profile| {
-        read_auth(&profile.config_dir.join("auth.json"))
-            .is_ok_and(|auth| auth.access_token == token)
-            .then_some(profile.account.id)
-    })
+    snapshot::snapshots()
+        .into_iter()
+        .find(|snapshot| snapshot.auth.access_token == token)
+        .map(|snapshot| snapshot.account_id)
 }
 
 pub(crate) async fn for_account(account_id: &AccountId) -> Result<Credential, CredentialError> {
-    let profile = preferred_profile(account_id).ok_or_else(|| {
+    let snapshot = preferred_snapshot(account_id).ok_or_else(|| {
         CredentialError::NeedsSignIn("No Codex credential profile was found".into())
     })?;
-    let path = profile.config_dir.join("auth.json");
-    let mut auth = read_auth(&path).map_err(CredentialError::NeedsSignIn)?;
+    let mut auth = snapshot.auth;
     if expires_soon(&auth.access_token) {
-        auth = refresh::refresh(&path, &auth).await?;
+        auth = refresh::refresh(&snapshot.path, &auth).await?;
     }
-    Ok(Credential {
-        account_id: account_id.clone(),
-        access_token: auth.access_token,
-        chatgpt_account_id: auth.chatgpt_account_id,
-    })
+    snapshot::credential(snapshot.profile_id, account_id, auth)
 }
 
 pub(crate) async fn refresh_account(account_id: &AccountId) -> Result<Credential, CredentialError> {
-    let profile = preferred_profile(account_id).ok_or_else(|| {
+    let snapshot = preferred_snapshot(account_id).ok_or_else(|| {
         CredentialError::NeedsSignIn("No Codex credential profile was found".into())
     })?;
-    let path = profile.config_dir.join("auth.json");
-    let auth = read_auth(&path).map_err(CredentialError::NeedsSignIn)?;
-    let refreshed = refresh::refresh(&path, &auth).await?;
-    Ok(Credential {
-        account_id: account_id.clone(),
-        access_token: refreshed.access_token,
-        chatgpt_account_id: refreshed.chatgpt_account_id,
-    })
-}
-
-fn profiles() -> Vec<AccountProfile> {
-    crate::accounts::discover_profiles()
-        .into_iter()
-        .filter(|profile| profile.provider == Provider::Codex)
-        .collect()
-}
-
-fn preferred_profile(account_id: &AccountId) -> Option<AccountProfile> {
-    let mut matches = profiles()
-        .into_iter()
-        .filter(|profile| &profile.account.id == account_id)
-        .collect::<Vec<_>>();
-    matches.sort_by_key(|profile| !profile.managed);
-    matches
-        .into_iter()
-        .find(|profile| profile.config_dir.join("auth.json").is_file())
+    let refreshed = refresh::refresh(&snapshot.path, &snapshot.auth).await?;
+    snapshot::credential(snapshot.profile_id, account_id, refreshed)
 }
 
 pub(super) struct StoredAuth {
@@ -95,8 +62,8 @@ pub(super) struct StoredAuth {
 }
 
 pub(super) fn read_auth(path: &Path) -> Result<StoredAuth, String> {
-    let raw = fs::read_to_string(path).map_err(|_| "Codex sign-in is missing".to_string())?;
-    let value = serde_json::from_str::<Value>(&raw)
+    let raw = std::fs::read(path).map_err(|_| "Codex sign-in is missing".to_string())?;
+    let value = serde_json::from_slice::<Value>(&raw)
         .map_err(|_| "Codex sign-in data is invalid".to_string())?;
     let string = |pointer: &str| {
         value

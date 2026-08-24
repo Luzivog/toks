@@ -2,6 +2,8 @@ use super::*;
 
 use super::fixtures::one_percent_snapshot;
 
+mod incident_observability;
+
 #[tokio::test]
 async fn fast_limit_retries_standard_on_the_same_account() {
     let calls = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
@@ -36,7 +38,7 @@ async fn fast_limit_retries_standard_on_the_same_account() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     let drained = post(&client, &proxy, &body).await;
@@ -99,7 +101,7 @@ async fn standard_limit_moves_only_the_http_thread_and_keeps_a_websocket_sibling
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     let moved = post(&client, &proxy, &body).await;
@@ -153,49 +155,6 @@ async fn a_request_without_a_thread_blocks_only_new_admission() {
 }
 
 #[tokio::test]
-async fn an_initial_sse_fast_limit_retries_standard_on_the_same_account() {
-    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
-    let upstream_calls = calls.clone();
-    let upstream = Router::new().fallback(any(move |body: axum::body::Bytes| {
-        let calls = upstream_calls.clone();
-        async move {
-            let frame: serde_json::Value = serde_json::from_slice(&body).unwrap();
-            let tier = frame["service_tier"]
-                .as_str()
-                .unwrap_or("default")
-                .to_owned();
-            calls.lock().unwrap().push(tier.clone());
-            if tier == "priority" {
-                split_sse_failure()
-            } else {
-                continuing_response()
-            }
-        }
-    }));
-    let origin = spawn(upstream).await;
-    let harness = Harness::new(&[("a", "token-a")]);
-    let proxy = spawn(app(harness.state(origin.clone(), origin))).await;
-    let client = reqwest::Client::new();
-    let body = request_body("victim");
-
-    post(&client, &proxy, &body).await.text().await.unwrap();
-    harness
-        .runtime
-        .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
-        .unwrap();
-    let response = post(&client, &proxy, &body).await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(response
-        .text()
-        .await
-        .unwrap()
-        .contains("response.completed"));
-    assert_eq!(*calls.lock().unwrap(), ["default", "priority", "default"]);
-}
-
-#[tokio::test]
 async fn a_coalesced_sse_preamble_prevents_replay_and_the_next_request_uses_standard() {
     let calls = Arc::new(Mutex::new(Vec::<String>::new()));
     let upstream_calls = calls.clone();
@@ -225,7 +184,7 @@ async fn a_coalesced_sse_preamble_prevents_replay_and_the_next_request_uses_stan
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     let failed = post(&client, &proxy, &body).await.text().await.unwrap();
     assert!(failed.contains("response.created"));
@@ -270,7 +229,7 @@ async fn concurrent_fast_limits_both_retry_standard_without_blocking_the_thread(
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     let (left, right) = tokio::join!(post(&client, &proxy, &body), post(&client, &proxy, &body));
     assert_eq!(left.status(), StatusCode::OK);

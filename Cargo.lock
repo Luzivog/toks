@@ -3808,6 +3808,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset",
 ]
 
 [[package]]
@@ -6504,6 +6505,7 @@ dependencies = [
  "chrono",
  "gpui",
  "gpui-component",
+ "serde_json",
  "smol",
  "toks-core",
 ]
@@ -6520,6 +6522,8 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "hmac",
+ "hyper-util",
+ "nix 0.29.0",
  "reqwest",
  "rusqlite",
  "serde",
@@ -6530,7 +6534,9 @@ dependencies = [
  "tokio-tungstenite",
  "toks-ingest",
  "toml_edit 0.22.27",
+ "tower",
  "uuid",
+ "zstd",
 ]
 
 [[package]]

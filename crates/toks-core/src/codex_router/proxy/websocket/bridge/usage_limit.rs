@@ -3,6 +3,7 @@ use futures_util::SinkExt;
 use tokio_tungstenite::tungstenite::Message as ServerMessage;
 
 use crate::accounts::AccountId;
+use crate::rotation::{UsageLimitPhase, UsageLimitTierOrigin};
 
 use super::super::connect::UpstreamSocket;
 use super::{message::to_client, Turn};
@@ -38,6 +39,12 @@ pub(super) async fn handle(
         tier,
         delivery,
         block.resets_at,
+        block.incident(
+            turn.thread.clone(),
+            turn.model.as_deref(),
+            turn.request_tier.clone(),
+            UsageLimitPhase::WebSocketFrame,
+        ),
     ) {
         Ok(action) => action,
         Err(_) => {
@@ -48,6 +55,7 @@ pub(super) async fn handle(
     if action == UsageLimitAction::RetrySameAccountAtStandardTier {
         let original = forced_request.expect("forced Fast retry retains its original request");
         turn.lifecycle.reset();
+        turn.begin_request(&original, UsageLimitTierOrigin::ToksStandardFallback);
         return upstream
             .send(ServerMessage::Text(original.into()))
             .await
@@ -66,6 +74,9 @@ pub(super) async fn handle(
         }
         return Ok(());
     }
+    // This bridge terminates after failover. Release its old account before
+    // selecting a replacement so one thread is never live on both accounts.
+    turn.attachment.take();
     let eligible = turn.thread.as_ref().map_or_else(
         || engine.eligible_account(),
         |thread| engine.eligible_account_for_thread(thread),

@@ -1,11 +1,14 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use crate::limits::{self, LimitIssue, LimitSnapshot, Provider, SnapshotStatus};
+use crate::limits::{self, LimitSnapshot, Provider};
 
 use super::{
-    account_email, coalesce_snapshots, discover_profiles, filter_hidden_accounts, AccountProfile,
+    coalesce_snapshots, discover_profiles, filter_hidden_accounts, AccountProfile, CodexAuthProof,
 };
+
+mod finalize;
+use finalize::{finish_outcome, CollectedProfile};
 
 const MAX_PARALLEL_ACCOUNTS: usize = 4;
 
@@ -18,26 +21,34 @@ enum CollectionMode {
 /// Refresh every discovered account with bounded parallelism. Broken accounts
 /// retain their last successful snapshot and an account-local typed issue.
 pub fn collect_limits() -> Vec<LimitSnapshot> {
-    collect(CollectionMode::Refresh, None)
+    collect(CollectionMode::Refresh, None).snapshots
 }
 
 /// Read local snapshots only. This is intentionally separate from refresh so
 /// applications can paint last-known values before any network work starts.
 pub fn hydrate_limits() -> Vec<LimitSnapshot> {
-    collect(CollectionMode::Hydrate, None)
+    collect(CollectionMode::Hydrate, None).snapshots
 }
 
-pub(crate) fn collect_provider_limits(provider: Provider) -> Vec<LimitSnapshot> {
+pub(crate) fn collect_provider_limits(provider: Provider) -> ProviderLimitCollection {
     collect(CollectionMode::Refresh, Some(provider))
 }
 
-fn collect(mode: CollectionMode, provider: Option<Provider>) -> Vec<LimitSnapshot> {
+pub(crate) struct ProviderLimitCollection {
+    pub(crate) snapshots: Vec<LimitSnapshot>,
+    pub(crate) codex_auth: Vec<CodexAuthProof>,
+}
+
+fn collect(mode: CollectionMode, provider: Option<Provider>) -> ProviderLimitCollection {
     let profiles = discover_profiles()
         .into_iter()
         .filter(|profile| provider.is_none_or(|provider| profile.provider == provider))
         .collect::<Vec<_>>();
     if profiles.is_empty() {
-        return Vec::new();
+        return ProviderLimitCollection {
+            snapshots: Vec::new(),
+            codex_auth: Vec::new(),
+        };
     }
     let jobs = Arc::new(Mutex::new(
         profiles.into_iter().enumerate().collect::<VecDeque<_>>(),
@@ -73,74 +84,45 @@ fn collect(mode: CollectionMode, provider: Option<Provider>) -> Vec<LimitSnapsho
         .into_inner()
         .unwrap_or_else(|poison| poison.into_inner());
     results.sort_by_key(|(index, _)| *index);
-    filter_hidden_accounts(coalesce_snapshots(results))
+    let codex_auth = results
+        .iter()
+        .filter_map(|(_, collected)| collected.codex_auth.clone())
+        .collect();
+    let snapshots = results
+        .into_iter()
+        .map(|(index, collected)| (index, collected.snapshot))
+        .collect();
+    ProviderLimitCollection {
+        snapshots: filter_hidden_accounts(coalesce_snapshots(snapshots)),
+        codex_auth,
+    }
 }
 
-fn collect_profile(profile: &AccountProfile, mode: CollectionMode) -> LimitSnapshot {
+fn collect_profile(profile: &AccountProfile, mode: CollectionMode) -> CollectedProfile {
     let outcome = match mode {
         CollectionMode::Hydrate => limits::live::RefreshOutcome {
             snapshot: limits::live::hydrate(profile),
             issue: None,
+            codex_auth: None,
         },
         CollectionMode::Refresh => limits::live::refresh(profile),
     };
-    match outcome.snapshot {
-        Some(snapshot) => finish_snapshot(snapshot, profile),
-        None => unavailable_snapshot(profile, outcome.issue),
-    }
+    finish_outcome(profile, outcome)
 }
 
-fn finish_snapshot(mut snapshot: LimitSnapshot, profile: &AccountProfile) -> LimitSnapshot {
-    let mut account = profile.account.clone();
-    if account.email.is_none() {
-        account.email = snapshot
-            .account
-            .email
-            .or_else(|| account_email(profile.provider, &profile.home_dir, &profile.config_dir));
-    }
-    snapshot.account = account;
-    if snapshot.plan.is_none() || snapshot.plan_multiplier.is_none() {
-        let details = plan_details(profile);
-        snapshot.plan = snapshot.plan.or(details.name);
-        snapshot.plan_multiplier = snapshot.plan_multiplier.or(details.multiplier);
-    }
-    snapshot.issue = None;
-    snapshot
-}
-
-fn unavailable_snapshot(
+#[cfg(test)]
+pub(super) fn collect_profile_with(
     profile: &AccountProfile,
-    refresh_issue: Option<LimitIssue>,
+    refresh: impl FnOnce() -> limits::live::RefreshOutcome,
 ) -> LimitSnapshot {
-    let credentials = limits::live::credentials_present(profile);
-    let state = limits::settling::missing_snapshot_state(profile, credentials, refresh_issue);
-    let issue = state.issue;
-    let freshness = state.freshness;
-    let status = issue.clone().map_or_else(
-        || SnapshotStatus::at(freshness),
-        |issue| SnapshotStatus::failed(freshness, issue),
-    );
-    let legacy_issue = issue.as_ref().map(|problem| problem.message.clone());
-    let details = plan_details(profile);
-    LimitSnapshot {
-        provider: profile.provider,
-        account: profile.account.clone(),
-        plan: details.name,
-        plan_multiplier: details.multiplier,
-        banked_resets: 0,
-        banked_reset_credits: None,
-        windows: Vec::new(),
-        extras: Vec::new(),
-        fetched_at: None,
-        source: String::new(),
-        issue: legacy_issue,
-        status,
-    }
+    finish_outcome(profile, refresh()).snapshot
 }
 
-fn plan_details(profile: &AccountProfile) -> limits::PlanDetails {
-    match profile.provider {
-        Provider::Claude => limits::read_claude_plan(&profile.config_dir),
-        Provider::Codex => limits::codex::read_plan_from_auth(&profile.config_dir),
-    }
+#[cfg(test)]
+pub(super) fn collect_profile_with_proof(
+    profile: &AccountProfile,
+    refresh: impl FnOnce() -> limits::live::RefreshOutcome,
+) -> (LimitSnapshot, Option<CodexAuthProof>) {
+    let collected = finish_outcome(profile, refresh());
+    (collected.snapshot, collected.codex_auth)
 }

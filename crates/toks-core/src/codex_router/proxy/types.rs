@@ -1,14 +1,19 @@
 use std::sync::Arc;
 
-use futures_util::future::BoxFuture;
-
 use crate::accounts::AccountId;
+use futures_util::future::BoxFuture;
 
 #[derive(Debug, Clone)]
 pub(super) struct RouteCredential {
     pub account_id: AccountId,
     pub access_token: String,
     pub chatgpt_account_id: String,
+}
+
+impl RouteCredential {
+    pub(super) fn fingerprint(&self) -> String {
+        crate::accounts::credential_fingerprint(&self.access_token, &self.chatgpt_account_id)
+    }
 }
 
 #[derive(Debug)]

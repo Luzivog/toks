@@ -11,6 +11,8 @@ use super::{RotationRuntime, RotationSettings};
 mod atomic;
 use atomic::restrict_directory;
 pub(crate) use atomic::write_private_atomic;
+mod lock;
+use lock::lock_document;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RotationPaths {
@@ -77,7 +79,20 @@ impl RotationSettingsStore {
     }
 
     pub fn save(&self, settings: &RotationSettings) -> Result<()> {
+        let _lock = lock_document(&self.path, "rotation settings")?;
         write_json(&self.path, settings, "rotation settings")
+    }
+
+    /// Serialize a settings read-modify-write across UI polls, actions, and
+    /// other Toks processes.
+    pub fn update<T>(&self, change: impl FnOnce(&mut RotationSettings) -> (T, bool)) -> Result<T> {
+        let _lock = lock_document(&self.path, "rotation settings")?;
+        let mut settings = self.load()?;
+        let (value, changed) = change(&mut settings);
+        if changed {
+            write_json(&self.path, &settings, "rotation settings")?;
+        }
+        Ok(value)
     }
 }
 
@@ -111,12 +126,34 @@ impl RotationRuntimeStore {
         if runtime.version() != RUNTIME_VERSION {
             bail!("unsupported rotation runtime version {}", runtime.version());
         }
-        runtime.normalize();
+        runtime.normalize()?;
         Ok(runtime)
     }
 
-    pub fn save(&self, runtime: &RotationRuntime) -> Result<()> {
+    #[cfg(test)]
+    pub(crate) fn save(&self, runtime: &RotationRuntime) -> Result<()> {
+        let _lock = lock_document(&self.path, "rotation runtime")?;
+        self.save_unlocked(runtime)
+    }
+
+    fn save_unlocked(&self, runtime: &RotationRuntime) -> Result<()> {
+        runtime.validate()?;
         write_json(&self.path, runtime, "rotation runtime")
+    }
+
+    /// Serializes a read-modify-write transaction across router generations.
+    pub(crate) fn update<T>(
+        &self,
+        change: impl FnOnce(&mut RotationRuntime) -> (T, bool),
+    ) -> Result<T> {
+        let _lock = lock_document(&self.path, "rotation runtime")?;
+        let mut runtime = self.load()?;
+        let (value, changed) = change(&mut runtime);
+        if changed {
+            runtime.validate()?;
+            self.save_unlocked(&runtime)?;
+        }
+        Ok(value)
     }
 }
 

@@ -15,6 +15,14 @@ pub struct AccountQuotaDrain {
     pub reset_at: Option<UnixMillis>,
 }
 
+/// The authority of one account's latest quota refresh.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuotaObservation {
+    Draining(Option<UnixMillis>),
+    ObservedAvailable,
+    Unknown,
+}
+
 /// Start draining when an account-wide window has at most 1% remaining.
 /// Model-scoped windows do not make the whole subscription unavailable.
 pub fn account_quota_drain(

@@ -62,7 +62,7 @@ async fn http_refresh_keeps_affinity_and_rechecks_fast_at_the_threshold() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     proceed.notify_one();
     let response = request.await.unwrap();

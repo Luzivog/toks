@@ -3,11 +3,15 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
+use std::time::Duration;
 
 use super::{read_auth, CredentialError, StoredAuth};
 
+mod lock;
+
 const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+const REFRESH_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Serialize)]
 struct RefreshRequest<'a> {
@@ -23,12 +27,28 @@ struct RefreshResponse {
 }
 
 pub(super) async fn refresh(path: &Path, auth: &StoredAuth) -> Result<StoredAuth, CredentialError> {
+    refresh_at(path, auth, TOKEN_URL).await
+}
+
+async fn refresh_at(
+    path: &Path,
+    auth: &StoredAuth,
+    endpoint: &str,
+) -> Result<StoredAuth, CredentialError> {
+    let _lock = lock::RefreshLock::acquire(path)
+        .await
+        .map_err(CredentialError::Temporary)?;
+    let current = read_auth(path).map_err(CredentialError::NeedsSignIn)?;
+    if credentials_changed(auth, &current) {
+        return Ok(current);
+    }
     let response = reqwest::Client::new()
-        .post(TOKEN_URL)
+        .post(endpoint)
+        .timeout(REFRESH_TIMEOUT)
         .json(&RefreshRequest {
             client_id: CLIENT_ID,
             grant_type: "refresh_token",
-            refresh_token: &auth.refresh_token,
+            refresh_token: &current.refresh_token,
         })
         .send()
         .await
@@ -36,6 +56,12 @@ pub(super) async fn refresh(path: &Path, auth: &StoredAuth) -> Result<StoredAuth
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
+        if invalid_grant(&body) {
+            let latest = read_auth(path).map_err(CredentialError::NeedsSignIn)?;
+            if credentials_changed(&current, &latest) {
+                return Ok(latest);
+            }
+        }
         if status.is_client_error()
             && status != reqwest::StatusCode::REQUEST_TIMEOUT
             && status != reqwest::StatusCode::TOO_MANY_REQUESTS
@@ -50,7 +76,7 @@ pub(super) async fn refresh(path: &Path, auth: &StoredAuth) -> Result<StoredAuth
         .json::<RefreshResponse>()
         .await
         .map_err(|error| CredentialError::Temporary(error.into()))?;
-    publish(path, auth, refreshed)
+    publish(path, &current, refreshed)
 }
 
 fn publish(
@@ -59,7 +85,7 @@ fn publish(
     refreshed: RefreshResponse,
 ) -> Result<StoredAuth, CredentialError> {
     let current = read_auth(path).map_err(CredentialError::NeedsSignIn)?;
-    if current.refresh_token != used.refresh_token {
+    if credentials_changed(used, &current) {
         return Ok(current);
     }
     let mut raw = current.raw;
@@ -88,6 +114,21 @@ fn publish(
     read_auth(path).map_err(CredentialError::NeedsSignIn)
 }
 
+fn credentials_changed(before: &StoredAuth, after: &StoredAuth) -> bool {
+    before.access_token != after.access_token
+        || before.refresh_token != after.refresh_token
+        || before.chatgpt_account_id != after.chatgpt_account_id
+}
+
+fn invalid_grant(body: &str) -> bool {
+    serde_json::from_str::<Value>(body)
+        .ok()
+        .is_some_and(|value| {
+            value.get("error").and_then(Value::as_str) == Some("invalid_grant")
+                || value.pointer("/error/code").and_then(Value::as_str) == Some("invalid_grant")
+        })
+}
+
 fn refresh_error(body: &str) -> String {
     serde_json::from_str::<Value>(body)
         .ok()
@@ -100,3 +141,6 @@ fn refresh_error(body: &str) -> String {
         })
         .unwrap_or_else(|| "Codex sign-in needs to be renewed".to_string())
 }
+
+#[cfg(test)]
+mod tests;

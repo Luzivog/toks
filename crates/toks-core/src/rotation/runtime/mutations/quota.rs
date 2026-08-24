@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::accounts::AccountId;
+use crate::rotation::QuotaObservation;
 
 use super::super::{QuotaDrainState, RotationEventKind, RotationRuntime, UnixMillis};
 
@@ -24,29 +25,46 @@ impl RotationRuntime {
         state.grandfathered_threads.clear();
         state.provisional_threads.clear();
         state.thread_usage.clear();
+        state.advance_quota_authority();
         changed
     }
 
-    pub fn replace_quota_drain(
+    pub(crate) fn apply_quota_observations(
         &mut self,
-        draining: &BTreeMap<AccountId, Option<UnixMillis>>,
+        observations: &BTreeMap<AccountId, QuotaObservation>,
         at: UnixMillis,
     ) -> bool {
         let attached = self.attached_threads.clone();
         let mut changed = false;
         let mut newly_draining = Vec::new();
         for (account, state) in &mut self.accounts {
-            let Some(reset_at) = draining.get(account) else {
-                changed |= state.quota_drain.take().is_some();
-                if !state.block_confirmed {
+            let observation = observations
+                .get(account)
+                .copied()
+                .unwrap_or(QuotaObservation::Unknown);
+            if observation == QuotaObservation::Unknown {
+                continue;
+            }
+            state.advance_quota_authority();
+            changed = true;
+            let reset_at = match observation {
+                QuotaObservation::Unknown => unreachable!("unknown observations continue above"),
+                QuotaObservation::ObservedAvailable => {
+                    changed |= state.quota_drain.take().is_some();
+                    changed |= state.blocked_until.take().is_some();
+                    changed |= state.block_confirmed;
+                    changed |= state.block_reset_known;
                     changed |= !state.grandfathered_threads.is_empty();
                     changed |= !state.provisional_threads.is_empty();
                     changed |= !state.thread_usage.is_empty();
+                    state.block_confirmed = false;
+                    state.block_reset_known = false;
                     state.grandfathered_threads.clear();
                     state.provisional_threads.clear();
                     state.thread_usage.clear();
+                    continue;
                 }
-                continue;
+                QuotaObservation::Draining(reset_at) => reset_at,
             };
             // Before draining existed, the threshold was persisted as an
             // unconfirmed block. Convert it on the first current observation.
@@ -56,17 +74,18 @@ impl RotationRuntime {
             }
             let previous = state.quota_drain;
             let next = match reset_at {
-                Some(until) if *until > at => Some(QuotaDrainState {
-                    until: *until,
+                Some(until) if until > at => Some(QuotaDrainState {
+                    until,
                     reset_known: true,
                 }),
                 Some(_) => None,
                 None => match previous {
                     Some(current) if !current.reset_known && current.until > at => Some(current),
-                    // Allow one heartbeat to re-probe after the bounded fallback.
-                    Some(current) if !current.reset_known => None,
+                    // `until` is the next provider re-probe deadline when the
+                    // reset is unknown. Renew it only after that deadline; the
+                    // account remains draining while the re-probe runs.
                     _ => Some(QuotaDrainState {
-                        until: UnixMillis::new(at.get() + REPROBE_AFTER_MILLIS),
+                        until: UnixMillis::new(at.get().saturating_add(REPROBE_AFTER_MILLIS)),
                         reset_known: false,
                     }),
                 },

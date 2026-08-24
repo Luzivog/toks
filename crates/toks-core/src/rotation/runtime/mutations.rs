@@ -4,6 +4,8 @@ use super::{
     RotationEventKind, RotationRuntime, RouterHealth, ThreadId, UnixMillis, WaitingThread,
 };
 
+mod attachments;
+mod auth;
 mod limits;
 mod quota;
 
@@ -18,71 +20,6 @@ impl RotationRuntime {
         self.push_event(at, RotationEventKind::RouterFailure);
     }
 
-    pub fn thread_attached(&mut self, account: &AccountId, thread: &ThreadId) -> bool {
-        let attachment = self
-            .attached_threads
-            .entry(thread.clone())
-            .or_insert_with(|| super::AttachedThread {
-                account: account.clone(),
-                connections: 0,
-            });
-        let moved = &attachment.account != account;
-        if moved {
-            attachment.account = account.clone();
-            attachment.connections = 0;
-        }
-        attachment.connections = attachment.connections.saturating_add(1);
-        let mut persisted_changed = self
-            .accounts
-            .get_mut(account)
-            .is_some_and(|state| state.provisional_threads.remove(thread));
-        persisted_changed |= self.release_reservation(account, thread);
-        for (candidate, state) in &mut self.accounts {
-            if candidate != account {
-                persisted_changed |= state.grandfathered_threads.remove(thread);
-                persisted_changed |= state.provisional_threads.remove(thread);
-                persisted_changed |= state.thread_usage.remove(thread).is_some();
-            }
-        }
-        persisted_changed
-    }
-
-    pub fn thread_detached(&mut self, account: &AccountId, thread: &ThreadId) -> bool {
-        let Some(attachment) = self
-            .attached_threads
-            .get_mut(thread)
-            .filter(|attachment| &attachment.account == account)
-        else {
-            return false;
-        };
-        attachment.connections = attachment.connections.saturating_sub(1);
-        if attachment.connections != 0 {
-            return false;
-        }
-        self.attached_threads.remove(thread);
-        self.cancel_active_thread(account, thread)
-    }
-
-    pub fn auth_failed(&mut self, account: &AccountId, at: UnixMillis) -> bool {
-        let state = self.accounts.entry(account.clone()).or_default();
-        if std::mem::replace(&mut state.needs_sign_in, true) {
-            return false;
-        }
-        self.push_event(
-            at,
-            RotationEventKind::AuthNeeded {
-                account_id: account.clone(),
-            },
-        );
-        true
-    }
-
-    pub fn sign_in_restored(&mut self, account: &AccountId) -> bool {
-        self.accounts
-            .get_mut(account)
-            .is_some_and(|state| std::mem::replace(&mut state.needs_sign_in, false))
-    }
-
     pub fn rotated(&mut self, thread: &ThreadId, from: &AccountId, to: &AccountId, at: UnixMillis) {
         self.push_event(
             at,
@@ -95,6 +32,9 @@ impl RotationRuntime {
     }
 
     pub fn waiting(&mut self, thread: &ThreadId, at: UnixMillis) -> bool {
+        if self.resume_in_progress(thread) {
+            return false;
+        }
         if self
             .waiting_threads
             .iter()
@@ -102,10 +42,8 @@ impl RotationRuntime {
         {
             return false;
         }
-        self.waiting_threads.push(WaitingThread {
-            thread_id: thread.clone(),
-            since: at,
-        });
+        self.waiting_threads
+            .push(WaitingThread::new(thread.clone(), at));
         self.push_event(
             at,
             RotationEventKind::Waiting {
@@ -116,9 +54,33 @@ impl RotationRuntime {
     }
 
     pub fn resumed(&mut self, thread: &ThreadId, account: &AccountId, at: UnixMillis) -> bool {
+        self.resumed_matching(thread, None, account, at)
+    }
+
+    pub(crate) fn resumed_waiting(
+        &mut self,
+        waiting: &WaitingThread,
+        account: &AccountId,
+        at: UnixMillis,
+    ) -> bool {
+        self.resumed_matching(&waiting.thread_id, Some(&waiting.waiting_id), account, at)
+    }
+
+    fn resumed_matching(
+        &mut self,
+        thread: &ThreadId,
+        waiting_id: Option<&super::WaitingId>,
+        account: &AccountId,
+        at: UnixMillis,
+    ) -> bool {
+        if self.resume_in_progress(thread) {
+            return false;
+        }
         let before = self.waiting_threads.len();
-        self.waiting_threads
-            .retain(|waiting| &waiting.thread_id != thread);
+        self.waiting_threads.retain(|waiting| {
+            &waiting.thread_id != thread
+                || waiting_id.is_some_and(|waiting_id| &waiting.waiting_id != waiting_id)
+        });
         if self.waiting_threads.len() == before {
             return false;
         }
@@ -130,5 +92,36 @@ impl RotationRuntime {
             },
         );
         true
+    }
+
+    pub(crate) fn waiting_after_attempt(
+        &mut self,
+        waiting: &WaitingThread,
+        replacement: super::WaitingId,
+        at: UnixMillis,
+    ) -> Option<WaitingThread> {
+        if let Some(current) = self
+            .waiting_threads
+            .iter_mut()
+            .find(|current| current.thread_id == waiting.thread_id)
+        {
+            if current.waiting_id == replacement {
+                return Some(current.clone());
+            }
+            if current.waiting_id != waiting.waiting_id {
+                return None;
+            }
+            *current = WaitingThread::with_id(replacement, waiting.thread_id.clone(), at);
+            return Some(current.clone());
+        }
+        let queued = WaitingThread::with_id(replacement, waiting.thread_id.clone(), at);
+        self.waiting_threads.push(queued.clone());
+        self.push_event(
+            at,
+            RotationEventKind::Waiting {
+                thread_id: waiting.thread_id.clone(),
+            },
+        );
+        Some(queued)
     }
 }

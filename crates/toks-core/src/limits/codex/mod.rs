@@ -15,7 +15,9 @@ pub use parser::parse;
 
 pub(crate) use auth_plan::read_plan_from_auth;
 pub(crate) use local::{codex_home, read_email_from_home, read_from_home};
-pub(crate) use principal::read_principal_material;
+pub(crate) use principal::{
+    account_header_matches_auth, principal_material_from_auth, read_principal_material,
+};
 pub(crate) use redeem::redeem_banked_reset;
 pub(crate) use reset_credits::{
     into_domain as reset_credits_into_domain, ResetCreditDetailsResponse,

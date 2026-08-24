@@ -101,6 +101,32 @@ fn drain_and_thread_limit_events_explain_the_routing_decision() {
     );
 }
 
+#[test]
+fn incident_observability_text_exposes_the_safe_request_context() {
+    let app = ToksApp::from_snapshots(None, vec![snapshot("account-a")], Utc::now());
+    let event: RotationEvent = serde_json::from_value(serde_json::json!({
+        "at": 1,
+        "kind": "usageLimited",
+        "account_id": "account-a",
+        "incident": {
+            "threadId": "thread-123",
+            "model": "gpt-5.6-sol",
+            "tier": {"effective":"priority","origin":"client"},
+            "phase": "webSocketFrame",
+            "evidence": {
+                "classification": "errorMessage",
+                "payloadSha256": "sha256:fixture"
+            }
+        }
+    }))
+    .unwrap();
+
+    assert_eq!(
+        event_text(&app, &event).text,
+        "Thread thread-123 hit Fast usage limit on person@example.test via WebSocket frame (message match, gpt-5.6-sol, client requested)"
+    );
+}
+
 fn snapshot(id: &str) -> LimitSnapshot {
     LimitSnapshot {
         provider: Provider::Codex,

@@ -108,6 +108,9 @@ fn collect_windows(key: &str, v: &Value, scope: Option<&str>, out: &mut Vec<Limi
 fn window_from_object(key: &str, v: &Value, scope: Option<&str>) -> Option<LimitWindow> {
     let obj = v.as_object()?;
     let percent = obj.get("used_percent")?.as_f64()?;
+    if !percent.is_finite() || !(0.0..=100.0).contains(&percent) {
+        return None;
+    }
     // Epoch seconds under either name (rollouts: resets_at, wham: reset_at).
     let resets_at = obj
         .get("resets_at")

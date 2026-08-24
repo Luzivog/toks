@@ -3,43 +3,76 @@ use std::collections::BTreeSet;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, Response, StatusCode};
 
-use super::headers::upstream_headers;
+use super::engine::RouteSelection;
+use super::headers::{resume_marker, upstream_headers};
 use super::lease::StreamLease;
-use super::protocol::thread_id;
+use super::protocol::ThreadIdentity;
 use super::types::RouteCredential;
 use super::ProxyState;
-use attempt::{classify_response, request_body, Attempt};
+use attempt::{classify_response, Attempt, ResponseContext};
+use request_body::CodexHttpBody;
+use response::{plain, usage_unavailable};
 
 mod attempt;
+mod prepare;
+mod request_body;
+mod response;
 mod stream;
 
 const MAX_REQUEST_BYTES: usize = 128 * 1024 * 1024;
 
 pub(super) async fn forward(state: ProxyState, request: Request<Body>) -> Response<Body> {
     let (parts, body) = request.into_parts();
-    let body = match to_bytes(body, MAX_REQUEST_BYTES).await {
+    let wire_body = match to_bytes(body, MAX_REQUEST_BYTES).await {
         Ok(body) => body,
         Err(_) => return plain(StatusCode::PAYLOAD_TOO_LARGE, "Codex request is too large"),
     };
-    let thread =
-        super::protocol::thread_id_from_headers(&parts.headers).or_else(|| thread_id(&body));
+    let body = match CodexHttpBody::decode(&parts.headers, wire_body, MAX_REQUEST_BYTES).await {
+        Ok(body) => body,
+        Err(error) => return plain(error.status(), error.message()),
+    };
+    let identity = ThreadIdentity::from_headers(&parts.headers)
+        .merge(ThreadIdentity::from_payload(body.decoded()));
+    if identity == ThreadIdentity::Denied {
+        return plain(StatusCode::BAD_REQUEST, "Conflicting Codex thread identity");
+    }
+    let thread = identity.into_thread();
+    let marker = resume_marker(&parts.headers);
+    let resume_attempt = marker.attempt().map(str::to_owned);
+    if thread.is_none() && marker.is_present() {
+        state.pause_after_resume_denial().await;
+        return usage_unavailable();
+    }
     let mut skipped = BTreeSet::new();
     loop {
         let credential = match state
             .engine
-            .select_for_thread(thread.as_ref(), &skipped)
+            .select_for_thread_authorized(thread.as_ref(), marker, &skipped)
             .await
         {
-            Ok(Some(credential)) => credential,
-            Ok(None) => {
+            Ok(RouteSelection::Selected(credential)) => credential,
+            Ok(RouteSelection::Unavailable) => {
                 if let Some(thread) = &thread {
                     let _ = state.engine.waiting(thread);
                 }
                 return usage_unavailable();
             }
+            Ok(RouteSelection::ResumeDenied) => {
+                state.pause_after_resume_denial().await;
+                return usage_unavailable();
+            }
             Err(_) => return plain(StatusCode::BAD_GATEWAY, "Codex credential is unavailable"),
         };
-        match send(&state, &parts, body.clone(), credential, &thread).await {
+        match send(
+            &state,
+            &parts,
+            &body,
+            credential,
+            &thread,
+            resume_attempt.as_deref(),
+        )
+        .await
+        {
             Attempt::Response(response) => return response,
             Attempt::TryNext(account) => {
                 skipped.insert(account);
@@ -53,15 +86,21 @@ pub(super) async fn forward(state: ProxyState, request: Request<Body>) -> Respon
 async fn send(
     state: &ProxyState,
     parts: &axum::http::request::Parts,
-    body: axum::body::Bytes,
+    body: &CodexHttpBody,
     mut credential: RouteCredential,
     thread: &Option<crate::rotation::ThreadId>,
+    resume_attempt: Option<&str>,
 ) -> Attempt {
     let mut refreshed = false;
     loop {
         let lease = match thread {
             Some(thread) => {
-                match StreamLease::open(state.engine.clone(), &credential.account_id, thread) {
+                match StreamLease::open(
+                    state.engine.clone(),
+                    &credential.account_id,
+                    thread,
+                    resume_attempt,
+                ) {
                     Ok(Some(lease)) => Some(lease),
                     Ok(None) => return Attempt::TryNext(credential.account_id),
                     Err(_) => return Attempt::Failed,
@@ -69,19 +108,25 @@ async fn send(
             }
             None => None,
         };
-        let (attempt_body, forced_fast) = request_body(
+        let Ok(prepared) = prepare::request_body(
             state,
             lease
                 .as_ref()
                 .map_or(super::engine::RouteTier::Original, StreamLease::tier),
             thread,
-            body.clone(),
-        );
+            body,
+            parts.uri.path().strip_prefix(super::CODEX_PATH) == Some("/responses"),
+            MAX_REQUEST_BYTES,
+        )
+        .await
+        else {
+            return Attempt::Failed;
+        };
         let request = state
             .http
             .request(parts.method.clone(), state.upstream.http_url(&parts.uri))
             .headers(upstream_headers(&parts.headers, &credential, false))
-            .body(attempt_body);
+            .body(prepared.wire);
         let response = match request.send().await {
             Ok(response) => response,
             Err(_) => return Attempt::Failed,
@@ -89,7 +134,7 @@ async fn send(
         if response.status() == StatusCode::UNAUTHORIZED {
             if refreshed {
                 drop(lease);
-                let _ = state.engine.permanent_auth_failure(&credential.account_id);
+                let _ = state.engine.permanent_auth_failure(&credential);
                 return Attempt::TryNext(credential.account_id);
             }
             if let Some(thread) = thread {
@@ -103,7 +148,7 @@ async fn send(
             }
             drop(lease);
             refreshed = true;
-            match state.engine.refresh(&credential.account_id).await {
+            match state.engine.refresh(&credential).await {
                 Ok(Some(updated)) => credential = updated,
                 Ok(None) => {
                     release_retry(state, thread, &credential.account_id);
@@ -119,10 +164,14 @@ async fn send(
         return classify_response(
             state,
             response,
-            credential.account_id,
-            thread,
-            lease,
-            forced_fast,
+            ResponseContext {
+                account: credential.account_id,
+                thread: thread.clone(),
+                lease,
+                forced_fast: prepared.forced_fast,
+                model: prepared.model,
+                request_tier: prepared.tier,
+            },
         )
         .await;
     }
@@ -136,32 +185,4 @@ fn release_retry(
     if let Some(thread) = thread {
         let _ = state.engine.release_reservation(account, thread);
     }
-}
-
-fn build_response(
-    status: StatusCode,
-    headers: axum::http::HeaderMap,
-    body: Body,
-) -> Response<Body> {
-    let mut response = Response::new(body);
-    *response.status_mut() = status;
-    *response.headers_mut() = headers;
-    response
-}
-
-fn plain(status: StatusCode, message: &'static str) -> Response<Body> {
-    build_response(status, Default::default(), Body::from(message))
-}
-
-fn usage_unavailable() -> Response<Body> {
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert(
-        axum::http::header::CONTENT_TYPE,
-        axum::http::HeaderValue::from_static("application/json"),
-    );
-    build_response(
-        StatusCode::TOO_MANY_REQUESTS,
-        headers,
-        Body::from(super::protocol::ALL_UNAVAILABLE_FRAME),
-    )
 }

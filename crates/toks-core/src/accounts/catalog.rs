@@ -1,16 +1,13 @@
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
-use std::path::PathBuf;
 
-use crate::limits::{self, LimitSnapshot, Provider};
+use crate::limits::{LimitSnapshot, Provider};
 
-use super::{AccountId, AccountProfile, AccountSource, CredentialProfileId};
+use super::{AccountId, AccountSource, CredentialProfileId};
 
-const KEY_BYTES: usize = 32;
-const PRINCIPAL_KEY_FILE: &str = "account-principal.key";
+mod identity;
+#[cfg(test)]
+pub(crate) use identity::codex_auth_account_id_for_test;
+pub(crate) use identity::{codex_auth_account_id, provider_principal_id};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,27 +37,6 @@ impl AccountBinding {
                 account_id: current.account_id.clone(),
             })
     }
-}
-
-pub(crate) fn provider_principal_id(profile: &AccountProfile) -> Option<AccountId> {
-    let material = match profile.provider {
-        Provider::Claude => {
-            limits::claude::read_principal_material(&profile.home_dir, &profile.config_dir)
-        }
-        Provider::Codex => limits::codex::read_principal_material(&profile.config_dir),
-    }?;
-    let key = load_or_create_key()?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(&key).ok()?;
-    mac.update(b"tokscope.account.v1\0");
-    mac.update(profile.provider.slug().as_bytes());
-    mac.update(&[0]);
-    mac.update(&material);
-    let digest = mac.finalize().into_bytes();
-    Some(AccountId::new(format!(
-        "{}-{}",
-        profile.provider.slug(),
-        encode_hex(&digest)
-    )))
 }
 
 pub(super) fn coalesce_snapshots(snapshots: Vec<(usize, LimitSnapshot)>) -> Vec<LimitSnapshot> {
@@ -138,52 +114,4 @@ fn is_fresher(candidate: &LimitSnapshot, selected: &LimitSnapshot) -> bool {
         .then_with(|| (!candidate.windows.is_empty()).cmp(&!selected.windows.is_empty()))
         .then_with(|| candidate.issue.is_none().cmp(&selected.issue.is_none()))
         .is_gt()
-}
-
-fn load_or_create_key() -> Option<Vec<u8>> {
-    let path = principal_key_path()?;
-    if let Some(key) = read_key(&path) {
-        return Some(key);
-    }
-    let parent = path.parent()?;
-    fs::create_dir_all(parent).ok()?;
-    super::restrict_directory(parent).ok()?;
-    let mut key = vec![0_u8; KEY_BYTES];
-    getrandom::fill(&mut key).ok()?;
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    match options.open(&path) {
-        Ok(mut file) => {
-            file.write_all(&key).ok()?;
-            file.sync_all().ok()?;
-            fs::File::open(parent).ok()?.sync_all().ok()?;
-            Some(key)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => read_key(&path),
-        Err(_) => None,
-    }
-}
-
-fn principal_key_path() -> Option<PathBuf> {
-    toks_ingest::paths::get_data_dir().map(|root| root.join(PRINCIPAL_KEY_FILE))
-}
-
-fn read_key(path: &std::path::Path) -> Option<Vec<u8>> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).ok()?;
-    }
-    let mut key = Vec::new();
-    fs::File::open(path).ok()?.read_to_end(&mut key).ok()?;
-    (key.len() == KEY_BYTES).then_some(key)
-}
-
-fn encode_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

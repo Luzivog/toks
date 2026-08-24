@@ -18,7 +18,7 @@ async fn fast_limit_retries_standard_without_disturbing_a_sibling() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     victim
@@ -45,7 +45,7 @@ async fn fast_limit_retries_standard_without_disturbing_a_sibling() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     sibling
         .send(response_frame("sibling", "gpt-5.6-sol", "default").into())
@@ -75,7 +75,7 @@ async fn standard_limit_moves_only_the_thread_that_received_it() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     victim
@@ -133,7 +133,7 @@ async fn visible_fast_failure_is_not_replayed_and_the_next_turn_uses_standard() 
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     socket
@@ -172,7 +172,7 @@ async fn client_requested_fast_is_not_silently_downgraded() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     socket
@@ -205,7 +205,7 @@ async fn fast_fallback_survives_an_upstream_disconnect() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     first

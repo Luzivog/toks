@@ -24,8 +24,9 @@ impl StreamLease {
         engine: Arc<Engine>,
         account: &AccountId,
         thread: &ThreadId,
+        resume_attempt: Option<&str>,
     ) -> anyhow::Result<Option<Self>> {
-        let Some(tier) = engine.route(account, thread)? else {
+        let Some(tier) = engine.route_authorized(account, thread, resume_attempt)? else {
             return Ok(None);
         };
         Ok(Some(Self {
@@ -51,8 +52,9 @@ impl ThreadAttachment {
         engine: Arc<Engine>,
         account: &AccountId,
         thread: &ThreadId,
+        resume_attempt: Option<&str>,
     ) -> anyhow::Result<Option<Self>> {
-        if !engine.attach(account, thread)? {
+        if !engine.attach_authorized(account, thread, resume_attempt)? {
             return Ok(None);
         }
         Ok(Some(Self {

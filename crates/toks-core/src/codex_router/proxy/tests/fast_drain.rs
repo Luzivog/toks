@@ -1,6 +1,6 @@
 use super::*;
 
-use super::super::protocol::{requested_model, with_service_tier};
+use super::super::protocol::{requested_model, usage_block, with_service_tier, BAD_THREAD_FRAME};
 use super::super::{
     engine::{AttemptedTier, ResponseDelivery, RouteTier},
     lease::StreamLease,
@@ -40,13 +40,14 @@ async fn selection_reserves_affinity_before_the_drain_snapshot() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     let lease = StreamLease::open(
         harness.runtime.engine.clone(),
         &AccountId::new("a"),
         &thread,
+        None,
     )
     .unwrap()
     .unwrap();
@@ -74,6 +75,17 @@ async fn a_lease_rejects_a_selection_that_became_stale_during_credentials() {
             AttemptedTier::Other,
             ResponseDelivery::NothingDelivered,
             Some(crate::rotation::UnixMillis::new(2_000_000_000_000)),
+            usage_block(429, br#"{"error":{"type":"usage_limit_reached"}}"#)
+                .unwrap()
+                .incident(
+                    Some(thread.clone()),
+                    Some("gpt-5.6-sol"),
+                    crate::rotation::UsageLimitTier::new(
+                        Some("default"),
+                        crate::rotation::UsageLimitTierOrigin::Client,
+                    ),
+                    crate::rotation::UsageLimitPhase::HttpResponse,
+                ),
         )
         .unwrap();
 
@@ -81,6 +93,7 @@ async fn a_lease_rejects_a_selection_that_became_stale_during_credentials() {
         harness.runtime.engine.clone(),
         &AccountId::new("a"),
         &thread,
+        None,
     )
     .unwrap()
     .is_none());
@@ -121,7 +134,7 @@ async fn only_a_thread_attached_before_the_threshold_drains_in_place() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     socket
         .send(response_frame("existing", "gpt-5.6-sol", "default").into())
@@ -137,7 +150,7 @@ async fn only_a_thread_attached_before_the_threshold_drains_in_place() {
         .await
         .unwrap();
     let retry = socket.next().await.unwrap().unwrap().into_text().unwrap();
-    assert_eq!(retry, RETRY_FRAME);
+    assert_eq!(retry, BAD_THREAD_FRAME);
 
     let mut fresh = connect(&ws, "token-a", Some("new")).await;
     fresh
@@ -194,7 +207,7 @@ async fn a_grandfathered_thread_reconnects_to_its_draining_account() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     drop(first);
 
@@ -222,7 +235,7 @@ async fn a_body_only_thread_id_cannot_steal_drain_affinity() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
     drop(first);
 
@@ -266,7 +279,7 @@ async fn unsupported_models_stay_standard_and_supported_models_use_fast() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     socket
@@ -303,7 +316,7 @@ async fn a_delivered_response_preamble_is_never_replayed() {
     harness
         .runtime
         .engine
-        .apply_snapshots(&[one_percent_snapshot("a")], chrono::Utc::now())
+        .apply_authoritative_snapshots_for_test(&[one_percent_snapshot("a")], chrono::Utc::now())
         .unwrap();
 
     socket
