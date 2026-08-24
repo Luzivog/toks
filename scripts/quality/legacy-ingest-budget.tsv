@@ -15,7 +15,7 @@ crates/toks-ingest/src/pricing/aliases.rs	323	0	0
 crates/toks-ingest/src/pricing/cache.rs	205	1	0
 crates/toks-ingest/src/pricing/custom.rs	828	1	0
 crates/toks-ingest/src/pricing/litellm.rs	872	1	0
-crates/toks-ingest/src/pricing/lookup.rs	7175	1	0
+crates/toks-ingest/src/pricing/lookup.rs	2613	0	0
 crates/toks-ingest/src/pricing/mod.rs	1810	1	0
 crates/toks-ingest/src/pricing/models_dev.rs	229	1	0
 crates/toks-ingest/src/pricing/openrouter.rs	615	1	0
