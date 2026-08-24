@@ -4,12 +4,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::super::channel::{AsyncChannel, AsyncListener};
 use super::super::paths::{load_state, save_state, HostPaths};
+use super::super::test_fixtures::{active_deployment, connected_worker, host_paths};
 use super::super::worker::{run_with, Service};
-use super::core::{Coordinator, WorkerSlot};
+use super::core::Coordinator;
 use crate::codex_router::handoff::{
     Control, GenerationId as WireGenerationId, HandoffListener, Received, WorkerInstanceId,
 };
-use crate::codex_router::host::{DeployPlan, DeploymentEvent, DeploymentState, GenerationId};
+use crate::codex_router::host::{DeploymentState, GenerationId};
 
 const STEP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
@@ -25,8 +26,10 @@ async fn persistent_listener_and_worker_survive_coordinator_replacement() {
 
 async fn coordinator_replacement_scenario() {
     let directory = tempfile::tempdir().unwrap();
-    let paths = test_paths(directory.path());
-    let (deployment, generation) = active_deployment(&paths);
+    let executable = directory.path().join("test-router");
+    std::fs::write(&executable, b"synthetic router executable").unwrap();
+    let paths = host_paths(directory.path(), executable);
+    let (deployment, generation) = active_deployment(paths.build_id().unwrap());
     let generation_directory = paths.generations.join(generation.get().to_string());
     std::fs::create_dir_all(&generation_directory).unwrap();
     std::os::unix::fs::symlink(&paths.executable, generation_directory.join("toks-router"))
@@ -164,15 +167,11 @@ async fn attach(
         .unwrap();
     coordinator.workers.insert(
         generation,
-        WorkerSlot {
+        connected_worker(
+            channel.clone(),
             registration,
-            instance: WorkerInstanceId::new(registration).unwrap(),
-            ready: false,
-            accepting: false,
-            draining: false,
-            pending_reconciled: false,
-            channel: channel.clone(),
-        },
+            WorkerInstanceId::new(registration).unwrap(),
+        ),
     );
     while !coordinator.accepts_clients() {
         let Received::Control(message) = channel.receive().await.unwrap() else {
@@ -327,32 +326,4 @@ fn streaming_service(events: tokio::sync::broadcast::Sender<Vec<u8>>) -> Service
         }
         .boxed()
     })
-}
-
-fn test_paths(root: &std::path::Path) -> HostPaths {
-    let executable = root.join("test-router");
-    std::fs::write(&executable, b"synthetic router executable").unwrap();
-    HostPaths {
-        executable,
-        generations: root.join("generations"),
-        control: root.join("handoff.sock"),
-        state: root.join("state.json"),
-    }
-}
-
-fn active_deployment(paths: &HostPaths) -> (DeploymentState, GenerationId) {
-    let mut state = DeploymentState::default();
-    let DeployPlan::StageTarget { target, .. } =
-        state.plan_deploy(paths.build_id().unwrap()).unwrap()
-    else {
-        panic!("expected staged generation")
-    };
-    for event in [
-        DeploymentEvent::Prepared { target },
-        DeploymentEvent::PreviousPaused { target },
-        DeploymentEvent::TargetAccepting { target },
-    ] {
-        state.reconcile(event).unwrap();
-    }
-    (state, target)
 }

@@ -15,6 +15,8 @@ mod coordinator_identity_tests;
 #[cfg(test)]
 mod deployment_failure_tests;
 #[cfg(test)]
+mod test_fixtures;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod worker_identity_tests;

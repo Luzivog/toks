@@ -3,16 +3,16 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use super::super::channel::AsyncChannel;
+use super::super::test_fixtures::channel_pair;
 use super::{session, Handoffs, Service, WorkerState};
 use crate::codex_router::handoff::{
-    Control, GenerationId as WireGenerationId, HandoffChannel, HandoffListener, Received,
-    WorkerInstanceId,
+    Control, GenerationId as WireGenerationId, Received, WorkerInstanceId,
 };
 use crate::codex_router::host::GenerationId;
 
 #[tokio::test(flavor = "current_thread")]
 async fn delayed_old_zero_cannot_retire_a_newer_connection() {
-    let (worker_channel, coordinator) = channel_pair();
+    let (coordinator, worker_channel) = channel_pair();
     let (count_changed, mut count_events) = tokio::sync::mpsc::channel(1);
     let state = Arc::new(WorkerState {
         active: false.into(),
@@ -106,16 +106,4 @@ async fn receive(channel: &AsyncChannel) -> Received {
         .await
         .expect("timed out waiting for worker control message")
         .unwrap()
-}
-
-fn channel_pair() -> (Arc<AsyncChannel>, Arc<AsyncChannel>) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("session.sock");
-    let listener = HandoffListener::bind(&path).unwrap();
-    let worker = HandoffChannel::connect(&path).unwrap();
-    let coordinator = listener.accept().unwrap();
-    (
-        Arc::new(AsyncChannel::new(worker).unwrap()),
-        Arc::new(AsyncChannel::new(coordinator).unwrap()),
-    )
 }

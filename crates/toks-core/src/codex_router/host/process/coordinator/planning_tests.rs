@@ -1,12 +1,10 @@
 use futures_util::FutureExt;
 use std::sync::{Arc, Mutex};
 
-use super::super::channel::AsyncChannel;
 use super::super::paths::HostPaths;
-use super::core::{Coordinator, WorkerSlot};
-use crate::codex_router::handoff::{
-    Control, HandoffChannel, HandoffListener, Received, WorkerInstanceId,
-};
+use super::super::test_fixtures::{active_deployment, channel_pair, host_paths, ready_worker};
+use super::core::Coordinator;
+use crate::codex_router::handoff::{Control, Received, WorkerInstanceId};
 use crate::codex_router::host::{
     BuildId, DeployPlan, DeploymentEvent, DeploymentState, GenerationId,
 };
@@ -145,15 +143,7 @@ async fn current_worker_is_reactivated_while_the_prior_plan_is_recovered() {
     let (channel, peer) = channel_pair();
     coordinator.workers.insert(
         previous,
-        WorkerSlot {
-            registration: 1,
-            instance: WorkerInstanceId::new(7).unwrap(),
-            ready: true,
-            accepting: false,
-            draining: false,
-            pending_reconciled: true,
-            channel,
-        },
+        ready_worker(channel, 1, WorkerInstanceId::new(7).unwrap()),
     );
     let _calls = record_commands(&mut coordinator);
 
@@ -228,12 +218,7 @@ async fn fixture(
             })
             .unwrap();
     }
-    let paths = HostPaths {
-        executable,
-        generations: directory.path().join("generations"),
-        control: directory.path().join("control.sock"),
-        state: directory.path().join("state.json"),
-    };
+    let paths = host_paths(directory.path(), executable);
     let coordinator = new_coordinator(paths, state).await;
     (directory, coordinator, previous, target, prior)
 }
@@ -250,12 +235,7 @@ async fn from_state(
     let directory = tempfile::tempdir().unwrap();
     let executable = directory.path().join("candidate-router");
     std::fs::write(&executable, b"current-build-b").unwrap();
-    let paths = HostPaths {
-        executable,
-        generations: directory.path().join("generations"),
-        control: directory.path().join("control.sock"),
-        state: directory.path().join("state.json"),
-    };
+    let paths = host_paths(directory.path(), executable);
     let coordinator = new_coordinator(paths, state.0).await;
     (directory, coordinator, state.1, state.2, state.3)
 }
@@ -362,21 +342,6 @@ fn unavailable() -> (DeploymentState, GenerationId, GenerationId, BuildId) {
     (state, target, target, prior)
 }
 
-fn active_deployment(build: BuildId) -> (DeploymentState, GenerationId) {
-    let mut state = DeploymentState::default();
-    let DeployPlan::StageTarget { target, .. } = state.plan_deploy(build).unwrap() else {
-        unreachable!()
-    };
-    for event in [
-        DeploymentEvent::Prepared { target },
-        DeploymentEvent::PreviousPaused { target },
-        DeploymentEvent::TargetAccepting { target },
-    ] {
-        state.reconcile(event).unwrap();
-    }
-    (state, target)
-}
-
 fn build(value: &str) -> BuildId {
     BuildId::new(value).unwrap()
 }
@@ -425,16 +390,4 @@ fn record_commands(coordinator: &mut Coordinator) -> Arc<Mutex<Vec<(&'static str
         async move { Ok(inventory) }.boxed()
     });
     calls
-}
-
-fn channel_pair() -> (Arc<AsyncChannel>, Arc<AsyncChannel>) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("pair.sock");
-    let listener = HandoffListener::bind(&path).unwrap();
-    let peer = HandoffChannel::connect(&path).unwrap();
-    let coordinator = listener.accept().unwrap();
-    (
-        Arc::new(AsyncChannel::new(coordinator).unwrap()),
-        Arc::new(AsyncChannel::new(peer).unwrap()),
-    )
 }

@@ -1,10 +1,11 @@
 use futures_util::FutureExt;
 use std::sync::{Arc, Mutex};
 
-use super::super::channel::AsyncChannel;
-use super::super::paths::HostPaths;
-use super::core::{Coordinator, WorkerSlot};
-use crate::codex_router::handoff::{Control, HandoffChannel, HandoffListener, WorkerInstanceId};
+use super::super::test_fixtures::{
+    accepting_worker, active_deployment, channel_pair, host_paths, ready_worker,
+};
+use super::core::Coordinator;
+use crate::codex_router::handoff::{Control, WorkerInstanceId};
 use crate::codex_router::host::{
     BuildId, DeployPlan, DeploymentEvent, DeploymentState, GenerationId,
 };
@@ -92,12 +93,7 @@ async fn reinstall_retry_intent_survives_rollback_until_a_fresh_generation_is_st
 async fn build_a_crash_cannot_consume_build_b_retry_intent() {
     let directory = tempfile::tempdir().unwrap();
     let executable = directory.path().join("candidate-router");
-    let paths = HostPaths {
-        executable: executable.clone(),
-        generations: directory.path().join("generations"),
-        control: directory.path().join("control.sock"),
-        state: directory.path().join("state.json"),
-    };
+    let paths = host_paths(directory.path(), executable.clone());
 
     std::fs::write(&executable, b"build-b").unwrap();
     let build_b = paths.build_id().unwrap();
@@ -228,15 +224,7 @@ async fn paused_draining_worker_is_not_commanded_to_drain_again() {
     let (channel, peer) = channel_pair();
     coordinator.workers.insert(
         previous,
-        WorkerSlot {
-            registration: 1,
-            instance: WorkerInstanceId::new(1).unwrap(),
-            ready: true,
-            accepting: true,
-            draining: false,
-            pending_reconciled: true,
-            channel,
-        },
+        accepting_worker(channel, 1, WorkerInstanceId::new(1).unwrap()),
     );
     coordinator
         .handle_message(
@@ -263,14 +251,14 @@ async fn owner_reconciliation_waits_for_every_live_generation() {
     let (previous_channel, _previous_peer) = channel_pair();
     coordinator.workers.insert(
         previous,
-        ready_worker(previous_channel, WorkerInstanceId::new(101).unwrap()),
+        ready_worker(previous_channel, 1, WorkerInstanceId::new(101).unwrap()),
     );
     assert!(coordinator.reconcilable_worker_instances().is_none());
 
     let (target_channel, _target_peer) = channel_pair();
     coordinator.workers.insert(
         target,
-        ready_worker(target_channel, WorkerInstanceId::new(202).unwrap()),
+        ready_worker(target_channel, 1, WorkerInstanceId::new(202).unwrap()),
     );
     assert_eq!(
         coordinator.reconcilable_worker_instances().unwrap(),
@@ -310,12 +298,7 @@ async fn fixture(phase: Phase) -> (tempfile::TempDir, Coordinator, GenerationId,
     let directory = tempfile::tempdir().unwrap();
     let executable = directory.path().join("candidate-router");
     std::fs::write(&executable, b"candidate-build").unwrap();
-    let paths = HostPaths {
-        executable,
-        generations: directory.path().join("generations"),
-        control: directory.path().join("control.sock"),
-        state: directory.path().join("state.json"),
-    };
+    let paths = host_paths(directory.path(), executable);
     let candidate = paths.build_id().unwrap();
     let (mut deployment, previous) = active_deployment(BuildId::new("old-build").unwrap());
     let DeployPlan::StageTarget { target, .. } = deployment.plan_deploy(candidate).unwrap() else {
@@ -356,21 +339,6 @@ async fn fixture(phase: Phase) -> (tempfile::TempDir, Coordinator, GenerationId,
     (directory, coordinator, previous, target)
 }
 
-fn active_deployment(build: BuildId) -> (DeploymentState, GenerationId) {
-    let mut state = DeploymentState::default();
-    let DeployPlan::StageTarget { target, .. } = state.plan_deploy(build).unwrap() else {
-        panic!("expected first target")
-    };
-    for event in [
-        DeploymentEvent::Prepared { target },
-        DeploymentEvent::PreviousPaused { target },
-        DeploymentEvent::TargetAccepting { target },
-    ] {
-        state.reconcile(event).unwrap();
-    }
-    (state, target)
-}
-
 fn record_commands(coordinator: &mut Coordinator) -> Arc<Mutex<Vec<(&'static str, GenerationId)>>> {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let recorded = calls.clone();
@@ -405,28 +373,4 @@ fn record_commands(coordinator: &mut Coordinator) -> Arc<Mutex<Vec<(&'static str
         async move { Ok(inventory) }.boxed()
     });
     calls
-}
-
-fn channel_pair() -> (Arc<AsyncChannel>, Arc<AsyncChannel>) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("pair.sock");
-    let listener = HandoffListener::bind(&path).unwrap();
-    let peer = HandoffChannel::connect(&path).unwrap();
-    let coordinator = listener.accept().unwrap();
-    (
-        Arc::new(AsyncChannel::new(coordinator).unwrap()),
-        Arc::new(AsyncChannel::new(peer).unwrap()),
-    )
-}
-
-fn ready_worker(channel: Arc<AsyncChannel>, instance: WorkerInstanceId) -> WorkerSlot {
-    WorkerSlot {
-        registration: 1,
-        instance,
-        ready: true,
-        accepting: false,
-        draining: false,
-        pending_reconciled: true,
-        channel,
-    }
 }

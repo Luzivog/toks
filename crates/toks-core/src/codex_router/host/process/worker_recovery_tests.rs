@@ -5,6 +5,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::channel::{AsyncChannel, AsyncListener};
+use super::test_fixtures::tcp_pair;
 use super::worker::{run_with, Service};
 use crate::codex_router::handoff::{
     Connection, Control, GenerationId as WireGenerationId, HandoffId, HandoffListener, Received,
@@ -130,14 +131,6 @@ async fn receive(channel: &AsyncChannel) -> Received {
         .await
         .expect("timed out waiting for worker")
         .unwrap()
-}
-
-async fn tcp_pair() -> (tokio::net::TcpStream, tokio::net::TcpStream) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let client = tokio::spawn(tokio::net::TcpStream::connect(address));
-    let (server, _) = listener.accept().await.unwrap();
-    (client.await.unwrap().unwrap(), server)
 }
 
 async fn round_trip(stream: &mut tokio::net::TcpStream, message: &[u8]) {

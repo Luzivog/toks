@@ -11,6 +11,8 @@ use super::coordinator::events::WorkerEvent;
 use super::paths::{load_state, save_state, HostPaths};
 
 pub(super) use self::core::Coordinator;
+#[cfg(test)]
+pub(super) use self::core::WorkerSlot;
 
 #[cfg(test)]
 mod admission_recovery_tests;

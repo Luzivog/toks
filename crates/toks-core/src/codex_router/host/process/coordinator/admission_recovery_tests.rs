@@ -4,13 +4,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::super::channel::AsyncChannel;
-use super::super::paths::HostPaths;
-use super::core::{Coordinator, WorkerSlot};
+use super::super::test_fixtures::{
+    accepting_worker, active_deployment, channel_pair, host_paths, ready_worker,
+};
+use super::core::Coordinator;
 use super::wait::WaitKey;
 use super::worker_unit::Liveness;
-use crate::codex_router::handoff::{
-    Control, HandoffChannel, HandoffListener, Received, WorkerInstanceId,
-};
+use crate::codex_router::handoff::{Control, Received, WorkerInstanceId};
 use crate::codex_router::host::{
     BuildId, DeployPlan, DeploymentEvent, DeploymentState, GenerationId, GenerationStatus,
 };
@@ -20,12 +20,14 @@ async fn delayed_pause_ack_never_reopens_the_previous_worker() {
     let (_directory, mut coordinator, previous, target) = prepared_fixture().await;
     let (previous_channel, previous_peer) = channel_pair();
     let (target_channel, _target_peer) = channel_pair();
-    coordinator
-        .workers
-        .insert(previous, ready_worker(previous_channel, true, 1));
-    coordinator
-        .workers
-        .insert(target, ready_worker(target_channel, false, 2));
+    coordinator.workers.insert(
+        previous,
+        accepting_worker(previous_channel, 1, WorkerInstanceId::new(1).unwrap()),
+    );
+    coordinator.workers.insert(
+        target,
+        ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
+    );
 
     coordinator.advance().await.unwrap();
     assert!(matches!(
@@ -139,9 +141,10 @@ async fn crash_after_recording_previous_failure_resumes_from_durable_state() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mut recovered = Coordinator::new(listener, paths, deployment).unwrap();
     let (target_channel, target_peer) = channel_pair();
-    recovered
-        .workers
-        .insert(target, ready_worker(target_channel, false, 2));
+    recovered.workers.insert(
+        target,
+        ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
+    );
 
     recovered.advance().await.unwrap();
 
@@ -161,9 +164,10 @@ async fn cold_start_reestablishes_bounded_control_absence_before_takeover() {
         BTreeMap::from([(previous, Liveness::Stopped)]),
     );
     let (target_channel, target_peer) = channel_pair();
-    coordinator
-        .workers
-        .insert(target, ready_worker(target_channel, false, 2));
+    coordinator.workers.insert(
+        target,
+        ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
+    );
 
     coordinator.advance().await.unwrap();
     expire_previous_ready(&mut coordinator, previous).await;
@@ -180,7 +184,7 @@ async fn huge_terminal_history_and_a_stalled_stop_obey_one_aggregate_deadline() 
     let directory = tempfile::tempdir().unwrap();
     let executable = directory.path().join("candidate-router");
     std::fs::write(&executable, b"current-build").unwrap();
-    let paths = test_paths(directory.path(), executable);
+    let paths = host_paths(directory.path(), executable);
     let mut state = DeploymentState::default();
     for index in 0..1_000 {
         let DeployPlan::StageTarget { target, .. } = state
@@ -230,9 +234,9 @@ async fn prepared_fixture() -> (tempfile::TempDir, Coordinator, GenerationId, Ge
     let directory = tempfile::tempdir().unwrap();
     let executable = directory.path().join("candidate-router");
     std::fs::write(&executable, b"candidate-build").unwrap();
-    let paths = test_paths(directory.path(), executable);
+    let paths = host_paths(directory.path(), executable);
     let candidate = paths.build_id().unwrap();
-    let (mut deployment, previous) = active_deployment();
+    let (mut deployment, previous) = active_deployment(BuildId::new("old-build").unwrap());
     let DeployPlan::StageTarget { target, .. } = deployment.plan_deploy(candidate).unwrap() else {
         unreachable!()
     };
@@ -251,12 +255,14 @@ async fn disconnect_previous_while_pausing(
 ) -> Arc<AsyncChannel> {
     let (previous_channel, previous_peer) = channel_pair();
     let (target_channel, target_peer) = channel_pair();
-    coordinator
-        .workers
-        .insert(previous, ready_worker(previous_channel, true, 1));
-    coordinator
-        .workers
-        .insert(target, ready_worker(target_channel, false, 2));
+    coordinator.workers.insert(
+        previous,
+        accepting_worker(previous_channel, 1, WorkerInstanceId::new(1).unwrap()),
+    );
+    coordinator.workers.insert(
+        target,
+        ready_worker(target_channel, 2, WorkerInstanceId::new(2).unwrap()),
+    );
     coordinator.advance().await.unwrap();
     assert!(matches!(
         previous_peer.receive().await.unwrap(),
@@ -299,55 +305,4 @@ fn record_commands(coordinator: &mut Coordinator) -> Arc<Mutex<Vec<(&'static str
         async { Ok(()) }.boxed()
     });
     calls
-}
-
-fn test_paths(root: &std::path::Path, executable: std::path::PathBuf) -> HostPaths {
-    HostPaths {
-        executable,
-        generations: root.join("generations"),
-        control: root.join("control.sock"),
-        state: root.join("state.json"),
-    }
-}
-
-fn active_deployment() -> (DeploymentState, GenerationId) {
-    let mut state = DeploymentState::default();
-    let DeployPlan::StageTarget { target, .. } = state
-        .plan_deploy(BuildId::new("old-build").unwrap())
-        .unwrap()
-    else {
-        unreachable!()
-    };
-    for event in [
-        DeploymentEvent::Prepared { target },
-        DeploymentEvent::PreviousPaused { target },
-        DeploymentEvent::TargetAccepting { target },
-    ] {
-        state.reconcile(event).unwrap();
-    }
-    (state, target)
-}
-
-fn ready_worker(channel: Arc<AsyncChannel>, accepting: bool, instance: u64) -> WorkerSlot {
-    WorkerSlot {
-        registration: instance,
-        instance: WorkerInstanceId::new(instance).unwrap(),
-        ready: true,
-        accepting,
-        draining: false,
-        pending_reconciled: true,
-        channel,
-    }
-}
-
-fn channel_pair() -> (Arc<AsyncChannel>, Arc<AsyncChannel>) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("pair.sock");
-    let listener = HandoffListener::bind(&path).unwrap();
-    let peer = HandoffChannel::connect(&path).unwrap();
-    let coordinator = listener.accept().unwrap();
-    (
-        Arc::new(AsyncChannel::new(coordinator).unwrap()),
-        Arc::new(AsyncChannel::new(peer).unwrap()),
-    )
 }

@@ -23,14 +23,14 @@ pub(super) type WorkerInventory = Arc<
         + Sync,
 >;
 
-pub(super) struct WorkerSlot {
-    pub(super) registration: u64,
-    pub(super) instance: WorkerInstanceId,
-    pub(super) ready: bool,
-    pub(super) accepting: bool,
-    pub(super) draining: bool,
-    pub(super) pending_reconciled: bool,
-    pub(super) channel: Arc<AsyncChannel>,
+pub(in crate::codex_router::host::process) struct WorkerSlot {
+    pub(in crate::codex_router::host::process) registration: u64,
+    pub(in crate::codex_router::host::process) instance: WorkerInstanceId,
+    pub(in crate::codex_router::host::process) ready: bool,
+    pub(in crate::codex_router::host::process) accepting: bool,
+    pub(in crate::codex_router::host::process) draining: bool,
+    pub(in crate::codex_router::host::process) pending_reconciled: bool,
+    pub(in crate::codex_router::host::process) channel: Arc<AsyncChannel>,
 }
 
 pub(in crate::codex_router::host::process) struct Coordinator {
@@ -39,7 +39,7 @@ pub(in crate::codex_router::host::process) struct Coordinator {
     pub(in crate::codex_router::host::process) deployment: DeploymentState,
     pub(super) build: BuildId,
     pub(super) pending: Pending,
-    pub(super) workers: HashMap<GenerationId, WorkerSlot>,
+    pub(in crate::codex_router::host::process) workers: HashMap<GenerationId, WorkerSlot>,
     pub(in crate::codex_router::host::process) active: Option<GenerationId>,
     pub(super) worker_command: WorkerCommand,
     pub(super) worker_inventory: WorkerInventory,

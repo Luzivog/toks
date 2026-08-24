@@ -1,4 +1,4 @@
-use super::paths::HostPaths;
+use super::test_fixtures::host_paths;
 use crate::codex_router::host::GenerationId;
 
 #[test]
@@ -19,12 +19,8 @@ fn registration_requires_exact_executable_arguments_environment_and_unit() {
         &environment,
     )
     .unwrap();
-    let paths = HostPaths {
-        executable: executable.clone(),
-        generations: artifact_root.join("generations"),
-        control: directory.path().join("control.sock"),
-        state: directory.path().join("state.json"),
-    };
+    let mut paths = host_paths(directory.path(), executable.clone());
+    paths.generations = artifact_root.join("generations");
     let expected = GenerationId::from_raw(19);
     let generation = paths.generations.join(expected.get().to_string());
     crate::codex_router::systemd::stage_generation(&artifact_root, &generation, &build).unwrap();

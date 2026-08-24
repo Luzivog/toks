@@ -5,17 +5,15 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::super::channel::{AsyncChannel, AsyncListener};
-use super::super::paths::HostPaths;
+use super::super::test_fixtures::{accepting_worker, fixture, tcp_pair};
 use super::super::worker::{run_with, Service};
-use super::core::{Coordinator, WorkerSlot};
+use super::core::Coordinator;
 use super::events::spawn_reader;
 use crate::codex_router::handoff::{
-    Connection, Control, GenerationId as WireGenerationId, HandoffChannel, HandoffId,
-    HandoffListener, Received, WorkerInstanceId,
+    Connection, Control, GenerationId as WireGenerationId, HandoffId, HandoffListener, Received,
+    WorkerInstanceId,
 };
-use crate::codex_router::host::{
-    BuildId, DeployPlan, DeploymentEvent, DeploymentState, GenerationId,
-};
+use crate::codex_router::host::GenerationId;
 
 #[tokio::test]
 async fn stale_connection_ack_never_commits_an_unknown_handoff() {
@@ -236,46 +234,22 @@ struct CoordinatorFixture {
 
 impl CoordinatorFixture {
     async fn new() -> Self {
-        let (coordinator_channel, peer, directory) = channel_pair();
-        Self::build(directory, coordinator_channel, peer, None).await
+        let (directory, coordinator, peer, generation) = fixture().await;
+        Self {
+            _directory: directory,
+            coordinator,
+            peer,
+            generation,
+        }
     }
 
     async fn with_channel(channel: Arc<AsyncChannel>, generation: GenerationId) -> Self {
-        let (_unused, peer, directory) = channel_pair();
-        Self::build(directory, channel, peer, Some(generation)).await
-    }
-
-    async fn build(
-        directory: tempfile::TempDir,
-        coordinator_channel: Arc<AsyncChannel>,
-        peer: Arc<AsyncChannel>,
-        generation: Option<GenerationId>,
-    ) -> Self {
-        let executable = directory.path().join("router");
-        std::fs::write(&executable, b"same-build").unwrap();
-        let paths = HostPaths {
-            executable,
-            generations: directory.path().join("generations"),
-            control: directory.path().join("unused.sock"),
-            state: directory.path().join("state.json"),
-        };
-        let build = paths.build_id().unwrap();
-        let (deployment, found_generation) = active_deployment(build);
-        let generation = generation.unwrap_or(found_generation);
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut coordinator = Coordinator::new(listener, paths, deployment).unwrap();
+        let (directory, mut coordinator, peer, _fixture_generation) = fixture().await;
         coordinator.active = Some(generation);
+        coordinator.workers.clear();
         coordinator.workers.insert(
             generation,
-            WorkerSlot {
-                registration: 1,
-                instance: WorkerInstanceId::new(1).unwrap(),
-                ready: true,
-                accepting: true,
-                draining: false,
-                pending_reconciled: true,
-                channel: coordinator_channel,
-            },
+            accepting_worker(channel, 1, WorkerInstanceId::new(1).unwrap()),
         );
         Self {
             _directory: directory,
@@ -288,30 +262,9 @@ impl CoordinatorFixture {
     fn insert_worker(&mut self, channel: Arc<AsyncChannel>, registration: u64) {
         self.coordinator.workers.insert(
             self.generation,
-            WorkerSlot {
-                registration,
-                instance: WorkerInstanceId::new(1).unwrap(),
-                ready: true,
-                accepting: true,
-                draining: false,
-                pending_reconciled: true,
-                channel,
-            },
+            accepting_worker(channel, registration, WorkerInstanceId::new(1).unwrap()),
         );
     }
-}
-
-fn channel_pair() -> (Arc<AsyncChannel>, Arc<AsyncChannel>, tempfile::TempDir) {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("pair.sock");
-    let listener = HandoffListener::bind(&path).unwrap();
-    let peer = HandoffChannel::connect(&path).unwrap();
-    let coordinator = listener.accept().unwrap();
-    (
-        Arc::new(AsyncChannel::new(coordinator).unwrap()),
-        Arc::new(AsyncChannel::new(peer).unwrap()),
-        directory,
-    )
 }
 
 async fn accept_worker(
@@ -433,14 +386,6 @@ async fn stop_worker(
     ));
 }
 
-async fn tcp_pair() -> (tokio::net::TcpStream, tokio::net::TcpStream) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let client = tokio::spawn(tokio::net::TcpStream::connect(address));
-    let (server, _) = listener.accept().await.unwrap();
-    (client.await.unwrap().unwrap(), server)
-}
-
 async fn round_trip(stream: &mut tokio::net::TcpStream, message: &[u8]) {
     stream.write_all(message).await.unwrap();
     let mut found = vec![0; message.len()];
@@ -462,19 +407,4 @@ fn echo_service(calls: Arc<AtomicUsize>) -> Service {
         }
         .boxed()
     })
-}
-
-fn active_deployment(build: BuildId) -> (DeploymentState, GenerationId) {
-    let mut state = DeploymentState::default();
-    let DeployPlan::StageTarget { target, .. } = state.plan_deploy(build).unwrap() else {
-        panic!("expected staged generation");
-    };
-    for event in [
-        DeploymentEvent::Prepared { target },
-        DeploymentEvent::PreviousPaused { target },
-        DeploymentEvent::TargetAccepting { target },
-    ] {
-        state.reconcile(event).unwrap();
-    }
-    (state, target)
 }

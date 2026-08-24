@@ -7,14 +7,15 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use super::activated::Activation;
 use super::channel::{AsyncChannel, AsyncListener};
 use super::coordinator::{trusted_peer, Coordinator};
-use super::paths::{load_state, HostPaths};
+use super::paths::load_state;
+use super::test_fixtures::{active_deployment, host_paths, tcp_pair};
 use super::worker::{run_with, Service};
 use crate::codex_router::handoff::{
     Connection, Control, GenerationId as WireGenerationId, HandoffId, HandoffListener, Received,
 };
 use crate::codex_router::host::model::ActivationPhase;
 use crate::codex_router::host::{
-    BuildId, DeployPlan, DeploymentEvent, DeploymentState, GenerationId, GenerationStatus,
+    BuildId, DeploymentEvent, DeploymentState, GenerationId, GenerationStatus,
 };
 
 #[test]
@@ -48,8 +49,8 @@ async fn deployment_phases_advance_only_after_worker_acknowledgements() {
     let directory = tempfile::tempdir().unwrap();
     let executable = directory.path().join("candidate-router");
     std::fs::write(&executable, b"candidate-build").unwrap();
-    let (mut deployment, previous) = active_deployment("old-build");
-    let paths = test_paths(directory.path(), executable);
+    let (mut deployment, previous) = active_deployment(BuildId::new("old-build").unwrap());
+    let paths = host_paths(directory.path(), executable);
     let listener = test_listener().await;
     let mut coordinator = Coordinator::new(listener, paths, deployment.clone()).unwrap();
     let target = staged_generation(&coordinator.deployment);
@@ -100,8 +101,8 @@ async fn candidate_stage_failure_keeps_previous_generation_active() {
     let directory = tempfile::tempdir().unwrap();
     let executable = directory.path().join("candidate-router");
     std::fs::write(&executable, b"candidate-build").unwrap();
-    let (deployment, previous) = active_deployment("old-build");
-    let paths = test_paths(directory.path(), executable);
+    let (deployment, previous) = active_deployment(BuildId::new("old-build").unwrap());
+    let paths = host_paths(directory.path(), executable);
     std::fs::write(&paths.generations, b"not-a-directory").unwrap();
     let listener = test_listener().await;
     let mut coordinator = Coordinator::new(listener, paths, deployment).unwrap();
@@ -361,14 +362,6 @@ async fn commit_handoff(channel: &AsyncChannel, id: HandoffId) {
     );
 }
 
-async fn tcp_pair() -> (tokio::net::TcpStream, tokio::net::TcpStream) {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let client = tokio::spawn(tokio::net::TcpStream::connect(address));
-    let (server, _) = listener.accept().await.unwrap();
-    (client.await.unwrap().unwrap(), server)
-}
-
 async fn round_trip(stream: &mut tokio::net::TcpStream, message: &[u8]) {
     stream.write_all(message).await.unwrap();
     let mut found = vec![0; message.len()];
@@ -419,23 +412,6 @@ fn activation_values<'a>(pid: &'a str, fds: &'a str, name: &'a str) -> Vec<(&'a 
     ]
 }
 
-fn active_deployment(build: &str) -> (DeploymentState, GenerationId) {
-    let mut state = DeploymentState::default();
-    let DeployPlan::StageTarget { target, .. } =
-        state.plan_deploy(BuildId::new(build).unwrap()).unwrap()
-    else {
-        panic!("expected staged generation")
-    };
-    for event in [
-        DeploymentEvent::Prepared { target },
-        DeploymentEvent::PreviousPaused { target },
-        DeploymentEvent::TargetAccepting { target },
-    ] {
-        state.reconcile(event).unwrap();
-    }
-    (state, target)
-}
-
 fn staged_generation(state: &DeploymentState) -> GenerationId {
     state
         .snapshot()
@@ -449,15 +425,6 @@ fn staged_generation(state: &DeploymentState) -> GenerationId {
 
 fn activation_phase(state: &DeploymentState) -> ActivationPhase {
     state.snapshot().activation.unwrap().phase
-}
-
-fn test_paths(root: &std::path::Path, executable: std::path::PathBuf) -> HostPaths {
-    HostPaths {
-        executable,
-        generations: root.join("generations"),
-        control: root.join("control.sock"),
-        state: root.join("state.json"),
-    }
 }
 
 async fn test_listener() -> tokio::net::TcpListener {
