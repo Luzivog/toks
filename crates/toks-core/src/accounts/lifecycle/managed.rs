@@ -36,7 +36,7 @@ pub(super) fn remove_managed(
         validate_tree(&source, provider, id, &paths.profiles_root)?;
         let parent = quarantine.parent().context("quarantine has no parent")?;
         fs::create_dir_all(parent).context("creating account-removal quarantine")?;
-        crate::accounts::restrict_directory(parent)?;
+        crate::storage::restrict_directory(parent)?;
         if quarantine.exists() {
             bail!("account-removal quarantine already contains this profile")
         }
@@ -94,7 +94,7 @@ fn write_marker(path: &Path, provider: Provider, id: &str) -> Result<()> {
     }
     let parent = path.parent().context("removal tombstone has no parent")?;
     fs::create_dir_all(parent).context("creating removal tombstone directory")?;
-    crate::accounts::restrict_directory(parent)?;
+    crate::storage::restrict_directory(parent)?;
     let bytes = serde_json::to_vec(&Tombstone {
         version: 1,
         provider,

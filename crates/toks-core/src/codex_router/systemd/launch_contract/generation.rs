@@ -27,7 +27,7 @@ pub(crate) fn stage(root: &Path, generation: &Path, expected: &BuildId) -> Resul
     let destination = generation.join("toks-router");
     stage_symlink(&stored.contract.executable, &destination)?;
     let bytes = serde_json::to_vec_pretty(&stored)?;
-    crate::rotation::write_private_atomic(
+    crate::storage::write_private_atomic(
         &generation.join(CONTRACT_NAME),
         &bytes,
         "generation launch contract",
@@ -40,15 +40,14 @@ fn stage_symlink(source: &Path, destination: &Path) -> Result<()> {
         anyhow::ensure!(found == source, "generation points at a different build");
         return Ok(());
     }
-    let temporary = destination.with_extension(format!("{}.tmp", std::process::id()));
-    match std::os::unix::fs::symlink(source, &temporary) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            fs::remove_file(&temporary)?;
-            std::os::unix::fs::symlink(source, &temporary)?;
-        }
-        Err(error) => return Err(error.into()),
+    let temporary = crate::storage::unique_temp_path(destination)?;
+    let result = (|| {
+        std::os::unix::fs::symlink(source, &temporary)?;
+        fs::rename(&temporary, destination)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(temporary);
     }
-    fs::rename(temporary, destination)?;
-    Ok(())
+    result
 }

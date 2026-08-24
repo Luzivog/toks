@@ -1,10 +1,7 @@
 use anyhow::{bail, Context, Result};
-use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::limits::{LimitSnapshot, Provider};
 
@@ -12,7 +9,6 @@ use super::super::{AccountId, CredentialProfileKind, ProviderAccount};
 use super::filtering::{retain_visible, update_for_observed_accounts};
 use super::model::{SuppressedAccount, SuppressionDocument, DOCUMENT_VERSION};
 
-static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static FILE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 pub(super) struct SuppressionStore {
@@ -21,8 +17,7 @@ pub(super) struct SuppressionStore {
 
 impl SuppressionStore {
     pub(super) fn default() -> Result<Self> {
-        let root = toks_ingest::paths::get_data_dir().context("no local data directory")?;
-        Ok(Self::at(root.join("account-suppression.json")))
+        Ok(Self::at(crate::paths::account_suppression_store()?))
     }
 
     pub(super) fn at(path: PathBuf) -> Self {
@@ -103,22 +98,9 @@ impl SuppressionStore {
             .parent()
             .context("suppression path has no parent")?;
         fs::create_dir_all(parent).context("creating Toks data directory")?;
-        super::super::restrict_directory(parent)?;
-        let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .context("system clock is before Unix epoch")?
-            .as_nanos();
-        let temporary = parent.join(format!(
-            ".account-suppression-{}-{nonce}-{sequence}.tmp",
-            std::process::id(),
-        ));
+        crate::storage::restrict_directory(parent)?;
         let bytes = serde_json::to_vec_pretty(document)?;
-        let result = write_atomic(&temporary, &self.path, &bytes);
-        if result.is_err() {
-            let _ = fs::remove_file(temporary);
-        }
-        result
+        crate::storage::write_private_atomic(&self.path, &bytes, "suppression state")
     }
 }
 
@@ -127,27 +109,4 @@ fn file_lock() -> std::sync::MutexGuard<'static, ()> {
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
-}
-
-fn write_atomic(temporary: &Path, destination: &Path, bytes: &[u8]) -> Result<()> {
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options
-        .open(temporary)
-        .context("creating suppression state")?;
-    file.write_all(bytes).context("writing suppression state")?;
-    file.sync_all().context("syncing suppression state")?;
-    fs::rename(temporary, destination).context("publishing suppression state")?;
-    fs::File::open(
-        destination
-            .parent()
-            .context("suppression path has no parent")?,
-    )
-    .and_then(|directory| directory.sync_all())
-    .context("syncing Toks data directory")
 }

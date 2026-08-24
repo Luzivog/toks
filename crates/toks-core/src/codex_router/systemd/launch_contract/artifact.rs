@@ -3,12 +3,9 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::LaunchContract;
 use crate::codex_router::systemd::units::UnitEnvironment;
-
-static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(in crate::codex_router::systemd) fn capture(
     root: &Path,
@@ -32,12 +29,8 @@ pub(super) fn materialize(root: &Path, source: &Path) -> Result<PathBuf> {
         return destination.canonicalize().map_err(Into::into);
     }
 
-    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let temporary = parent.join(format!(
-        ".toks-router.{}-{sequence}.tmp",
-        std::process::id()
-    ));
-    crate::rotation::write_private_atomic(&temporary, &bytes, "router executable artifact")?;
+    let temporary = crate::storage::unique_temp_path(&destination)?;
+    crate::storage::write_private_atomic(&temporary, &bytes, "router executable artifact")?;
     fs::set_permissions(&temporary, fs::Permissions::from_mode(0o755))?;
     let published = match fs::hard_link(&temporary, &destination) {
         Ok(()) => Ok(()),

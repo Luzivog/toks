@@ -18,7 +18,6 @@ pub use runtime::{
 };
 pub(crate) use runtime::{ResumeAuthorization, ResumeRoute, ResumeTerminal, WorkerConnectionOwner};
 pub use settings::RotationSettings;
-pub(crate) use storage::write_private_atomic;
 pub use storage::{RotationPaths, RotationRuntimeStore, RotationSettingsStore};
 pub use types::{
     BlockWindow, RotationEvent, RotationEventKind, ThreadId, UnixMillis, UsageLimitClassification,

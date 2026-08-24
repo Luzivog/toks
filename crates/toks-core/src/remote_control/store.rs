@@ -56,13 +56,11 @@ fn load(path: &std::path::Path) -> Result<State> {
 
 fn save(path: &std::path::Path, state: &State) -> Result<()> {
     let bytes = serde_json::to_vec_pretty(state)?;
-    crate::rotation::write_private_atomic(path, &bytes, "Remote Control state")
+    crate::storage::write_private_atomic(path, &bytes, "Remote Control state")
 }
 
 fn path() -> Result<PathBuf> {
-    toks_ingest::paths::get_data_dir()
-        .map(|root| root.join("remote-control.json"))
-        .context("no local data directory")
+    crate::paths::remote_control_store()
 }
 
 #[cfg(test)]

@@ -32,10 +32,10 @@ pub(crate) fn read_from_home(home: &Path) -> Result<LimitSnapshot> {
 }
 
 pub(crate) fn codex_home() -> Option<PathBuf> {
-    std::env::var("CODEX_HOME")
+    std::env::var_os("CODEX_HOME")
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .ok()
-        .or_else(|| dirs::home_dir().map(|h| h.join(".codex")))
+        .or_else(|| toks_ingest::paths::home_dir().map(|home| home.join(".codex")))
 }
 
 pub(crate) fn read_email_from_home(home: &Path) -> Option<String> {

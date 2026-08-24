@@ -1,12 +1,12 @@
-use std::fs::{self, File, OpenOptions};
-use std::os::unix::fs::OpenOptionsExt;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use nix::fcntl::{Flock, FlockArg};
+
+use crate::storage::{LockMode, PrivateFileLock};
 
 pub(super) struct RefreshLock {
-    _file: Flock<File>,
+    _file: PrivateFileLock,
 }
 
 impl RefreshLock {
@@ -18,17 +18,9 @@ impl RefreshLock {
     }
 
     fn acquire_blocking(path: &Path) -> Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .mode(0o600)
-            .custom_flags(nix::libc::O_CLOEXEC | nix::libc::O_NOFOLLOW)
-            .open(path)
-            .with_context(|| format!("opening Codex credential refresh lock {}", path.display()))?;
-        let file = Flock::lock(file, FlockArg::LockExclusive)
-            .map_err(|(_, error)| error)
-            .context("locking Codex credential refresh")?;
+        let file =
+            crate::storage::lock_private(path, "Codex credential refresh", LockMode::Blocking)
+                .context("locking Codex credential refresh")?;
         Ok(Self { _file: file })
     }
 }

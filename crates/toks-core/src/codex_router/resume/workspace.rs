@@ -6,10 +6,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use crate::rotation::ThreadId;
 
 pub(super) fn discover(thread: &ThreadId) -> Result<PathBuf> {
-    let codex_home = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".codex")))
-        .context("no Codex home directory")?;
+    let codex_home = crate::limits::codex::codex_home().context("no Codex home directory")?;
     discover_in(&codex_home.join("state_5.sqlite"), thread)
 }
 

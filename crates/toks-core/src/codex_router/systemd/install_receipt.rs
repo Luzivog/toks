@@ -47,7 +47,7 @@ pub(super) fn load(path: &Path) -> PendingInstall {
 }
 
 pub(super) fn save(path: &Path, pending: &PendingInstall) -> Result<()> {
-    crate::rotation::write_private_atomic(
+    crate::storage::write_private_atomic(
         path,
         &serde_json::to_vec(pending)?,
         "router install receipt",

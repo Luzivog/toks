@@ -16,9 +16,7 @@ pub(in crate::codex_router) struct ThreadSourceStore {
 
 impl ThreadSourceStore {
     pub(in crate::codex_router) fn discover() -> Self {
-        let codex_home = std::env::var_os("CODEX_HOME")
-            .map(PathBuf::from)
-            .or_else(|| dirs::home_dir().map(|home| home.join(".codex")));
+        let codex_home = crate::limits::codex::codex_home();
         Self {
             database: codex_home.map(|home| home.join("state_5.sqlite")),
         }

@@ -109,7 +109,7 @@ fn publish(
     }
     let bytes = serde_json::to_vec_pretty(&raw)
         .map_err(|error| CredentialError::Temporary(error.into()))?;
-    crate::rotation::write_private_atomic(path, &bytes, "Codex authentication")
+    crate::storage::write_private_atomic(path, &bytes, "Codex authentication")
         .map_err(CredentialError::Temporary)?;
     read_auth(path).map_err(CredentialError::NeedsSignIn)
 }

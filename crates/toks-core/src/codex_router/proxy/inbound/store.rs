@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use super::Admission;
+use crate::storage::LockMode;
 
 const VERSION: u8 = 1;
 
@@ -66,7 +67,7 @@ impl AdmissionStore {
             version: VERSION,
             admissions: durable,
         })?;
-        crate::rotation::write_private_atomic(path, &bytes, "inbound token admissions")
+        crate::storage::write_private_atomic(path, &bytes, "inbound token admissions")
     }
 
     /// Serializes the complete admission read-modify-write across workers.
@@ -82,27 +83,18 @@ impl AdmissionStore {
             .parent()
             .context("inbound token admission path has no parent")?;
         fs::create_dir_all(parent).context("creating inbound token admission directory")?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
-        }
+        crate::storage::restrict_directory(parent)?;
         let mut lock_name = path
             .file_name()
             .context("inbound token admission path has no file name")?
             .to_os_string();
         lock_name.push(".lock");
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let lock = options
-            .open(parent.join(lock_name))
-            .context("opening inbound token admission lock")?;
-        lock.lock().context("locking inbound token admissions")?;
+        let _lock = crate::storage::lock_private(
+            &parent.join(lock_name),
+            "inbound token admissions",
+            LockMode::Blocking,
+        )
+        .context("locking inbound token admissions")?;
         let mut admissions = self.load()?;
         let (value, changed) = change(&mut admissions);
         if changed {

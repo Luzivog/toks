@@ -6,14 +6,14 @@ mod storage;
 #[cfg(test)]
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use super::{LimitSnapshot, Provider, SnapshotFreshness, SnapshotStatus};
 use crate::accounts::{AccountProfile, CredentialProfileId};
 use io::CacheEnvelope;
 
 pub(super) fn load(profile: &AccountProfile) -> Option<LimitSnapshot> {
-    let path = storage::cache_file(profile)?;
+    let path = storage::cache_file(profile).ok()?;
     let envelope = io::read_envelope(&path).ok()?;
     if !matches_profile(&envelope, profile) {
         return None;
@@ -46,7 +46,7 @@ pub(super) fn store(profile: &AccountProfile, snapshot: &LimitSnapshot) -> Resul
     if !storage::profile_storage_active(profile) {
         anyhow::bail!("account profile was removed while usage was refreshing");
     }
-    let path = storage::cache_file(profile).context("no local data directory")?;
+    let path = storage::cache_file(profile)?;
     let stored = sanitized_snapshot(profile, snapshot);
     io::write_envelope(
         &path,

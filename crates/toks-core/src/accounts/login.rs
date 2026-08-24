@@ -4,10 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::limits::Provider;
+use crate::storage::restrict_directory;
 
 use super::{
-    discover_profiles, now_millis, now_nanos, profiles_root, restrict_directory, write_metadata,
-    AddAccountStarted, CredentialProfileId, ProfileMetadata, PROFILE_VERSION,
+    discover_profiles, now_millis, now_nanos, profiles_root, write_metadata, AddAccountStarted,
+    CredentialProfileId, ProfileMetadata, PROFILE_VERSION,
 };
 
 mod lifecycle;

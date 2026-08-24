@@ -13,7 +13,7 @@ pub(crate) fn discover() -> Result<PathBuf> {
             }
         }
     }
-    if let Some(home) = dirs::home_dir() {
+    if let Some(home) = toks_ingest::paths::home_dir() {
         for candidate in [home.join(".local/bin/codex"), home.join(".cargo/bin/codex")] {
             if is_executable(&candidate) {
                 return validate(candidate);

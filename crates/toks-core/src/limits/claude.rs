@@ -14,7 +14,7 @@ use serde_json::Value;
 use std::path::{Path, PathBuf};
 
 pub fn read() -> Result<LimitSnapshot> {
-    let home = dirs::home_dir().context("no home dir")?;
+    let home = toks_ingest::paths::home_dir().context("no home dir")?;
     let config_dir = std::env::var("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| home.join(".claude"));

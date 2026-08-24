@@ -13,7 +13,7 @@ const PROMPT: &str = "test";
 pub(super) async fn run(launch: &Launch) -> Result<(), FailureReason> {
     let config = exact_profile(launch).ok_or(FailureReason::ProfileUnavailable)?;
     let model = super::catalogue::best_for_profile(&config);
-    let home = dirs::home_dir().ok_or(FailureReason::ProfileUnavailable)?;
+    let home = toks_ingest::paths::home_dir().ok_or(FailureReason::ProfileUnavailable)?;
     let executable =
         super::super::codex_binary::discover().map_err(|_| FailureReason::SpawnFailed)?;
     let command = command(&executable, &home, &config, &model);

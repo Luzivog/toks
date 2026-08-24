@@ -101,7 +101,7 @@ pub(super) fn install(
     }
     for ((name, unit), changed) in units.iter().zip(changes) {
         if changed {
-            crate::rotation::write_private_atomic(
+            crate::storage::write_private_atomic(
                 &named_unit_path(name)?,
                 unit.as_bytes(),
                 "router user unit",

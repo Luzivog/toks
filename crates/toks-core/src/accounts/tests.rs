@@ -66,6 +66,41 @@ fn rejects_metadata_from_the_wrong_provider() {
 }
 
 #[test]
+fn metadata_replacement_uses_a_private_atomic_rename() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("profile.json");
+    fs::write(&path, b"stale metadata").unwrap();
+    #[cfg(unix)]
+    let original_inode = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(&path).unwrap().ino()
+    };
+
+    write_metadata(
+        &path,
+        &ProfileMetadata {
+            version: PROFILE_VERSION,
+            id: "account".into(),
+            provider: Provider::Codex,
+            created_at_ms: 42,
+        },
+    )
+    .unwrap();
+
+    let stored: ProfileMetadata = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(stored.id, "account");
+    assert_eq!(stored.created_at_ms, 42);
+    assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 1);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let metadata = fs::metadata(path).unwrap();
+        assert_ne!(metadata.ino(), original_inode);
+        assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+    }
+}
+
+#[test]
 fn provider_profiles_keep_independent_local_snapshots() {
     let temp = tempfile::tempdir().unwrap();
     let profile = |id: &str, percent: f64| {

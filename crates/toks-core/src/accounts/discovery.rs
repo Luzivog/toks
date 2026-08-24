@@ -11,15 +11,14 @@ use super::{
 
 pub(crate) fn discover_profiles() -> Vec<AccountProfile> {
     let mut profiles = Vec::new();
-    if let Some(home) = dirs::home_dir() {
+    if let Some(home) = toks_ingest::paths::home_dir() {
         for provider in Provider::ALL {
             let config_dir = match provider {
                 Provider::Claude => std::env::var("CLAUDE_CONFIG_DIR")
                     .map(PathBuf::from)
                     .unwrap_or_else(|_| home.join(".claude")),
-                Provider::Codex => {
-                    limits::codex::codex_home().unwrap_or_else(|| home.join(".codex"))
-                }
+                Provider::Codex => limits::codex::codex_home()
+                    .expect("Codex home exists after resolving the user home"),
             };
             let profile_id = CredentialProfileId::new(format!("{}-current", provider.slug()));
             profiles.push(with_logical_identity(AccountProfile {

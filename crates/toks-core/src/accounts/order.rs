@@ -1,11 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{LimitSnapshot, Provider};
 
@@ -14,7 +11,6 @@ mod rank;
 pub(super) use cleanup::remove_accounts_at;
 
 const ORDER_VERSION: u8 = 1;
-static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,9 +113,7 @@ pub(super) fn apply_order(snapshots: &mut [LimitSnapshot], order: &[AccountOrder
 }
 
 pub(super) fn order_path() -> Result<PathBuf> {
-    toks_ingest::paths::get_data_dir()
-        .map(|root| root.join("account-order.json"))
-        .context("no local data directory")
+    crate::paths::account_order_file()
 }
 
 pub(super) fn load_order(path: &Path) -> Result<Vec<AccountOrderKey>> {
@@ -140,44 +134,10 @@ pub(super) fn load_order(path: &Path) -> Result<Vec<AccountOrderKey>> {
 pub(super) fn save_order(path: &Path, accounts: &[AccountOrderKey]) -> Result<()> {
     let parent = path.parent().context("account order path has no parent")?;
     fs::create_dir_all(parent).context("creating Toks data directory")?;
-    super::restrict_directory(parent)?;
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .context("system clock is before Unix epoch")?
-        .as_nanos();
-    let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    let temporary = parent.join(format!(
-        ".account-order-{}-{nonce}-{sequence}.tmp",
-        std::process::id()
-    ));
+    crate::storage::restrict_directory(parent)?;
     let bytes = serde_json::to_vec_pretty(&StoredOrder {
         version: ORDER_VERSION,
         accounts: accounts.to_vec(),
     })?;
-    let result = write_atomic_file(&temporary, path, &bytes);
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
-}
-
-fn write_atomic_file(temporary: &Path, destination: &Path, bytes: &[u8]) -> Result<()> {
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(temporary).context("creating account order")?;
-    file.write_all(bytes).context("writing account order")?;
-    file.sync_all().context("syncing account order")?;
-    fs::rename(temporary, destination).context("publishing account order")?;
-    fs::File::open(
-        destination
-            .parent()
-            .context("account order has no parent")?,
-    )
-    .and_then(|directory| directory.sync_all())
-    .context("syncing Toks data directory")
+    crate::storage::write_private_atomic(path, &bytes, "account order")
 }

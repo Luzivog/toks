@@ -2,9 +2,27 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread::JoinHandle;
 
-use super::claude_auth::{access_token_for_test, refresh_after_rejection_for_test};
+use super::claude_auth::access_token_at;
+use super::http::LiveError;
 use super::{credentials, LimitIssueKind, Provider};
 use crate::accounts::{AccountProfile, ProviderAccount};
+
+fn access_token_for_test(
+    profile: &AccountProfile,
+    endpoint: &str,
+    now_ms: u128,
+) -> Result<String, LiveError> {
+    access_token_at(profile, endpoint, now_ms, false, None)
+}
+
+fn refresh_after_rejection_for_test(
+    profile: &AccountProfile,
+    endpoint: &str,
+    now_ms: u128,
+    rejected_access: &str,
+) -> Result<String, LiveError> {
+    access_token_at(profile, endpoint, now_ms, true, Some(rejected_access))
+}
 
 #[test]
 fn expired_access_refreshes_atomically_and_preserves_claude_fields() {

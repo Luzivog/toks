@@ -10,7 +10,11 @@ use super::{RemoteConnection, RemoteConnectionStatus, RemoteControlOwner, Remote
 const DESKTOP_CLIENT_NAME: &str = "Codex Desktop";
 
 pub(super) fn desktop_snapshot(codex_home: &Path) -> Option<RemoteControlSnapshot> {
-    desktop_snapshot_at(codex_home, Path::new("/proc"), default_codex_home())
+    desktop_snapshot_at(
+        codex_home,
+        Path::new("/proc"),
+        crate::limits::codex::codex_home(),
+    )
 }
 
 fn desktop_snapshot_at(
@@ -130,10 +134,6 @@ fn enabled_enrollment(codex_home: &Path, account_id: &str) -> Option<(String, St
         )
         .optional()
         .ok()?
-}
-
-fn default_codex_home() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".codex"))
 }
 
 #[cfg(test)]

@@ -96,13 +96,11 @@ pub(super) fn failed_candidate(path: &Path, candidate: &BuildId) -> Result<bool>
 }
 
 pub(in crate::codex_router) fn deployment_state_path() -> Result<PathBuf> {
-    let data = toks_ingest::paths::get_data_dir().context("no local data directory")?;
-    Ok(data.join("rotation/router-host.json"))
+    crate::paths::router_deployment_state()
 }
 
 pub(super) fn artifact_root() -> Result<PathBuf> {
-    let data = toks_ingest::paths::get_data_dir().context("no local data directory")?;
-    Ok(data.join("rotation/router-artifacts"))
+    crate::paths::router_artifacts_dir()
 }
 
 pub(super) fn active_candidate_generation(path: &Path, candidate: &BuildId) -> Result<Option<u64>> {

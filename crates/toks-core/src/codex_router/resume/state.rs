@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::rotation::{ThreadId, UnixMillis, WaitingId};
+use crate::storage::{LockMode, PrivateFileLock};
 
 mod attempt;
 pub(in crate::codex_router::resume) use attempt::{
@@ -36,19 +37,19 @@ impl Default for ResumeState {
 pub(super) struct ResumeStore {
     path: PathBuf,
     outcomes: PathBuf,
+    supervisor_lock: PathBuf,
 }
 
 impl ResumeStore {
     pub(super) fn discover() -> Result<Self> {
-        let root = toks_ingest::paths::get_data_dir().context("no local data directory")?;
-        Ok(Self::for_data_dir(root))
+        Ok(Self::for_data_dir(crate::paths::data_dir()?))
     }
 
     pub(super) fn for_data_dir(root: impl AsRef<Path>) -> Self {
-        let directory = root.as_ref().join("rotation");
         Self {
-            path: directory.join("resume-state.json"),
-            outcomes: directory.join("resume-outcomes"),
+            path: crate::paths::resume_state_store_at(root.as_ref()),
+            outcomes: crate::paths::resume_outcomes_dir_at(root.as_ref()),
+            supervisor_lock: crate::paths::resume_supervisor_lock_at(root.as_ref()),
         }
     }
 
@@ -67,7 +68,7 @@ impl ResumeStore {
     }
 
     pub(super) fn save(&self, state: &ResumeState) -> Result<()> {
-        crate::rotation::write_private_atomic(
+        crate::storage::write_private_atomic(
             &self.path,
             &serde_json::to_vec_pretty(state)?,
             "resume state",
@@ -85,7 +86,7 @@ impl ResumeStore {
 
     pub(super) fn record_outcome(&self, attempt: &str, success: bool) -> Result<()> {
         validate_attempt_id(attempt)?;
-        crate::rotation::write_private_atomic(
+        crate::storage::write_private_atomic(
             &self.outcome_path(attempt),
             &serde_json::to_vec(&Outcome { success })?,
             "resume outcome",
@@ -100,13 +101,18 @@ impl ResumeStore {
         }
     }
 
-    pub(super) fn acquire_supervisor_lock(&self) -> Result<File> {
-        let parent = self.path.parent().context("resume state has no parent")?;
+    pub(super) fn acquire_supervisor_lock(&self) -> Result<PrivateFileLock> {
+        let parent = self
+            .supervisor_lock
+            .parent()
+            .context("resume supervisor lock has no parent")?;
         fs::create_dir_all(parent)?;
-        let lock = private_file(parent.join("resume-supervisor.lock"))?;
-        lock.try_lock()
-            .context("resume supervisor is already running")?;
-        Ok(lock)
+        crate::storage::lock_private(
+            &self.supervisor_lock,
+            "resume supervisor",
+            LockMode::Nonblocking,
+        )
+        .context("resume supervisor is already running")
     }
 
     fn outcome_path(&self, attempt: &str) -> PathBuf {
@@ -141,15 +147,4 @@ pub(super) fn validate_attempt_id(attempt: &str) -> Result<()> {
         "non-canonical resume attempt id"
     );
     Ok(())
-}
-
-fn private_file(path: PathBuf) -> Result<File> {
-    let mut options = OpenOptions::new();
-    options.read(true).write(true).create(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options.open(path).map_err(Into::into)
 }

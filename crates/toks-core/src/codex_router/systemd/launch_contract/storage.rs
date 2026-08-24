@@ -18,7 +18,7 @@ pub(crate) fn persist(root: &Path, contract: &LaunchContract, build: &BuildId) -
         build: build.clone(),
         contract: contract.clone(),
     })?;
-    crate::rotation::write_private_atomic(&path, &bytes, "router launch contract")
+    crate::storage::write_private_atomic(&path, &bytes, "router launch contract")
 }
 
 pub(super) fn load(path: &Path) -> Result<StoredContract> {

@@ -36,6 +36,11 @@ toks_is_generated_file() {
 while IFS= read -r -d '' toks_file; do
     [[ -f "$toks_file" ]] || continue
     toks_source_count=$((toks_source_count + 1))
+    if [[ "$toks_file" != "crates/toks-ingest/src/paths.rs" ]] &&
+        grep -Fq 'dirs::home_dir()' "$toks_file"; then
+        echo "direct dirs::home_dir() call is not allowed: $toks_file" >&2
+        toks_errors=$((toks_errors + 1))
+    fi
     if toks_is_generated_file "$toks_file"; then
         continue
     fi

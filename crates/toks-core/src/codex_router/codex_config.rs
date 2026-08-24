@@ -69,17 +69,12 @@ pub(super) fn restore_at(config: &Path, backup: &Path) -> Result<()> {
 }
 
 fn config_path() -> Result<PathBuf> {
-    let root = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".codex")))
-        .context("no Codex home directory")?;
+    let root = crate::limits::codex::codex_home().context("no Codex home directory")?;
     Ok(root.join("config.toml"))
 }
 
 fn backup_path() -> Result<PathBuf> {
-    toks_ingest::paths::get_data_dir()
-        .map(|root| root.join("rotation/codex-config-backup.json"))
-        .context("no local data directory")
+    crate::paths::codex_config_backup()
 }
 
 fn read_document(path: &Path) -> Result<DocumentMut> {
@@ -105,5 +100,5 @@ fn write_private_json(path: &Path, value: &impl Serialize) -> Result<()> {
 }
 
 fn write_private(path: &Path, bytes: &[u8]) -> Result<()> {
-    crate::rotation::write_private_atomic(path, bytes, "Codex configuration")
+    crate::storage::write_private_atomic(path, bytes, "Codex configuration")
 }

@@ -1,12 +1,10 @@
-use anyhow::{anyhow, Context, Result};
-use nix::fcntl::{Flock, FlockArg};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::fs::OpenOptions;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use super::{BuildId, RetryId};
+use crate::storage::LockMode;
 
 const RETRY_VERSION: u8 = 1;
 const RETRY_NAME: &str = "router-host-retry.json";
@@ -33,7 +31,7 @@ pub(crate) fn request_retry(state: &Path, build: &BuildId) -> Result<RetryIntent
             build: build.clone(),
             id: RetryId::fresh(),
         };
-        crate::rotation::write_private_atomic(
+        crate::storage::write_private_atomic(
             &retry_path(state),
             &serde_json::to_vec(&intent)?,
             "router deployment retry intent",
@@ -78,16 +76,12 @@ fn retry_path(state: &Path) -> PathBuf {
 fn with_retry_lock<T>(state: &Path, action: impl FnOnce() -> Result<T>) -> Result<T> {
     let parent = state.parent().context("router state has no parent")?;
     fs::create_dir_all(parent)?;
-    let file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(parent.join(RETRY_LOCK_NAME))?;
-    let _lock = Flock::lock(file, FlockArg::LockExclusive)
-        .map_err(|(_, error)| anyhow!(error))
-        .context("locking router deployment retry intent")?;
+    let _lock = crate::storage::lock_private(
+        &parent.join(RETRY_LOCK_NAME),
+        "router deployment retry intent",
+        LockMode::Blocking,
+    )
+    .context("locking router deployment retry intent")?;
     action()
 }
 

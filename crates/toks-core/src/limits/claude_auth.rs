@@ -28,7 +28,7 @@ pub(crate) fn refresh_after_rejection(
     )
 }
 
-fn access_token_at(
+pub(super) fn access_token_at(
     profile: &AccountProfile,
     endpoint: &str,
     now_ms: u128,
@@ -125,7 +125,9 @@ fn access_token_at(
             json!(now_ms.saturating_add(u128::from(seconds) * 1_000)),
         );
     }
-    super::credentials::write_json_atomically(&path, &root)?;
+    let bytes = serde_json::to_vec(&root).map_err(super::credentials::storage_error)?;
+    crate::storage::write_private_atomic(&path, &bytes, "Claude credentials")
+        .map_err(super::credentials::storage_error)?;
     Ok(access.to_string())
 }
 
@@ -177,23 +179,4 @@ fn now_millis() -> u128 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis()
-}
-
-#[cfg(test)]
-pub(super) fn access_token_for_test(
-    profile: &AccountProfile,
-    endpoint: &str,
-    now_ms: u128,
-) -> Result<String, LiveError> {
-    access_token_at(profile, endpoint, now_ms, false, None)
-}
-
-#[cfg(test)]
-pub(super) fn refresh_after_rejection_for_test(
-    profile: &AccountProfile,
-    endpoint: &str,
-    now_ms: u128,
-    rejected_access: &str,
-) -> Result<String, LiveError> {
-    access_token_at(profile, endpoint, now_ms, true, Some(rejected_access))
 }

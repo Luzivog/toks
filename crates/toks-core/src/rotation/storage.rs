@@ -8,9 +8,6 @@ use super::runtime::RUNTIME_VERSION;
 use super::settings::SETTINGS_VERSION;
 use super::{RotationRuntime, RotationSettings};
 
-mod atomic;
-use atomic::restrict_directory;
-pub(crate) use atomic::write_private_atomic;
 mod lock;
 use lock::lock_document;
 
@@ -22,15 +19,16 @@ pub struct RotationPaths {
 
 impl RotationPaths {
     pub fn discover() -> Result<Self> {
-        let root = toks_ingest::paths::get_data_dir().context("no local data directory")?;
-        Ok(Self::for_data_dir(root))
+        Ok(Self {
+            settings: crate::paths::rotation_settings()?,
+            runtime: crate::paths::rotation_runtime()?,
+        })
     }
 
     pub fn for_data_dir(root: impl AsRef<Path>) -> Self {
-        let directory = root.as_ref().join("rotation");
         Self {
-            settings: directory.join("settings.json"),
-            runtime: directory.join("runtime.json"),
+            settings: crate::paths::rotation_settings_at(root.as_ref()),
+            runtime: crate::paths::rotation_runtime_at(root.as_ref()),
         }
     }
 
@@ -173,7 +171,7 @@ fn write_json(path: &Path, value: &impl Serialize, label: &str) -> Result<()> {
         .parent()
         .with_context(|| format!("{label} path has no parent"))?;
     fs::create_dir_all(parent).with_context(|| format!("creating {label} directory"))?;
-    restrict_directory(parent)?;
+    crate::storage::restrict_directory(parent)?;
     let bytes = serde_json::to_vec_pretty(value)?;
-    write_private_atomic(path, &bytes, label)
+    crate::storage::write_private_atomic(path, &bytes, label)
 }

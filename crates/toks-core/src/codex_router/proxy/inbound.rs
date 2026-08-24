@@ -28,8 +28,7 @@ pub(super) struct Admission {
 
 impl InboundTokens {
     pub fn new(credentials: SharedCredentials) -> Self {
-        let path = toks_ingest::paths::get_data_dir()
-            .map(|root| root.join("rotation/inbound-tokens.json"));
+        let path = crate::paths::proxy_inbound_store().ok();
         Self::with_store(credentials, AdmissionStore::new(path))
     }
 

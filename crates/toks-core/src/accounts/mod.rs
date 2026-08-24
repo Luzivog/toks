@@ -48,9 +48,7 @@ use catalog::coalesce_snapshots;
 pub(crate) use catalog::codex_auth_account_id_for_test;
 pub(crate) use catalog::{codex_auth_account_id, provider_principal_id};
 use discovery::account_email;
-use storage::{
-    now_millis, now_nanos, profiles_root, restrict_directory, write_metadata, PROFILE_VERSION,
-};
+use storage::{now_millis, now_nanos, profiles_root, write_metadata, PROFILE_VERSION};
 use types::ProfileMetadata;
 
 #[cfg(test)]

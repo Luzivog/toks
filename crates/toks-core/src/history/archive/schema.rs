@@ -12,10 +12,14 @@ const SCHEMA_VERSION: i64 = 4;
 pub(super) fn open(path: &Path) -> Result<Connection> {
     let parent = path.parent().context("usage archive path has no parent")?;
     fs::create_dir_all(parent)?;
-    secure(parent, 0o700)?;
+    crate::storage::restrict_directory(parent)?;
 
     let mut connection = Connection::open(path)?;
-    secure(path, 0o600)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
+    }
     connection.busy_timeout(Duration::from_secs(5))?;
 
     let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -60,13 +64,4 @@ fn enable_wal(connection: &Connection) -> Result<()> {
         }
     }
     unreachable!("WAL retry loop always returns")
-}
-
-fn secure(path: &Path, mode: u32) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
-    }
-    Ok(())
 }

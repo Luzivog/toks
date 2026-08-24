@@ -27,14 +27,14 @@ impl HostPaths {
             .map(PathBuf::from)
             .or_else(|| dirs::runtime_dir().map(|root| root.join("toks-router")))
             .context("no router runtime directory")?;
-        let data = toks_ingest::paths::get_data_dir().context("no local data directory")?;
-        let artifact_root = data.join("rotation/router-artifacts");
+        let data = crate::paths::data_dir()?;
+        let artifact_root = crate::paths::router_artifacts_dir_at(&data);
         Ok(Self {
             #[cfg(test)]
             executable,
             generations: artifact_root.join("generations"),
             control: runtime.join("handoff.sock"),
-            state: data.join("rotation/router-host.json"),
+            state: crate::paths::router_deployment_state_at(&data),
         })
     }
 
@@ -143,7 +143,7 @@ pub(super) fn load_state(path: &Path) -> Result<DeploymentState> {
 
 pub(super) fn save_state(path: &Path, state: &DeploymentState) -> Result<()> {
     let bytes = serde_json::to_vec_pretty(state)?;
-    crate::rotation::write_private_atomic(path, &bytes, "router deployment state")
+    crate::storage::write_private_atomic(path, &bytes, "router deployment state")
 }
 
 #[cfg(test)]
