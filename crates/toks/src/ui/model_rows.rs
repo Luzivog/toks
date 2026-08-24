@@ -1,17 +1,19 @@
-use gpui::{div, prelude::*, px, App, SharedString};
+use gpui::{div, prelude::*, px, SharedString};
 use gpui_component::{button::Button, h_flex, ActiveTheme, StyledExt};
 use toks_core::history::ModelUsage;
 
-use crate::{ModelSortColumn, Page, SortState, ToksApp};
+use crate::{ModelSortColumn, Page};
 
-use super::{claude_accent, codex_accent, opencode_accent, sort_action, ModelColumn, TableLayout};
+use super::{
+    accent_for_model_provider, table_cell, table_sort_header, ModelColumn, TableColumn,
+    TableContext,
+};
 
 pub(super) fn model_columns_header(
     page: Page,
-    sort: SortState<ModelSortColumn>,
-    layout: TableLayout,
-    cx: &mut gpui::Context<ToksApp>,
+    table: TableContext<'_, '_, ModelSortColumn>,
 ) -> gpui::Div {
+    let cx = table.cx();
     let mut header = h_flex()
         .gap_2()
         .py_2()
@@ -20,13 +22,13 @@ pub(super) fn model_columns_header(
         .child(
             div()
                 .flex_1()
-                .min_w(px(120.))
+                .min_w(px(ModelColumn::LABEL_WIDTH))
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
                 .child("Model"),
         );
-    for column in layout.model_columns(sort.column) {
-        header = header.child(model_sort_header(column, page, sort, cx));
+    for column in table.columns::<ModelColumn>() {
+        header = header.child(model_sort_header(column, page, table));
     }
     header
 }
@@ -34,25 +36,12 @@ pub(super) fn model_columns_header(
 pub(super) fn model_usage_row(
     model: &ModelUsage,
     page: Page,
-    layout: TableLayout,
-    active_sort: Option<ModelSortColumn>,
-    cx: &App,
+    table: TableContext<'_, '_, ModelSortColumn>,
 ) -> gpui::Div {
+    let cx = table.cx();
     let provider = model.provider.to_lowercase();
-    let selector = format!("model-row-{}-{}-{}", page_id(page), provider, model.model);
-    let color = if provider.contains("anthropic") || provider.contains("claude") {
-        claude_accent()
-    } else if provider.contains("opencode")
-        || provider.contains("google")
-        || provider.contains("gemini")
-        || provider.contains("zen")
-        || provider.contains("xai")
-        || provider.contains("grok")
-    {
-        opencode_accent()
-    } else {
-        codex_accent()
-    };
+    let selector = format!("model-row-{}-{}-{}", page.slug(), provider, model.model);
+    let color = accent_for_model_provider(&model.provider);
     let mut row = h_flex()
         .debug_selector(move || selector)
         .gap_2()
@@ -62,7 +51,7 @@ pub(super) fn model_usage_row(
         .child(
             h_flex()
                 .flex_1()
-                .min_w(px(120.))
+                .min_w(px(ModelColumn::LABEL_WIDTH))
                 .gap_2()
                 .items_center()
                 .text_sm()
@@ -76,7 +65,7 @@ pub(super) fn model_usage_row(
                         .child(model.model.clone()),
                 ),
         );
-    for column in layout.model_columns(active_sort) {
+    for column in table.columns::<ModelColumn>() {
         row = row.child(number_cell(column, column.value(model)));
     }
     row
@@ -85,42 +74,24 @@ pub(super) fn model_usage_row(
 fn model_sort_header(
     column: ModelColumn,
     page: Page,
-    sort: SortState<ModelSortColumn>,
-    cx: &mut gpui::Context<ToksApp>,
+    table: TableContext<'_, '_, ModelSortColumn>,
 ) -> Button {
     let sort_column = column.sort_column();
-    let active = sort.column == Some(sort_column);
-    sort_action(
-        SharedString::from(format!("model-sort-{}-{}", page_id(page), column.id())),
-        column.label(),
-        column.width(),
-        active,
-        sort.direction,
-        cx,
+    table_sort_header(
+        SharedString::from(format!("model-sort-{}-{}", page.slug(), column.id())),
+        column,
+        table.sort(),
+        table.cx(),
     )
-    .on_click(cx.listener(move |app, _, _, cx| {
+    .on_click(table.cx().listener(move |app, _, _, cx| {
         app.model_tables.toggle_sort(page, sort_column);
         cx.notify();
     }))
 }
 
 fn number_cell(column: ModelColumn, value: String) -> gpui::Div {
-    div()
-        .w(px(column.width()))
-        .flex_shrink_0()
-        .text_right()
+    table_cell(column)
         .text_xs()
         .when(column.emphasized(), |cell| cell.font_semibold())
         .child(value)
-}
-
-fn page_id(page: Page) -> &'static str {
-    match page {
-        Page::Overview => "overview",
-        Page::Hourly => "hourly",
-        Page::Daily => "daily",
-        Page::Monthly => "monthly",
-        Page::AllTime => "all-time",
-        Page::Rotation => "rotation",
-    }
 }

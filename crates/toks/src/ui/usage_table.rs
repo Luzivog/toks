@@ -3,12 +3,12 @@ use gpui::{div, prelude::*};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::{HistorySnapshot, UsagePeriod};
 
-use crate::{SortState, ToksApp, UsageSortColumn};
+use crate::UsageSortColumn;
 
 use super::{
     current_usage_date, hourly_bucket_day, hourly_day_separator, section_meta, section_title,
     sort_usage_buckets, text_action, usage_bucket_is_current, usage_columns_header, usage_data_row,
-    usage_period_label, usage_range_label, visible_usage_buckets, TableLayout,
+    usage_period_label, usage_range_label, visible_usage_buckets, TableContext,
 };
 
 pub(super) fn visible_usage_row_count(total: usize, visible_limit: usize) -> usize {
@@ -18,12 +18,12 @@ pub(super) fn visible_usage_row_count(total: usize, visible_limit: usize) -> usi
 pub(super) fn usage_history_card(
     history: &HistorySnapshot,
     period: UsagePeriod,
-    sort: SortState<UsageSortColumn>,
     visible_limit: usize,
     freshness: Option<String>,
-    layout: TableLayout,
-    cx: &mut gpui::Context<ToksApp>,
+    table: TableContext<'_, '_, UsageSortColumn>,
 ) -> gpui::Div {
+    let cx = table.cx();
+    let sort = table.sort();
     let generated = Local
         .timestamp_millis_opt(history.generated_at_ms)
         .single()
@@ -79,9 +79,7 @@ pub(super) fn usage_history_card(
                 period,
                 grouped_hourly,
                 highlighted,
-                layout,
-                sort.column,
-                cx,
+                table,
             ));
         }
     }
@@ -104,7 +102,7 @@ pub(super) fn usage_history_card(
                 )))
                 .child(section_meta(context, cx)),
         )
-        .child(usage_columns_header(period, sort, layout, cx))
+        .child(usage_columns_header(period, table))
         .child(body)
         .when(visible_count < row_count, |card| {
             let next = (row_count - visible_count).min(crate::USAGE_PAGE_SIZE);

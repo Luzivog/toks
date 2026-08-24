@@ -13,6 +13,7 @@ use crate::ToksApp;
 use super::{
     account_drop_target, account_email::email_visibility_button, account_error_rows,
     account_limits_group, account_limits_loading_content, action_button, section_title,
+    AccountLimitsGroupContext,
 };
 
 pub(super) fn account_limits_section(
@@ -146,11 +147,12 @@ pub(super) fn account_limits_section(
         };
         let group = account_limits_group(
             snapshot,
-            app.now,
-            true,
-            app.emails_hidden,
-            reorder_enabled,
-            removal_state,
+            AccountLimitsGroupContext::new(
+                app.now,
+                app.emails_hidden,
+                reorder_enabled,
+                removal_state,
+            ),
             cx,
         );
         panel = if reorder_enabled {

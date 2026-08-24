@@ -16,7 +16,7 @@ use super::{
     pages::section_header_large,
     section::section_title,
     summary::usage_summary_sidebar,
-    table_layout::TableLayout,
+    table_layout::{TableContext, TableLayout},
     theme::{claude_accent, codex_accent, opencode_accent, page_accent},
 };
 
@@ -59,9 +59,7 @@ pub(super) fn all_time_page(
             models,
             "All history",
             Page::AllTime,
-            app.model_tables.sort(Page::AllTime),
-            layout,
-            cx,
+            TableContext::new(layout, app.model_tables.sort(Page::AllTime), cx),
         ))
 }
 

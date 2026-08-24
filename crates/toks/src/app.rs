@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use gpui::{AppContext, Context};
-use toks_core::{history::UsagePeriod, HistorySnapshot, LimitSnapshot};
+use toks_core::{HistorySnapshot, LimitSnapshot};
 
 use crate::{
     history_refresh::HistoryRefreshState, sidebar_motion::SidebarMotion, ModelTablesState,
@@ -14,11 +14,13 @@ mod account_removals;
 pub(crate) mod banked_reset_operations;
 mod history_task;
 mod navigation;
+mod page;
 pub(crate) mod remote_control_operations;
 mod rotation_operations;
 pub(crate) use account_operations::AccountOperations;
 pub(crate) use account_removals::{request_removal, AccountRemovals, RemovalStatus};
 use banked_reset_operations::BankedResetOperations;
+pub use page::Page;
 pub(crate) use rotation_operations::{RotationServiceAction, RotationUiState, SettingsAction};
 
 const LIMITS_REFRESH: Duration = Duration::from_secs(15);
@@ -31,37 +33,6 @@ pub(super) fn sidebar_open_for_layout(
         currently_open
     } else {
         !compact_layout
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Page {
-    Overview,
-    Hourly,
-    Daily,
-    Monthly,
-    AllTime,
-    Rotation,
-}
-
-impl Page {
-    pub fn usage_period(&self) -> Option<UsagePeriod> {
-        match self {
-            Page::Overview | Page::AllTime | Page::Rotation => None,
-            Page::Hourly => Some(UsagePeriod::Hourly),
-            Page::Daily => Some(UsagePeriod::Daily),
-            Page::Monthly => Some(UsagePeriod::Monthly),
-        }
-    }
-}
-
-impl From<UsagePeriod> for Page {
-    fn from(period: UsagePeriod) -> Self {
-        match period {
-            UsagePeriod::Hourly => Self::Hourly,
-            UsagePeriod::Daily => Self::Daily,
-            UsagePeriod::Monthly => Self::Monthly,
-        }
     }
 }
 

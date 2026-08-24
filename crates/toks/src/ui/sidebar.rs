@@ -10,7 +10,7 @@ pub(crate) fn sidebar(
     cx: &mut gpui::Context<ToksApp>,
     overlay: bool,
 ) -> impl IntoElement {
-    v_flex()
+    let mut sidebar = v_flex()
         .w(px(250.))
         .h_full()
         .flex_shrink_0()
@@ -29,57 +29,16 @@ pub(crate) fn sidebar(
                 .font_semibold()
                 .text_color(cx.theme().sidebar_foreground)
                 .child("Usage"),
-        )
-        .child(section_label("USAGE", cx))
-        .child(sidebar_entry(
-            app,
-            cx,
-            "overview",
-            Page::Overview,
-            "Overview",
-            overlay,
-        ))
-        .child(sidebar_entry(
-            app,
-            cx,
-            "hourly",
-            Page::Hourly,
-            "Hourly",
-            overlay,
-        ))
-        .child(sidebar_entry(
-            app,
-            cx,
-            "daily",
-            Page::Daily,
-            "Daily",
-            overlay,
-        ))
-        .child(sidebar_entry(
-            app,
-            cx,
-            "monthly",
-            Page::Monthly,
-            "Monthly",
-            overlay,
-        ))
-        .child(sidebar_entry(
-            app,
-            cx,
-            "all-time",
-            Page::AllTime,
-            "All time",
-            overlay,
-        ))
-        .child(section_label("ROUTING", cx))
-        .child(sidebar_entry(
-            app,
-            cx,
-            "rotation",
-            Page::Rotation,
-            "Rotation",
-            overlay,
-        ))
+        );
+    for page in Page::ALL {
+        if page == Page::Overview {
+            sidebar = sidebar.child(section_label("USAGE", cx));
+        } else if page == Page::Rotation {
+            sidebar = sidebar.child(section_label("ROUTING", cx));
+        }
+        sidebar = sidebar.child(sidebar_entry(app, cx, page, overlay));
+    }
+    sidebar
 }
 
 /// Small uppercase group heading that structures the sidebar into
@@ -98,14 +57,12 @@ fn section_label(title: &'static str, cx: &gpui::App) -> gpui::Div {
 pub(super) fn sidebar_entry(
     app: &ToksApp,
     cx: &mut gpui::Context<ToksApp>,
-    id: &'static str,
     page: Page,
-    title: &'static str,
     overlay: bool,
 ) -> Button {
     let selected = app.page() == page;
     let accent = page_accent(page, cx);
-    action_button(id, cx)
+    action_button(page.slug(), cx)
         .mx_2()
         .my_0p5()
         .h(px(38.))
@@ -130,7 +87,7 @@ pub(super) fn sidebar_entry(
                         .text_sm()
                         .font_medium()
                         .text_color(cx.theme().sidebar_foreground)
-                        .child(title),
+                        .child(page.title()),
                 ),
         )
 }

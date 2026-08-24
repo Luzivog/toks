@@ -19,6 +19,21 @@ fn usage_periods_map_to_their_pages() {
 }
 
 #[test]
+fn page_metadata_preserves_navigation_order() {
+    assert_eq!(
+        Page::ALL.map(|page| (page.slug(), page.title())),
+        [
+            ("overview", "Overview"),
+            ("hourly", "Hourly"),
+            ("daily", "Daily"),
+            ("monthly", "Monthly"),
+            ("all-time", "All time"),
+            ("rotation", "Rotation"),
+        ]
+    );
+}
+
+#[test]
 fn sidebar_closes_when_entering_compact_layout() {
     assert!(!sidebar_open_for_layout(true, Some(false), true));
 }

@@ -2,7 +2,7 @@ use toks_core::history::ModelUsage;
 
 use crate::ModelSortColumn;
 
-use super::{fmt_cost_full, fmt_tokens};
+use super::{fmt_cost_full, fmt_tokens, TableColumn};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ModelColumn {
@@ -29,8 +29,25 @@ impl ModelColumn {
         Self::Total,
         Self::Cost,
     ];
+}
 
-    pub(super) fn label(self) -> &'static str {
+impl TableColumn for ModelColumn {
+    type Row = ModelUsage;
+    type SortColumn = ModelSortColumn;
+
+    const ALL: &'static [Self] = &Self::ALL;
+    const LABEL_WIDTH: f32 = 120.;
+    const REMOVAL_ORDER: &'static [Self] = &[
+        Self::Turns,
+        Self::Messages,
+        Self::Reasoning,
+        Self::CacheWrite,
+        Self::Output,
+        Self::CacheRead,
+        Self::Input,
+    ];
+
+    fn label(self) -> &'static str {
         match self {
             Self::Input => "Input",
             Self::CacheRead => "Cache read",
@@ -44,7 +61,7 @@ impl ModelColumn {
         }
     }
 
-    pub(super) fn id(self) -> &'static str {
+    fn id(self) -> &'static str {
         match self {
             Self::Input => "input",
             Self::CacheRead => "cache-read",
@@ -58,7 +75,7 @@ impl ModelColumn {
         }
     }
 
-    pub(super) fn width(self) -> f32 {
+    fn width(self) -> f32 {
         match self {
             Self::Input | Self::Output => 72.,
             Self::CacheRead => 88.,
@@ -71,7 +88,7 @@ impl ModelColumn {
         }
     }
 
-    pub(super) fn sort_column(self) -> ModelSortColumn {
+    fn sort_column(self) -> ModelSortColumn {
         match self {
             Self::Input => ModelSortColumn::Input,
             Self::CacheRead => ModelSortColumn::CacheRead,
@@ -85,7 +102,7 @@ impl ModelColumn {
         }
     }
 
-    pub(super) fn value(self, model: &ModelUsage) -> String {
+    fn value(self, model: &ModelUsage) -> String {
         match self {
             Self::Input => fmt_tokens(model.input),
             Self::CacheRead => fmt_tokens(model.cache_read),
@@ -99,7 +116,7 @@ impl ModelColumn {
         }
     }
 
-    pub(super) fn emphasized(self) -> bool {
+    fn emphasized(self) -> bool {
         matches!(self, Self::Total | Self::Cost)
     }
 }

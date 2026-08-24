@@ -2,21 +2,21 @@ use gpui::{div, prelude::*};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::ModelUsage;
 
-use crate::{ModelSortColumn, Page, SortState, ToksApp};
+use crate::{ModelSortColumn, Page};
 
 use super::{
     model_columns_header, model_usage_row, section_meta, section_title, sort_model_usage,
-    TableLayout,
+    TableContext,
 };
 
 pub(super) fn model_breakdown_card(
     mut models: Vec<ModelUsage>,
     range: &'static str,
     page: Page,
-    sort: SortState<ModelSortColumn>,
-    layout: TableLayout,
-    cx: &mut gpui::Context<ToksApp>,
+    table: TableContext<'_, '_, ModelSortColumn>,
 ) -> gpui::Div {
+    let cx = table.cx();
+    let sort = table.sort();
     sort_model_usage(&mut models, sort);
     let mut card = v_flex()
         .p_4()
@@ -42,9 +42,9 @@ pub(super) fn model_breakdown_card(
         );
     }
 
-    card = card.child(model_columns_header(page, sort, layout, cx));
+    card = card.child(model_columns_header(page, table));
     for model in &models {
-        card = card.child(model_usage_row(model, page, layout, sort.column, cx));
+        card = card.child(model_usage_row(model, page, table));
     }
     card
 }

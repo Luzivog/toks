@@ -41,6 +41,7 @@ mod rotation;
 mod section;
 mod sidebar;
 mod summary;
+mod table_column;
 mod table_layout;
 mod theme;
 mod usage_chart;
@@ -70,7 +71,7 @@ use format::{
 use history_error::history_error_card;
 use history_freshness::history_freshness_text;
 use limit_issue::limit_issue_row;
-use limit_rows::account_limits_group;
+use limit_rows::{account_limits_group, AccountLimitsGroupContext};
 use limit_section::account_limits_section;
 use limit_section_error::account_error_rows;
 use limit_status::{limit_header_status, pending_limit_row};
@@ -93,8 +94,12 @@ use quota_row::split_limit_label;
 use quota_row::{quota_progress, quota_row};
 use section::{section_meta, section_title};
 use summary::{usage_summary_sidebar, UsageSummary};
-use table_layout::{TableLayout, PAGE_CONTENT_MAX_WIDTH};
-use theme::{accent_for_provider, claude_accent, codex_accent, gauge_color, opencode_accent};
+use table_column::{table_cell, table_sort_header, TableColumn};
+use table_layout::{TableContext, TableLayout, PAGE_CONTENT_MAX_WIDTH};
+use theme::{
+    accent_for_model_provider, accent_for_provider, claude_accent, codex_accent, gauge_color,
+    opencode_accent,
+};
 use usage_chart::{usage_chart_card, usage_chart_identity};
 use usage_columns::UsageColumn;
 use usage_metric_row::{usage_data_row, usage_metric_row};

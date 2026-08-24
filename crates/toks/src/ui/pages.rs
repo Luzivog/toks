@@ -7,7 +7,7 @@ use crate::{Page, ToksApp};
 use super::{
     account_limits_section, history_error_card, history_freshness_text, model_breakdown_card,
     overview_history_loading, page_accent, period_model_usage, usage_block, usage_chart_card,
-    usage_history_card, usage_page_loading, usage_period_label, TableLayout,
+    usage_history_card, usage_page_loading, usage_period_label, TableContext, TableLayout,
     PAGE_CONTENT_MAX_WIDTH,
 };
 
@@ -104,18 +104,14 @@ pub(super) fn usage_page(
                 models,
                 range,
                 app.page(),
-                app.model_tables.sort(app.page()),
-                layout,
-                cx,
+                TableContext::new(layout, app.model_tables.sort(app.page()), cx),
             ))
             .child(usage_history_card(
                 history,
                 period,
-                app.usage_tables.sort(period),
                 app.usage_tables.visible_limit(period),
                 history_freshness_text(&app.history_refresh, app.now),
-                layout,
-                cx,
+                TableContext::new(layout, app.usage_tables.sort(period), cx),
             ));
     } else if let Some(error) = &app.history_error {
         root = root.child(history_error_card(error, cx));

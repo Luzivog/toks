@@ -22,15 +22,40 @@ use super::{
     quota_row,
 };
 
-pub(super) fn account_limits_group(
-    s: &LimitSnapshot,
+pub(super) struct AccountLimitsGroupContext {
     now: DateTime<Utc>,
-    separated: bool,
     emails_hidden: bool,
     reorder_enabled: bool,
     removal_state: AccountRemovalState,
+}
+
+impl AccountLimitsGroupContext {
+    pub(super) fn new(
+        now: DateTime<Utc>,
+        emails_hidden: bool,
+        reorder_enabled: bool,
+        removal_state: AccountRemovalState,
+    ) -> Self {
+        Self {
+            now,
+            emails_hidden,
+            reorder_enabled,
+            removal_state,
+        }
+    }
+}
+
+pub(super) fn account_limits_group(
+    s: &LimitSnapshot,
+    group_context: AccountLimitsGroupContext,
     cx: &mut Context<ToksApp>,
 ) -> gpui::Div {
+    let AccountLimitsGroupContext {
+        now,
+        emails_hidden,
+        reorder_enabled,
+        removal_state,
+    } = group_context;
     let accent = accent_for_provider(s.provider);
     let selector = format!("account-group-{}-{}", s.provider.slug(), s.account.id);
     let header_selector = format!("account-header-{}-{}", s.provider.slug(), s.account.id);
@@ -71,11 +96,8 @@ pub(super) fn account_limits_group(
     let mut group = v_flex()
         .debug_selector(move || selector.clone())
         .w_full()
-        .when(separated, |group| {
-            group
-                .border_t_1()
-                .border_color(cx.theme().muted_foreground.opacity(0.22))
-        })
+        .border_t_1()
+        .border_color(cx.theme().muted_foreground.opacity(0.22))
         .child(
             h_flex()
                 .debug_selector(move || header_selector.clone())

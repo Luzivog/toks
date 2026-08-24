@@ -119,11 +119,14 @@ pub mod test_support {
         let account = toks_core::accounts::AccountId::new(account);
         let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
         for index in 0..count {
-            app.rotation.runtime.connection_opened(
-                &account,
-                &toks_core::rotation::ThreadId::new(format!("active-fixture-{index}")),
-                at,
-            );
+            app.rotation
+                .runtime
+                .connection_opened(
+                    &account,
+                    &toks_core::rotation::ThreadId::new(format!("active-fixture-{index}")),
+                    at,
+                )
+                .expect("fixture thread should not conflict with another account");
         }
     }
 

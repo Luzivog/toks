@@ -2,7 +2,7 @@ use toks_core::history::UsageBucket;
 
 use crate::UsageSortColumn;
 
-use super::{fmt_cost_full, fmt_cost_per_million, fmt_tokens};
+use super::{fmt_cost_full, fmt_cost_per_million, fmt_tokens, TableColumn};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum UsageColumn {
@@ -31,8 +31,26 @@ impl UsageColumn {
         Self::Total,
         Self::Cost,
     ];
+}
 
-    pub(super) fn label(self) -> &'static str {
+impl TableColumn for UsageColumn {
+    type Row = UsageBucket;
+    type SortColumn = UsageSortColumn;
+
+    const ALL: &'static [Self] = &Self::ALL;
+    const LABEL_WIDTH: f32 = 130.;
+    const REMOVAL_ORDER: &'static [Self] = &[
+        Self::Turns,
+        Self::Messages,
+        Self::Reasoning,
+        Self::CacheWrite,
+        Self::Output,
+        Self::CacheRead,
+        Self::Input,
+        Self::CostPerMillion,
+    ];
+
+    fn label(self) -> &'static str {
         match self {
             Self::Turns => "Turns",
             Self::Messages => "Messages",
@@ -47,7 +65,7 @@ impl UsageColumn {
         }
     }
 
-    pub(super) fn id(self) -> &'static str {
+    fn id(self) -> &'static str {
         match self {
             Self::Turns => "turns",
             Self::Messages => "messages",
@@ -62,7 +80,7 @@ impl UsageColumn {
         }
     }
 
-    pub(super) fn width(self) -> f32 {
+    fn width(self) -> f32 {
         match self {
             Self::Turns => 58.,
             Self::Messages => 72.,
@@ -73,7 +91,7 @@ impl UsageColumn {
         }
     }
 
-    pub(super) fn sort_column(self) -> UsageSortColumn {
+    fn sort_column(self) -> UsageSortColumn {
         match self {
             Self::Turns => UsageSortColumn::Turns,
             Self::Messages => UsageSortColumn::Messages,
@@ -88,7 +106,7 @@ impl UsageColumn {
         }
     }
 
-    pub(super) fn value(self, bucket: &UsageBucket) -> String {
+    fn value(self, bucket: &UsageBucket) -> String {
         match self {
             Self::Turns => fmt_tokens(bucket.turns),
             Self::Messages => fmt_tokens(bucket.messages),
@@ -103,14 +121,14 @@ impl UsageColumn {
         }
     }
 
-    pub(super) fn emphasized(self) -> bool {
+    fn emphasized(self) -> bool {
         matches!(self, Self::Total | Self::Cost)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::UsageColumn;
+    use super::{TableColumn, UsageColumn};
 
     #[test]
     fn usage_columns_keep_the_shared_display_order() {

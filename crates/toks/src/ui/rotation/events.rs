@@ -6,10 +6,11 @@ use crate::ToksApp;
 
 use super::{card, empty_row};
 
+mod render;
 mod text;
-use text::event_text;
 #[cfg(test)]
-use text::EventTone;
+use render::EventTone;
+use text::event_text;
 
 pub(super) fn events_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
     let events = app.rotation.runtime.events();

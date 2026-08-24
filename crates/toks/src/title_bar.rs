@@ -8,7 +8,7 @@ use crate::{
     ui,
     window::{icon_element, ToksIcon},
     window_controls::window_controls,
-    Page, ToksApp,
+    ToksApp,
 };
 
 pub(super) fn title_bar(
@@ -16,14 +16,9 @@ pub(super) fn title_bar(
     window: &Window,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
-    let (page_title, page_accent) = match app.page() {
-        Page::Overview => ("Overview", ui::page_accent(Page::Overview, cx)),
-        Page::Hourly => ("Hourly", ui::page_accent(Page::Hourly, cx)),
-        Page::Daily => ("Daily", ui::page_accent(Page::Daily, cx)),
-        Page::Monthly => ("Monthly", ui::page_accent(Page::Monthly, cx)),
-        Page::AllTime => ("All time", ui::page_accent(Page::AllTime, cx)),
-        Page::Rotation => ("Rotation", ui::page_accent(Page::Rotation, cx)),
-    };
+    let page = app.page();
+    let page_title = page.title();
+    let page_accent = ui::page_accent(page, cx);
     let sidebar_tooltip = if app.sidebar_open {
         "Hide sidebar"
     } else {

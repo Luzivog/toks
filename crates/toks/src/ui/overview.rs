@@ -3,17 +3,19 @@ use gpui::{div, prelude::*, App, Hsla};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::HistorySnapshot;
 
+use crate::{ToksApp, UsageSortColumn};
+
 use super::{
     claude_accent, codex_accent, current_usage_date, opencode_accent, overview_metrics_card,
     provider_point, provider_usage_chart, section_title, source_bucket_values, summary_chart_row,
-    usage_summary_sidebar, ProviderPoint, TableLayout, UsageSummary,
+    usage_summary_sidebar, ProviderPoint, TableContext, TableLayout, UsageSummary,
 };
 
 pub(super) fn usage_block(
     history: &HistorySnapshot,
     refresh_label: Option<String>,
     layout: TableLayout,
-    cx: &App,
+    cx: &gpui::Context<'_, ToksApp>,
 ) -> gpui::Div {
     last_thirty_days_card(history, refresh_label, layout, cx)
 }
@@ -22,7 +24,7 @@ fn last_thirty_days_card(
     history: &HistorySnapshot,
     refresh_label: Option<String>,
     layout: TableLayout,
-    cx: &App,
+    cx: &gpui::Context<'_, ToksApp>,
 ) -> gpui::Div {
     let data = overview_usage_points(history);
     let summary = usage_summary_sidebar(UsageSummary::from_points(&data), "EST. API COST", cx);
@@ -64,7 +66,10 @@ fn last_thirty_days_card(
             summary,
             provider_usage_chart(data, "overview-usage", cx),
         ))
-        .child(overview_metrics_card(history, layout, cx))
+        .child(overview_metrics_card(
+            history,
+            TableContext::<UsageSortColumn>::unsorted(layout, cx),
+        ))
 }
 
 pub(super) fn overview_usage_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {
