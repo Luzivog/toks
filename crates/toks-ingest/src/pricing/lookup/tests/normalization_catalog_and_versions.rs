@@ -1,3 +1,4 @@
+use super::super::normalize::normalize_model_name;
 use super::super::*;
 use super::{create_lookup, mock_litellm, mock_openrouter};
 

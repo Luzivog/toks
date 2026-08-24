@@ -10,7 +10,6 @@ crates/toks-ingest/src/opencode_model_name.rs	276	0	0
 crates/toks-ingest/src/paths.rs	207	0	0
 crates/toks-ingest/src/pricing/custom.rs	399	0	0
 crates/toks-ingest/src/pricing/litellm.rs	332	0	0
-crates/toks-ingest/src/pricing/lookup.rs	2613	0	0
 crates/toks-ingest/src/pricing/mod.rs	532	0	0
 crates/toks-ingest/src/pricing/openrouter.rs	347	0	0
 crates/toks-ingest/src/provider_identity.rs	315	0	0

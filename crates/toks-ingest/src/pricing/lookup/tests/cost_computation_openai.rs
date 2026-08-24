@@ -1,3 +1,7 @@
+use super::super::cost::{
+    compute_cost_for_lookup, has_complete_openai_272k_pricing, should_prefer_openai_tiered_litellm,
+    uses_openai_full_request_272k_pricing,
+};
 use super::super::*;
 use super::create_lookup;
 

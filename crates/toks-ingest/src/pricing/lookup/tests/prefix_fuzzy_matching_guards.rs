@@ -1,3 +1,4 @@
+use super::super::prefix_fuzzy::is_fuzzy_eligible;
 use super::super::*;
 use super::create_lookup;
 

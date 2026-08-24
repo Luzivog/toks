@@ -1,3 +1,4 @@
+use super::select::prefers_model_part_key;
 use super::*;
 
 mod best_match_selection_endpoint_aliases;
