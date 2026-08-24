@@ -8,12 +8,12 @@
 //! Pi descendants reuse this record layout verbatim, so [`parse_pi_format_file`]
 //! is shared: see `sessions::senpi` for Senpi (OmO Native).
 
-use super::utils::file_modified_timestamp_ms;
+use super::utils::{file_modified_timestamp_ms, lossy_lines};
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::provider_identity::inferred_provider_from_model;
 use crate::TokenBreakdown;
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 /// Pi session header (first line of JSONL)
@@ -240,12 +240,7 @@ fn parse_pi_format_file_inner(
     let mut workspace_label: Option<String> = None;
     let mut agent: Option<String> = None;
     let mut is_rlm_subagent = false;
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

@@ -13,14 +13,14 @@
 //! estimated from context_usage_percentage * context_window (input) and
 //! response_size / 4 (output).
 
-use super::utils::{back_anchor_timestamp, file_modified_timestamp_ms};
+use super::utils::{back_anchor_timestamp, file_modified_timestamp_ms, lossy_lines};
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::TokenBreakdown;
 use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use tracing::warn;
 
@@ -170,11 +170,7 @@ pub fn parse_kiro_file(path: &Path) -> Vec<UnifiedMessage> {
         let reader = BufReader::new(jsonl_file);
         let mut pending_prompt: Option<(usize, Option<i64>)> = None;
 
-        for line in reader.lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(_) => continue,
-            };
+        for line in lossy_lines(reader) {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
@@ -482,11 +478,7 @@ fn parse_kiro_ide_session_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut flat_model_id: Option<String> = None;
     let mut flat_assistant_turns: i32 = 0;
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

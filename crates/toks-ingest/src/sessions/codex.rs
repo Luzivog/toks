@@ -18,7 +18,7 @@ mod schema;
 
 use super::accounting_identity::{codex_fork_replay_alias, CodexIdentityTracker};
 use super::utils::{
-    extract_i64, extract_string, file_modified_timestamp_ms, parse_timestamp_value,
+    extract_i64, extract_string, file_modified_timestamp_ms, lossy_lines, parse_timestamp_value,
 };
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::provider_identity::inferred_provider_from_model;
@@ -223,7 +223,7 @@ fn looks_like_explicit_workspace_path(path: &str) -> bool {
 }
 
 fn parse_codex_reader<R: BufRead>(
-    mut reader: R,
+    reader: R,
     session_id: &str,
     fallback_timestamp: i64,
     start_offset: u64,
@@ -232,24 +232,13 @@ fn parse_codex_reader<R: BufRead>(
     let mut messages = Vec::with_capacity(64);
     let mut fallback_timestamp_indices = Vec::new();
     let mut buffer = Vec::with_capacity(4096);
-    let mut line = String::with_capacity(4096);
     let mut consumed_offset = start_offset;
     let mut parse_succeeded = true;
     let mut pending_model_messages = Vec::new();
     let mut unresolved_model_events = false;
 
-    loop {
-        line.clear();
-        let bytes_read = match reader.read_line(&mut line) {
-            Ok(0) => break,
-            Ok(bytes_read) => bytes_read,
-            Err(_) => {
-                parse_succeeded = false;
-                break;
-            }
-        };
-        consumed_offset += bytes_read as u64;
-
+    let mut reader = reader.take(u64::MAX);
+    for line in lossy_lines(&mut reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -692,6 +681,11 @@ fn parse_codex_reader<R: BufRead>(
             parse_succeeded = false;
             continue;
         }
+    }
+
+    consumed_offset += u64::MAX - reader.limit();
+    if reader.fill_buf().is_err() {
+        parse_succeeded = false;
     }
 
     flush_pending_model_messages_as_unknown(
@@ -1295,14 +1289,14 @@ mod tests {
 
     struct FailAfterFirstLine {
         inner: Cursor<Vec<u8>>,
-        fail_next_read: bool,
+        first_line_len: u64,
     }
 
     impl FailAfterFirstLine {
         fn new(contents: &str) -> Self {
             Self {
                 inner: Cursor::new(contents.as_bytes().to_vec()),
-                fail_next_read: false,
+                first_line_len: contents.find('\n').map_or(0, |index| index as u64 + 1),
             }
         }
     }
@@ -1315,25 +1309,17 @@ mod tests {
 
     impl BufRead for FailAfterFirstLine {
         fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+            if self.inner.position() >= self.first_line_len {
+                return Err(Error::new(
+                    ErrorKind::InvalidData,
+                    "synthetic line read failure",
+                ));
+            }
             self.inner.fill_buf()
         }
 
         fn consume(&mut self, amt: usize) {
             self.inner.consume(amt);
-        }
-
-        fn read_line(&mut self, buf: &mut String) -> std::io::Result<usize> {
-            if self.fail_next_read {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    "synthetic line decode failure",
-                ));
-            }
-            let bytes_read = self.inner.read_line(buf)?;
-            if bytes_read > 0 {
-                self.fail_next_read = true;
-            }
-            Ok(bytes_read)
         }
     }
 

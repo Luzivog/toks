@@ -8,12 +8,12 @@
 //! ~/.kimi-code/sessions/[WORKSPACE]/[SESSION]/agents/[AGENT]/wire.jsonl
 //!   Token data comes from usage.record lines.
 
-use super::utils::file_modified_timestamp_ms;
+use super::utils::{file_modified_timestamp_ms, lossy_lines};
 use super::UnifiedMessage;
 use crate::TokenBreakdown;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 /// Top-level wire.jsonl line: either metadata or a timestamped message
@@ -186,12 +186,7 @@ pub fn parse_kimi_code_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut messages: Vec<UnifiedMessage> = Vec::new();
     let mut latest_request_model: Option<String> = None;
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -285,12 +280,7 @@ pub fn parse_kimi_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut timestamp_sources: Vec<TimestampSource> = Vec::new();
     let mut keyed_indices: HashMap<String, usize> = HashMap::new();
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

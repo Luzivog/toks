@@ -20,12 +20,12 @@
 //! session, timestamp, model and token breakdown keeps structurally identical
 //! replays (depth-1 vs depth-2 files) collapsed to one message.
 
-use super::utils::file_modified_timestamp_ms;
+use super::utils::{file_modified_timestamp_ms, lossy_lines};
 use super::{normalize_workspace_key, workspace_label_from_key, CostSource, UnifiedMessage};
 use crate::provider_identity::inferred_provider_from_model;
 use crate::TokenBreakdown;
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 /// A single JSONL entry. The `session` header reuses `id`/`timestamp`/`cwd`;
@@ -128,12 +128,7 @@ pub fn parse_gjc_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut workspace_key: Option<String> = None;
     let mut workspace_label: Option<String> = None;
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

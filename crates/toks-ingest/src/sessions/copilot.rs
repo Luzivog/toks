@@ -4,13 +4,13 @@
 //! Copilot Chat monitoring. Chat spans and inference log records are preferred;
 //! aggregate agent records are only used as a fallback to avoid double counting.
 
-use super::utils::file_modified_timestamp_ms;
+use super::utils::{file_modified_timestamp_ms, lossy_lines};
 use super::UnifiedMessage;
 use crate::provider_identity::inferred_provider_from_model;
 use crate::TokenBreakdown;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 pub fn parse_copilot_file(path: &Path) -> Vec<UnifiedMessage> {
@@ -21,12 +21,7 @@ pub fn parse_copilot_file(path: &Path) -> Vec<UnifiedMessage> {
 
     let fallback_timestamp = file_modified_timestamp_ms(path);
     let mut records = Vec::new();
-    for line in BufReader::new(file).lines() {
-        let line = match line {
-            Ok(line) => line,
-            Err(_) => continue,
-        };
-
+    for line in lossy_lines(BufReader::new(file)) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

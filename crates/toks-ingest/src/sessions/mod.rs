@@ -16,6 +16,8 @@ pub mod codebuddy;
 pub mod codebuff;
 pub mod codex;
 pub mod commandcode;
+#[cfg(test)]
+mod commandcode_tests;
 pub mod copilot;
 pub mod copilot_desktop;
 pub mod copilot_vscode;
@@ -29,6 +31,8 @@ pub mod gjc;
 pub mod goose;
 pub mod grok;
 pub mod hermes;
+#[cfg(test)]
+mod invalid_utf8_tests;
 pub mod jcode;
 pub mod junie;
 pub mod kilo;

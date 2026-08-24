@@ -1,11 +1,12 @@
 //! Shared parsers for Tencent CodeBuddy / WorkBuddy session formats.
 
+use super::utils::lossy_lines;
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::{provider_identity, TokenBreakdown};
 use chrono::TimeZone;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 const DEFAULT_PROVIDER: &str = "tencent";
@@ -201,10 +202,7 @@ pub(crate) fn parse_jsonl_file(
     let mut keyed_indices: HashMap<String, usize> = HashMap::new();
     let mut messages: Vec<UnifiedMessage> = Vec::new();
 
-    for line in BufReader::new(file).lines() {
-        let Ok(line) = line else {
-            continue;
-        };
+    for line in lossy_lines(BufReader::new(file)) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -326,11 +324,7 @@ pub(crate) fn parse_extension_log_file(
     let mut models_by_agent: HashMap<String, String> = HashMap::new();
     let mut messages = Vec::new();
 
-    for line in BufReader::new(file).lines() {
-        let Ok(line) = line else {
-            continue;
-        };
-
+    for line in lossy_lines(BufReader::new(file)) {
         if line.contains("[CraftInvokableAgent]") && line.contains("Model prepared:") {
             if let Some((agent_id, model_id)) = parse_model_prepared_line(&line) {
                 models_by_agent.insert(agent_id, model_id);

@@ -8,7 +8,7 @@ use super::UnifiedMessage;
 use crate::{pricing, provider_identity, TokenBreakdown};
 use serde_json::Value;
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 pub fn parse_opencodereview_file(path: &Path) -> Vec<UnifiedMessage> {
@@ -24,9 +24,7 @@ pub fn parse_opencodereview_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut messages = Vec::new();
     let mut seen = HashSet::new();
 
-    for (line_index, line) in BufReader::new(file).lines().enumerate() {
-        let Ok(line) = line else { continue };
-
+    for (line_index, line) in super::utils::lossy_lines(BufReader::new(file)).enumerate() {
         if !line.contains("llm_response") && !line.contains("session_start") {
             continue;
         }

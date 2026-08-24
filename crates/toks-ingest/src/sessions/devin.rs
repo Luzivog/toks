@@ -9,7 +9,7 @@ use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::{provider_identity, TokenBreakdown};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 // ---------------------------------------------------------------------------
@@ -436,8 +436,7 @@ pub fn parse_devin_desktop_ndjson_with_lookup(
     let mut acp_usage: Option<DevinDesktopAcpUsage> = None;
     let mut title: Option<String> = None;
 
-    for (line_index, line) in BufReader::new(file).lines().enumerate() {
-        let Ok(line) = line else { continue };
+    for (line_index, line) in super::utils::lossy_lines(BufReader::new(file)).enumerate() {
         if line.is_empty() {
             continue;
         }

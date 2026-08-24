@@ -4,12 +4,12 @@
 //! `<REASONIX_HOME>/stats/YYYY-MM-DD.jsonl`. Session transcript JSONL is not
 //! scanned: it has no authoritative usage counters and would overlap stats.
 
-use super::utils::parse_timestamp_value;
+use super::utils::{lossy_lines, parse_timestamp_value};
 use super::UnifiedMessage;
 use crate::provider_identity::{canonical_provider, inferred_provider_from_model};
 use crate::TokenBreakdown;
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 #[derive(Debug, Deserialize)]
@@ -55,11 +55,9 @@ pub fn parse_reasonix_file(path: &Path) -> Vec<UnifiedMessage> {
         return Vec::new();
     };
 
-    BufReader::new(file)
-        .lines()
+    lossy_lines(BufReader::new(file))
         .enumerate()
         .filter_map(|(line_index, line)| {
-            let line = line.ok()?;
             let record: ReasonixStat = serde_json::from_str(line.trim()).ok()?;
             if record.turn
                 || record.model.trim().is_empty()

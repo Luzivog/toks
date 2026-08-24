@@ -12,12 +12,12 @@ use super::pi::{
     parse_pi_format_rlm_file_with_observer, PiFormatObserver, PiSessionEntry, PiSessionHeader,
     PiUsage,
 };
-use super::utils::parse_timestamp_str;
+use super::utils::{lossy_lines, parse_timestamp_str};
 use super::UnifiedMessage;
 use crate::TokenBreakdown;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
@@ -442,7 +442,7 @@ pub(crate) fn analyze_prime_agent_accounting(
     let mut accounting = PrimeAccountingBuilder::new(path);
     let mut found_header = false;
     let mut message_index = 0usize;
-    for line in BufReader::new(file).lines().map_while(Result::ok) {
+    for line in lossy_lines(BufReader::new(file)) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

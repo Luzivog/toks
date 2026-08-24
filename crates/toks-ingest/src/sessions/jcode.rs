@@ -346,12 +346,9 @@ pub fn parse_jcode_file(path: &Path) -> Vec<UnifiedMessage> {
 
     let journal_path = jcode_journal_path(path);
     if let Ok(file) = std::fs::File::open(&journal_path) {
-        use std::io::{BufRead, BufReader};
+        use std::io::BufReader;
         let journal_fallback_timestamp = file_modified_timestamp_ms(&journal_path);
-        for (line_index, line) in BufReader::new(file).lines().enumerate() {
-            let Ok(line) = line else {
-                continue;
-            };
+        for (line_index, line) in super::utils::lossy_lines(BufReader::new(file)).enumerate() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;

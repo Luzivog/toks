@@ -2,13 +2,13 @@
 //!
 //! Junie stores local sessions under `~/.junie/sessions/<session-id>/events.jsonl`.
 
-use super::utils::{back_anchor_timestamp, file_modified_timestamp_ms};
+use super::utils::{back_anchor_timestamp, file_modified_timestamp_ms, lossy_lines};
 use super::UnifiedMessage;
 use crate::{pricing, provider_identity, TokenBreakdown};
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
 use serde_json::Value;
 use std::collections::HashSet;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 const USAGE_EVENT_KIND: &str = "LlmResponseMetadataEvent";
@@ -32,10 +32,7 @@ pub fn parse_junie_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut messages = Vec::new();
     let mut seen = HashSet::new();
 
-    for line in BufReader::new(file).lines() {
-        let Ok(line) = line else {
-            continue;
-        };
+    for line in lossy_lines(BufReader::new(file)) {
         // Cheap pre-filter only: Junie state snapshots can be very large and do
         // not carry the usage rows Toks needs, so skip lines that mention
         // neither relevant kind before paying for JSON parsing. The authoritative

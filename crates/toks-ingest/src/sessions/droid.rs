@@ -2,11 +2,11 @@
 //!
 //! Parses JSON files from ~/.factory/sessions/
 
-use super::utils::{file_modified_timestamp_ms, read_file_or_none};
+use super::utils::{file_modified_timestamp_ms, lossy_lines, read_file_or_none};
 use super::UnifiedMessage;
 use crate::{provider_identity, TokenBreakdown};
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 /// Droid settings.json structure
@@ -113,8 +113,7 @@ fn extract_model_from_jsonl(jsonl_path: &Path) -> Option<String> {
 
     // Scan more lines for parity with TypeScript which reads entire file
     // Cap at 500 lines to avoid performance issues with very large files
-    for line in reader.lines().take(500) {
-        let line = line.ok()?;
+    for line in lossy_lines(reader).take(500) {
         // Look for Model: pattern in system-reminder
         if let Some(pos) = line.find("Model:") {
             let after_model = &line[pos + 6..];

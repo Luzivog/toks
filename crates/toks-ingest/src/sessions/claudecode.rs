@@ -7,7 +7,7 @@ mod identity_tests;
 mod processed_hashes;
 
 use super::utils::{
-    extract_i64, extract_string, file_modified_timestamp_ms, parse_timestamp_value,
+    extract_i64, extract_string, file_modified_timestamp_ms, lossy_lines, parse_timestamp_value,
     read_file_or_none,
 };
 use super::{
@@ -299,11 +299,7 @@ fn build_parent_subagent_type_lookup(parent_path: &Path) -> Option<HashMap<Strin
     // tool_use_id → agentId (from tool_result text)
     let mut agent_id_links: HashMap<String, String> = HashMap::new();
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

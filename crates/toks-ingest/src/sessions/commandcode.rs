@@ -36,11 +36,11 @@
 //! is not stored per message, so it is read from `~/.commandcode/config.json`
 //! (the configured agent model), falling back to "unknown".
 
-use super::utils::file_modified_timestamp_ms;
+use super::utils::{file_modified_timestamp_ms, lossy_lines};
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::TokenBreakdown;
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 const CLIENT_ID: &str = "commandcode";
@@ -110,11 +110,7 @@ pub fn parse_commandcode_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut assistant_index = 0usize;
 
     let reader = BufReader::new(file);
-    for line in reader.lines() {
-        let line = match line {
-            Ok(line) => line,
-            Err(_) => continue,
-        };
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -206,6 +202,7 @@ pub fn parse_commandcode_file(path: &Path) -> Vec<UnifiedMessage> {
 fn content_chars(content: &serde_json::Value) -> usize {
     match content {
         serde_json::Value::Null => 0,
+        serde_json::Value::String(s) if s.is_empty() => 0,
         serde_json::Value::Array(items) if items.is_empty() => 0,
         serde_json::Value::Object(map) if map.is_empty() => 0,
         _ => serde_json::to_string(content)

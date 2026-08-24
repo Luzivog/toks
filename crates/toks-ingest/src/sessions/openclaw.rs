@@ -3,12 +3,12 @@
 //! Parses OpenClaw transcript JSONL files from agent directories.
 //! Supports legacy sessions.json index parsing for compatibility.
 
-use super::utils::read_file_or_none;
+use super::utils::{lossy_lines, read_file_or_none};
 use super::UnifiedMessage;
 use crate::TokenBreakdown;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
@@ -154,12 +154,7 @@ fn parse_openclaw_session(session_path: &Path, session_id: &str) -> Vec<UnifiedM
     let mut current_provider: Option<String> = None;
     let mut buffer = Vec::with_capacity(4096);
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

@@ -13,12 +13,14 @@
 //! counts are used. When absent, tokens are estimated at ~4 chars/token,
 //! consistent with Toks' other estimated sources (see CommandCode, Kiro).
 
-use super::utils::{back_anchor_timestamp, file_modified_timestamp_ms, open_readonly_sqlite};
+use super::utils::{
+    back_anchor_timestamp, file_modified_timestamp_ms, lossy_lines, open_readonly_sqlite,
+};
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::TokenBreakdown;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 const CLIENT_ID: &str = "zcode";
@@ -120,11 +122,7 @@ pub fn parse_zcode_file(path: &Path) -> Vec<UnifiedMessage> {
     let mut assistant_index = 0usize;
 
     let reader = BufReader::new(file);
-    for line in reader.lines() {
-        let line = match line {
-            Ok(line) => line,
-            Err(_) => continue,
-        };
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

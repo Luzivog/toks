@@ -3,11 +3,11 @@
 //! Parses JSONL files from ~/.qwen/projects/{projectPath}/chats/*.jsonl
 //! Token data comes from assistant messages with usageMetadata field.
 
-use super::utils::{file_modified_timestamp_ms, parse_timestamp_str};
+use super::utils::{file_modified_timestamp_ms, lossy_lines, parse_timestamp_str};
 use super::{normalize_workspace_key, workspace_label_from_key, UnifiedMessage};
 use crate::TokenBreakdown;
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::Path;
 
 /// Qwen CLI JSONL line structure
@@ -88,12 +88,7 @@ pub fn parse_qwen_file(path: &Path) -> Vec<UnifiedMessage> {
     // stable position of the emitted message within its session.
     let mut message_index: usize = 0;
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
-
+    for line in lossy_lines(reader) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

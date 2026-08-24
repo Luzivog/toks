@@ -966,7 +966,8 @@ pub(crate) fn parser_version(client: ClientId) -> u32 {
         // v7->v8: compact the occurrence tracker wire shape. Existing v7
         // bincode shards are stale because bincode cannot migrate an untagged
         // map representation safely; JSON accounting checkpoints migrate.
-        ClientId::Codex => 8,
+        // v8->v9: session scans now recover after invalid UTF-8.
+        ClientId::Codex => 9,
         // v4->v5: jcode's assistant-message timestamp is now back-calculated
         // to the turn start (timestamp - tool_duration_ms) instead of using
         // the recorded (end-anchored) timestamp directly. Follow-up to #890.
@@ -977,25 +978,29 @@ pub(crate) fn parser_version(client: ClientId) -> u32 {
         // whole session or its journal line), and a journal replay of an
         // already-seen user message id no longer re-arms pending_turn_start
         // and mints a spurious turn.
-        ClientId::Jcode => 7,
+        // v7->v8: journal scans now recover after invalid UTF-8.
+        ClientId::Jcode => 8,
         // v5->v6: merge same-dedup-key Copilot spans before emitting messages.
         // v6->v7: all-zero trace/span ids (the W3C sentinel for "no recording
         // span context") are now treated as absent instead of as a real,
         // shared identity, and a valid span_id alone (no trace_id) is now a
         // stable dedup key instead of falling through to the line-index key.
         // v7->v8: stabilize duplicate agent attribution and partial timing boundaries.
-        ClientId::Copilot => 8,
-        // Pi subagent sessions now derive agent attribution from session_info
-        // names; version-1 caches carry those messages without agent metadata.
-        ClientId::Pi => 2,
+        // v8->v9: scans now recover useful records containing invalid UTF-8.
+        ClientId::Copilot => 9,
+        // Pi subagent sessions derive agent attribution from session_info names;
+        // version-1 caches carry those messages without agent metadata. Kimchi
+        // v2 added namespaced dedup keys. Their shared reader now decodes
+        // invalid UTF-8 lossily, so both advance to v3.
+        ClientId::Pi | ClientId::Kimchi => 3,
         // Devin CLI v1 could stop at a malformed chat_message. v2->v3:
         // message timestamp is now back-calculated to the turn start
         // (created_at - total_time_ms) instead of the recorded (end-anchored)
         // created_at. Follow-up to #890.
         ClientId::DevinCli => 3,
         // Desktop v1 parsed a non-ACP shape and did not track its CLI title
-        // lookup; its timestamp handling is unaffected by the #890 follow-up.
-        ClientId::DevinDesktop => 2,
+        // lookup. v2->v3: scans now recover after invalid UTF-8.
+        ClientId::DevinDesktop => 3,
         // WARNING — bumping this discards data that is not recoverable by
         // re-parsing. Claude Code rewrites a transcript in place on
         // resume/compact, and since #994 a Claude entry deliberately carries
@@ -1003,16 +1008,17 @@ pub(crate) fn parser_version(client: ClientId) -> u32 {
         // `HistoryRetention::RetainObserved`). A bump drops every entry, and
         // the cold rebuild that follows sees only the compacted file — so it
         // silently retires those turns from every user's totals and
-        // reintroduces the exact drift #994 reported. Bumping for a real
-        // parser change is still correct; do it knowing the cost, and prefer
-        // a fix that does not need one.
+        // reintroduces the exact drift #994 reported. The lossy parent-agent
+        // lookup changes attribution, not token totals, so keep v2 and retain
+        // observed turns; fresh or changed sources receive the new attribution.
         ClientId::Claude => 2,
         // Junie's usage-event timestamp is now back-calculated to the call
         // start (timestampMs - usage.time) instead of the recorded
         // (end-anchored) timestampMs. Follow-up to #890. v2->v3: preserve
         // provider-reported cost provenance, including explicit zeroes, so
         // strict submission does not reject valid cached unknown-model usage.
-        ClientId::Junie => 3,
+        // v3->v4: scans now recover after invalid UTF-8.
+        ClientId::Junie => 4,
         // zcode's model_usage timestamp now prefers `started_at` over
         // `completed_at`. Follow-up to #890. v2->v3: rows with a NULL
         // `started_at` now back-calculate `completed_at - duration_ms`
@@ -1020,45 +1026,34 @@ pub(crate) fn parser_version(client: ClientId) -> u32 {
         // `is_turn_start` is now assigned to the earliest-STARTED request
         // per turn instead of the first one seen in completed_at order.
         // Second-round follow-up to #890.
-        ClientId::Zcode => 3,
+        // v3->v4: scans now recover after invalid UTF-8.
+        ClientId::Zcode => 4,
         // opencodereview's llm_response timestamp is now back-calculated to
         // the call start (timestamp - duration_ms) instead of the recorded
         // (end-anchored) timestamp. Follow-up to #890. v2->v3: records without
         // their own `timestamp` now carry a line-number discriminator in the
         // dedup key, so distinct calls sharing a model and token counts no
-        // longer collapse into one under the shared file-mtime fallback.
-        // Both bumps were precautionary rather than corrective: until the
-        // submit path learned to parse opencodereview, the only reader was
-        // parse_local_clients, which does not go through this cache, so no
-        // entry was ever written under this namespace. 3 is therefore the
-        // first version to describe real cache entries — it is not carrying
-        // an invalidation debt forward, and a further bump would have had
-        // nothing to invalidate.
-        ClientId::OpenCodeReview => 3,
+        // longer collapse under the shared file-mtime fallback. v3->v4:
+        // scans now recover after invalid UTF-8.
+        ClientId::OpenCodeReview => 4,
         // Kiro's structured messages.jsonl turns now back-calculate the
         // start anchor from `turn_end - elapsedTime` when the user prompt's
         // own timestamp is missing/unparseable, instead of falling through
         // to the (end-anchored) turn_end timestamp. Second-round follow-up
-        // to #890.
-        ClientId::Kiro => 2,
+        // to #890. v2->v3: message scans recover after invalid UTF-8.
+        ClientId::Kiro => 3,
         // Kimi v2 checks token buckets without an overflowing sum. v2->v3:
         // symbolic usage-record models now resolve from the latest llm.request.
         // v3->v4: non-positive wire timestamps (kimi-cli `timestamp`,
         // kimi-code `time`) now fall back to the file mtime instead of
-        // anchoring the message in a pre-epoch bucket.
-        ClientId::Kimi => 4,
+        // anchoring the message in a pre-epoch bucket. v4->v5 recovers invalid UTF-8.
+        ClientId::Kimi => 5,
         // v1->v2: standalone Cline messages subtract cache buckets from gross
         // input tokens, reject non-finite costs, and preserve zero-cost reports.
         // v2->v3: content-aware Cline CLI turn-start classification now
         // recognizes user tool-result records as continuations instead of
         // beginning a new turn, so cached turns must be reparsed.
         ClientId::Cline => 3,
-        // v1->v2: Kimchi's Pi-compatible messages now carry stable namespaced
-        // deduplication keys.
-        ClientId::Kimchi => 2,
-        // Initial Reasonix implementation. The fingerprint samples the
-        // append-only stats JSONL source so appended records are reparsed.
-        ClientId::Reasonix => 1,
         // v1->v2: per-model token attribution now comes from
         // session_model_usage instead of crediting the whole session to
         // sessions.model, and dedup keys are namespaced per (session, model).
@@ -1082,6 +1077,19 @@ pub(crate) fn parser_version(client: ClientId) -> u32 {
         // v2->v3: duplicate merging now upgrades the retained row when a later
         // copy carries an explicit cost, including zero.
         ClientId::MiMoCode => 3,
+        // v1->v2: file-backed line readers recover after invalid UTF-8.
+        // Reasonix v1 introduced sampled append-only fingerprints; CommandCode
+        // also treats empty string content as zero tokens.
+        ClientId::Droid
+        | ClientId::OpenClaw
+        | ClientId::Qwen
+        | ClientId::Gjc
+        | ClientId::CommandCode
+        | ClientId::CodeBuddy
+        | ClientId::WorkBuddy
+        | ClientId::Senpi
+        | ClientId::Reasonix
+        | ClientId::PrimeAgent => 2,
         _ => 1,
     }
 }
@@ -2548,20 +2556,20 @@ mod tests {
     }
 
     #[test]
-    fn test_devin_parser_versions_invalidate_v1_entries() {
+    fn test_devin_parser_versions_invalidate_stale_entries() {
         assert_eq!(parser_version(ClientId::DevinCli), 3);
-        assert_eq!(parser_version(ClientId::DevinDesktop), 2);
+        assert_eq!(parser_version(ClientId::DevinDesktop), 3);
     }
 
     #[test]
-    fn test_codex_compact_identity_parser_version_invalidates_v7_entries() {
-        assert_eq!(parser_version(ClientId::Codex), 8);
+    fn test_codex_version_bumps_without_retiring_claude_history() {
+        assert_eq!(parser_version(ClientId::Codex), 9);
         assert_eq!(parser_version(ClientId::Claude), 2);
     }
 
     #[test]
-    fn test_copilot_duplicate_metadata_parser_version_invalidates_v7_entries() {
-        assert_eq!(parser_version(ClientId::Copilot), 8);
+    fn test_copilot_parser_version_invalidates_stale_entries() {
+        assert_eq!(parser_version(ClientId::Copilot), 9);
     }
 
     #[test]
@@ -2578,17 +2586,17 @@ mod tests {
         // end-anchored when the prompt timestamp was missing. Both bump
         // again here so those stale (start-anchored-but-still-wrong) v2/v1
         // cache entries are also invalidated.
-        assert_eq!(parser_version(ClientId::Junie), 3);
-        assert_eq!(parser_version(ClientId::Jcode), 7);
+        assert_eq!(parser_version(ClientId::Junie), 4);
+        assert_eq!(parser_version(ClientId::Jcode), 8);
         assert_eq!(parser_version(ClientId::DevinCli), 3);
-        assert_eq!(parser_version(ClientId::Zcode), 3);
-        assert_eq!(parser_version(ClientId::OpenCodeReview), 3);
-        assert_eq!(parser_version(ClientId::Kiro), 2);
+        assert_eq!(parser_version(ClientId::Zcode), 4);
+        assert_eq!(parser_version(ClientId::OpenCodeReview), 4);
+        assert_eq!(parser_version(ClientId::Kiro), 3);
     }
 
     #[test]
-    fn test_kimi_parser_version_invalidates_v3_entries() {
-        assert_eq!(parser_version(ClientId::Kimi), 4);
+    fn test_kimi_parser_version_invalidates_stale_entries() {
+        assert_eq!(parser_version(ClientId::Kimi), 5);
     }
 
     #[test]
@@ -2611,7 +2619,7 @@ mod tests {
 
     #[test]
     fn test_junie_parser_version_invalidates_rows_without_cost_provenance() {
-        assert_eq!(parser_version(ClientId::Junie), 3);
+        assert_eq!(parser_version(ClientId::Junie), 4);
     }
 
     #[test]
