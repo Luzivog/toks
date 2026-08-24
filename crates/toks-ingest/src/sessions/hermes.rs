@@ -4,6 +4,7 @@
 //! - `~/.hermes/state.db`
 //! - `$HERMES_HOME/state.db`
 
+use super::utils::timestamp_secs_to_ms;
 use super::UnifiedMessage;
 use crate::{provider_identity, TokenBreakdown};
 use rusqlite::Connection;
@@ -16,14 +17,6 @@ const HERMES_AGENT_NAME: &str = "Hermes Agent";
 /// Stands in for a NULL `billing_provider` inside a per-model dedup key. Angle
 /// brackets keep it out of the slug space real provider ids live in.
 const NULL_PROVIDER_KEY: &str = "<null>";
-
-fn timestamp_secs_to_ms(timestamp: f64) -> i64 {
-    if timestamp > 1e12 {
-        timestamp as i64
-    } else {
-        (timestamp * 1000.0) as i64
-    }
-}
 
 fn resolved_provider(billing_provider: Option<String>, model_id: &str) -> String {
     billing_provider

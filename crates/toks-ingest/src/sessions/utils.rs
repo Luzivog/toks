@@ -1,5 +1,6 @@
 //! Shared parsing helpers for session logs.
 
+use crate::provider_identity;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 use std::io::BufRead;
@@ -75,6 +76,24 @@ pub(crate) fn extract_i64(value: Option<&Value>) -> Option<i64> {
     })
 }
 
+pub(crate) fn extract_f64(value: Option<&Value>) -> Option<f64> {
+    value.and_then(|value| {
+        value
+            .as_f64()
+            .or_else(|| value.as_i64().map(|value| value as f64))
+            .or_else(|| value.as_u64().map(|value| value as f64))
+            .or_else(|| value.as_str().and_then(|value| value.parse::<f64>().ok()))
+    })
+}
+
+pub(crate) fn estimate_tokens(chars: usize) -> i64 {
+    chars.div_ceil(4) as i64
+}
+
+pub(crate) fn provider_from_model_or(model: &str, fallback: &'static str) -> &'static str {
+    provider_identity::inferred_provider_from_model(model).unwrap_or(fallback)
+}
+
 pub(crate) fn extract_string(value: Option<&Value>) -> Option<String> {
     value.and_then(|val| val.as_str().map(|s| s.to_string()))
 }
@@ -135,6 +154,24 @@ pub(crate) fn parse_timestamp_str(value: &str) -> Option<i64> {
     None
 }
 
+pub(crate) fn timestamp_secs_to_ms(timestamp: f64) -> i64 {
+    if timestamp > 1e12 {
+        timestamp as i64
+    } else {
+        // Scale in f64 to preserve sub-second precision. Rust's float-to-int
+        // cast saturates out-of-range values, and NaN maps to zero.
+        (timestamp * 1000.0) as i64
+    }
+}
+
+pub(crate) fn session_id_from_path(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.trim().is_empty())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
 pub(crate) fn file_modified_timestamp_ms(path: &Path) -> i64 {
     std::fs::metadata(path)
         .and_then(|meta| meta.modified())
@@ -181,68 +218,4 @@ pub(crate) fn back_anchor_timestamp(end: i64, duration: i64) -> i64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn lossy_lines_survives_undecodable_bytes_and_strips_a_bom() {
-        let raw: &[u8] = b"\xef\xbb\xbffirst\r\nse\xffcond\nthird";
-        let lines: Vec<String> = lossy_lines(raw).collect();
-        assert_eq!(lines, vec!["first", "se\u{fffd}cond", "third"]);
-    }
-
-    #[test]
-    fn lossy_lines_keeps_empty_lines_and_ends_at_eof() {
-        let raw: &[u8] = b"a\n\nb\n";
-        let lines: Vec<String> = lossy_lines(raw).collect();
-        assert_eq!(lines, vec!["a", "", "b"]);
-    }
-
-    #[test]
-    fn parse_timestamp_value_rejects_zero_and_negative_numbers() {
-        assert!(parse_timestamp_value(&serde_json::json!(0)).is_none());
-        assert!(parse_timestamp_value(&serde_json::json!(-1000)).is_none());
-        assert!(parse_timestamp_value(&serde_json::json!(-1_700_000_000_000_i64)).is_none());
-    }
-
-    #[test]
-    fn parse_timestamp_value_accepts_positive_numbers() {
-        assert_eq!(
-            parse_timestamp_value(&serde_json::json!(1_700_000_000_000_i64)),
-            Some(1_700_000_000_000)
-        );
-        assert_eq!(
-            parse_timestamp_value(&serde_json::json!(1_700_000_000_i64)),
-            Some(1_700_000_000_000)
-        );
-    }
-
-    #[test]
-    fn parse_timestamp_str_rejects_zero_and_negative_strings() {
-        assert!(parse_timestamp_str("0").is_none());
-        assert!(parse_timestamp_str("-5").is_none());
-    }
-
-    #[test]
-    fn parse_timestamp_str_accepts_timezone_less_datetimes_as_utc() {
-        // "2026-06-16T12:00:00" UTC == 1781611200000 ms.
-        assert_eq!(
-            parse_timestamp_str("2026-06-16T12:00:00"),
-            Some(1_781_611_200_000)
-        );
-        // Space separator and fractional seconds variants.
-        assert_eq!(
-            parse_timestamp_str("2026-06-16 12:00:00"),
-            Some(1_781_611_200_000)
-        );
-        assert_eq!(
-            parse_timestamp_str("2026-06-16T12:00:00.500"),
-            Some(1_781_611_200_500)
-        );
-        // Offset-bearing input still goes through the rfc3339 path unchanged.
-        assert_eq!(
-            parse_timestamp_str("2026-06-16T12:00:00Z"),
-            Some(1_781_611_200_000)
-        );
-    }
-}
+mod utils_tests;
