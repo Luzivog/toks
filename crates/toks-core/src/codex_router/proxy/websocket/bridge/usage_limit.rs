@@ -21,7 +21,7 @@ pub(super) async fn handle(
     turn: &mut Turn,
     message: ServerMessage,
     block: UsageBlock,
-) -> Result<(), ()> {
+) -> Option<()> {
     let forced_request = turn.forced_fast_request.take();
     let tier = if forced_request.is_some() {
         AttemptedTier::ToksForcedFast
@@ -49,7 +49,7 @@ pub(super) async fn handle(
         Ok(action) => action,
         Err(_) => {
             let _ = client.send(to_client(message)).await;
-            return Err(());
+            return None;
         }
     };
     if action == UsageLimitAction::RetrySameAccountAtStandardTier {
@@ -59,12 +59,12 @@ pub(super) async fn handle(
         return upstream
             .send(ServerMessage::Text(original.into()))
             .await
-            .map_err(|_| ());
+            .ok();
     }
     turn.active = false;
     turn.lease.take();
     if action == UsageLimitAction::ForwardFailure {
-        client.send(to_client(message)).await.map_err(|_| ())?;
+        client.send(to_client(message)).await.ok()?;
         let eligible = turn.thread.as_ref().map_or_else(
             || engine.eligible_account(),
             |thread| engine.eligible_account_for_thread(thread),
@@ -72,7 +72,7 @@ pub(super) async fn handle(
         if eligible.ok().flatten().is_none() {
             wait(engine, &turn.thread);
         }
-        return Ok(());
+        return Some(());
     }
     // This bridge terminates after failover. Release its old account before
     // selecting a replacement so one thread is never live on both accounts.
@@ -85,12 +85,12 @@ pub(super) async fn handle(
         client
             .send(ClientMessage::Text(RETRY_FRAME.into()))
             .await
-            .map_err(|_| ())?;
+            .ok()?;
     } else {
         wait(engine, &turn.thread);
-        client.send(to_client(message)).await.map_err(|_| ())?;
+        client.send(to_client(message)).await.ok()?;
     }
-    Err(())
+    None
 }
 
 pub(super) fn wait(engine: &Engine, thread: &Option<crate::rotation::ThreadId>) {

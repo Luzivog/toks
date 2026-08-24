@@ -5,7 +5,7 @@ use crate::rotation::{ThreadId, UsageLimitTier, UsageLimitTierOrigin};
 use super::super::engine::RouteTier;
 use super::super::protocol::{requested_model, requested_service_tier};
 use super::super::ProxyState;
-use super::request_body::CodexHttpBody;
+use super::request_body::{CodexHttpBody, RewriteError};
 
 pub(super) struct PreparedRequest {
     pub wire: Bytes,
@@ -21,7 +21,7 @@ pub(super) async fn request_body(
     body: &CodexHttpBody,
     is_responses: bool,
     max_wire_bytes: usize,
-) -> Result<PreparedRequest, ()> {
+) -> Result<PreparedRequest, RewriteError> {
     let text = body.text();
     let model = text.and_then(requested_model);
     let service_tier = text.and_then(requested_service_tier);
@@ -42,11 +42,11 @@ pub(super) async fn request_body(
     let Some((requested_tier, is_fast, changed_origin)) = requested else {
         return Ok(prepared(body.wire(), false, model, original_tier));
     };
-    let (wire, forced_fast, forwarded) = body
+    let rewritten = body
         .with_service_tier(requested_tier, is_fast, max_wire_bytes)
         .await?;
-    let tier = recorded_tier(body.decoded(), &forwarded, changed_origin);
-    Ok(prepared(wire, forced_fast, model, tier))
+    let tier = recorded_tier(body.decoded(), &rewritten.forwarded, changed_origin);
+    Ok(prepared(rewritten.wire, rewritten.forced_fast, model, tier))
 }
 
 fn recorded_tier(

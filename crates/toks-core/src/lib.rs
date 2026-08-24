@@ -11,3 +11,4 @@ mod storage;
 pub use accounts::{AddAccountStarted, ProviderAccount};
 pub use history::{DaySlice, HistorySnapshot, MinuteSlice, ModelRow, ModelUsage, SourceHistory};
 pub use limits::{LimitSnapshot, LimitWindow, Provider};
+pub use storage::StoreUpdate;

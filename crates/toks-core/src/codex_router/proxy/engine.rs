@@ -7,9 +7,11 @@ use crate::rotation::{
     ResumeAuthorization, ResumeTerminal, RotationRuntime, RotationSettingsStore, ThreadId,
     UnixMillis, WaitingId, WaitingThread, WorkerConnectionOwner,
 };
+use crate::storage::StoreUpdate;
 use anyhow::Result;
 
 mod construction;
+pub(super) use construction::EngineConfig;
 #[cfg(test)]
 mod process_safety_tests;
 mod quota;
@@ -75,7 +77,7 @@ impl Engine {
     pub fn claim_waiting(&self, thread: &ThreadId, account: &AccountId) -> Result<bool> {
         self.runtime.update(|runtime| {
             let claimed = runtime.resumed(thread, account, now());
-            (claimed, claimed)
+            StoreUpdate::from_changed(claimed, claimed)
         })
     }
 
@@ -86,7 +88,7 @@ impl Engine {
     ) -> Result<bool> {
         self.runtime.update(|runtime| {
             let claimed = runtime.resumed_waiting(waiting, account, now());
-            (claimed, claimed)
+            StoreUpdate::from_changed(claimed, claimed)
         })
     }
 
@@ -99,7 +101,7 @@ impl Engine {
         self.runtime.update(|runtime| {
             let requeued = runtime.waiting_after_attempt(waiting, replacement, now());
             let changed = requeued.is_some();
-            (requeued, changed)
+            StoreUpdate::from_changed(requeued, changed)
         })
     }
 
@@ -122,12 +124,12 @@ impl Engine {
                     account,
                     now(),
                 );
-                (
+                StoreUpdate::from_changed(
                     authorization,
                     authorization == ResumeAuthorization::Acquired,
                 )
             });
-            (authorization, false)
+            StoreUpdate::Unchanged(authorization)
         })?
     }
 
@@ -144,7 +146,7 @@ impl Engine {
         }
         self.runtime.update(|runtime| {
             let queued = runtime.finish_resume(waiting, attempt, terminal, replacement, now());
-            (queued, true)
+            StoreUpdate::Changed(queued)
         })
     }
 
@@ -153,7 +155,7 @@ impl Engine {
         let forgotten = self.runtime.update(|runtime| {
             let forgotten = runtime.forget_resume(waiting, attempt);
             let changed = forgotten == Ok(true);
-            (forgotten, changed)
+            StoreUpdate::from_changed(forgotten, changed)
         })?;
         forgotten.map_err(|()| anyhow::anyhow!("resume admission is not terminal"))?;
         Ok(())
@@ -169,7 +171,8 @@ impl Engine {
     }
 
     fn mutate(&self, change: impl FnOnce(&mut RotationRuntime) -> bool) -> Result<()> {
-        self.runtime.update(|runtime| ((), change(runtime)))
+        self.runtime
+            .update(|runtime| StoreUpdate::from_changed((), change(runtime)))
     }
 }
 fn validate_resume_attempt(attempt: &str) -> Result<()> {

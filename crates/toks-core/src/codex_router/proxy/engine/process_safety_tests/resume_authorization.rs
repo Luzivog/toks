@@ -1,6 +1,7 @@
 use super::Engines;
 use crate::accounts::AccountId;
 use crate::rotation::{QuotaObservation, ResumeAuthorization, ThreadId, UnixMillis};
+use crate::storage::StoreUpdate;
 
 const STALE_ATTEMPT: &str = "00000000-0000-4000-8000-000000000003";
 const CURRENT_ATTEMPT: &str = "00000000-0000-4000-8000-000000000004";
@@ -123,7 +124,7 @@ async fn exact_resume_admission_routes_the_grandfathered_thread_on_its_draining_
                 )]),
                 UnixMillis::new(10),
             );
-            ((), changed)
+            StoreUpdate::from_changed((), changed)
         })
         .unwrap();
     engines.first.waiting(&thread).unwrap();

@@ -19,6 +19,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use crate::storage::StoreUpdate;
+
 pub use deployment_status::{
     RouterDeploymentStatus, RouterGenerationRole, RouterGenerationSummary,
 };
@@ -59,7 +61,7 @@ fn acknowledge_banked_reset_in(
 ) -> Result<()> {
     store.update(|runtime| {
         runtime.banked_reset_consumed(account);
-        ((), true)
+        StoreUpdate::Changed(())
     })
 }
 

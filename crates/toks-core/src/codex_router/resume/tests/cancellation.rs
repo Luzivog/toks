@@ -1,4 +1,5 @@
 use super::*;
+use crate::storage::StoreUpdate;
 
 #[test]
 fn cancellation_after_candidate_enumeration_stops_the_stale_tick() {
@@ -71,7 +72,7 @@ fn cancellation_committed_after_authorization_prevents_launch() {
     harness.store.save(&state).unwrap();
     harness
         .settings
-        .update(|settings| ((), settings.cancel_waiting(&thread)))
+        .update(|settings| StoreUpdate::from_changed((), settings.cancel_waiting(&thread)))
         .unwrap();
 
     assert_eq!(

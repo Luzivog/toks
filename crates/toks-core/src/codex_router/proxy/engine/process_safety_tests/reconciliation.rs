@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
 use crate::accounts::AccountId;
-use crate::rotation::{RotationRuntimeStore, RotationSettings, RotationSettingsStore, ThreadId};
+use crate::codex_router::thread_source::ThreadSourceStore;
+use crate::rotation::{
+    RotationRuntimeStore, RotationSettings, RotationSettingsStore, ThreadId, WorkerConnectionOwner,
+};
 
 use super::super::super::catalogue::Catalogue;
 use super::super::super::types::SharedCredentials;
-use super::super::Engine;
+use super::super::{Engine, EngineConfig};
 use super::Credentials;
 
 struct Reconciliation {
@@ -31,14 +34,14 @@ impl Reconciliation {
         let source: SharedCredentials = Arc::new(Credentials {
             accounts: vec![original_account.clone()],
         });
-        let original = Engine::with_catalogue_for_worker(
-            source,
-            settings_store.clone(),
-            store.clone(),
-            Catalogue::at(None),
-            1,
-            101,
-        )
+        let original = Engine::new(EngineConfig {
+            credentials: source,
+            settings: settings_store.clone(),
+            runtime_store: store.clone(),
+            catalogue: Catalogue::at(None),
+            connection_owner: Some(WorkerConnectionOwner::new(1, 101).unwrap()),
+            thread_sources: ThreadSourceStore::discover(),
+        })
         .unwrap();
         assert!(store
             .load()
@@ -59,14 +62,14 @@ impl Reconciliation {
         let source: SharedCredentials = Arc::new(Credentials {
             accounts: vec![self.challenger_account.clone()],
         });
-        Engine::with_catalogue_for_worker(
-            source,
-            self.settings.clone(),
-            self.store.clone(),
-            Catalogue::at(None),
-            2,
-            201,
-        )
+        Engine::new(EngineConfig {
+            credentials: source,
+            settings: self.settings.clone(),
+            runtime_store: self.store.clone(),
+            catalogue: Catalogue::at(None),
+            connection_owner: Some(WorkerConnectionOwner::new(2, 201).unwrap()),
+            thread_sources: ThreadSourceStore::discover(),
+        })
         .unwrap()
     }
 

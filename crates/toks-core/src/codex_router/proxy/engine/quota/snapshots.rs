@@ -9,6 +9,7 @@ use crate::limits::LimitSnapshot;
 #[cfg(test)]
 use crate::rotation::account_quota_drain;
 use crate::rotation::{QuotaObservation, UnixMillis};
+use crate::storage::StoreUpdate;
 
 use super::super::{now, Engine};
 
@@ -62,7 +63,7 @@ impl Engine {
             runtime.reconcile(&discovered, at);
             runtime.apply_quota_observations(&observations, at);
             runtime.heartbeat(at);
-            ((), true)
+            StoreUpdate::Changed(())
         })
     }
 
@@ -129,7 +130,7 @@ impl Engine {
                 .collect();
             runtime.apply_quota_observations(&observations, at);
             runtime.heartbeat(at);
-            ((), true)
+            StoreUpdate::Changed(())
         })
     }
 }

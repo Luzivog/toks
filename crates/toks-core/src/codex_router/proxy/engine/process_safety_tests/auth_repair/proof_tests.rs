@@ -6,6 +6,7 @@ use crate::accounts::{
     AccountId, AccountIdentityKind, AccountProfile, CredentialProfileId, ProviderAccount,
     ProviderLimitCollection,
 };
+use crate::codex_router::thread_source::ThreadSourceStore;
 use crate::limits::{LimitIssue, LimitIssueKind, SnapshotFreshness, SnapshotStatus};
 use crate::rotation::{
     AccountAvailability, RotationRuntimeStore, RotationSettings, RotationSettingsStore, ThreadId,
@@ -14,7 +15,7 @@ use crate::rotation::{
 
 use super::super::super::super::catalogue::Catalogue;
 use super::super::super::super::types::SharedCredentials;
-use super::super::super::Engine;
+use super::super::super::{Engine, EngineConfig};
 use super::{credential_with_token, snapshot, CredentialState, RepairableCredentials};
 
 #[tokio::test]
@@ -35,8 +36,15 @@ async fn permanent_unauthorized_state_survives_restart_until_credentials_are_pro
     let store = RotationRuntimeStore::for_data_dir(directory.path());
     let build = || {
         let source: SharedCredentials = credentials.clone();
-        Engine::with_catalogue(source, settings.clone(), store.clone(), Catalogue::at(None))
-            .unwrap()
+        Engine::new(EngineConfig {
+            credentials: source,
+            settings: settings.clone(),
+            runtime_store: store.clone(),
+            catalogue: Catalogue::at(None),
+            connection_owner: None,
+            thread_sources: ThreadSourceStore::discover(),
+        })
+        .unwrap()
     };
     let engine = build();
     engine
@@ -115,8 +123,15 @@ async fn snapshot_repair_requires_a_changed_exact_credential_and_unchanged_failu
     settings.save(&configured).unwrap();
     let store = RotationRuntimeStore::for_data_dir(directory.path());
     let source: SharedCredentials = credentials.clone();
-    let engine =
-        Engine::with_catalogue(source, settings, store.clone(), Catalogue::at(None)).unwrap();
+    let engine = Engine::new(EngineConfig {
+        credentials: source,
+        settings,
+        runtime_store: store.clone(),
+        catalogue: Catalogue::at(None),
+        connection_owner: None,
+        thread_sources: ThreadSourceStore::discover(),
+    })
+    .unwrap();
     engine
         .permanent_auth_failure(&credential_with_token(&account, "rejected-token"))
         .unwrap();
@@ -293,8 +308,15 @@ async fn a_cross_account_credential_is_rejected_without_leaking_its_reservation(
     configured.set_enabled(true);
     settings.save(&configured).unwrap();
     let store = RotationRuntimeStore::for_data_dir(directory.path());
-    let engine =
-        Engine::with_catalogue(credentials, settings, store.clone(), Catalogue::at(None)).unwrap();
+    let engine = Engine::new(EngineConfig {
+        credentials,
+        settings,
+        runtime_store: store.clone(),
+        catalogue: Catalogue::at(None),
+        connection_owner: None,
+        thread_sources: ThreadSourceStore::discover(),
+    })
+    .unwrap();
 
     let error = engine
         .select_for_thread(Some(&ThreadId::new("wrong-identity")), &Default::default())

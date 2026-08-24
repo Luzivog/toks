@@ -18,11 +18,11 @@ pub(super) fn decode_zstd(wire: Bytes, limit: usize) -> Result<Bytes, DecodeErro
     Ok(decoded.into())
 }
 
-pub(super) fn encode_zstd(decoded: Bytes, limit: usize) -> Result<Bytes, ()> {
+pub(super) fn encode_zstd(decoded: Bytes, limit: usize) -> std::io::Result<Bytes> {
     let output = BoundedOutput::new(limit);
-    let mut encoder = zstd::stream::write::Encoder::new(output, 3).map_err(|_| ())?;
-    encoder.write_all(&decoded).map_err(|_| ())?;
-    let output = encoder.finish().map_err(|_| ())?;
+    let mut encoder = zstd::stream::write::Encoder::new(output, 3)?;
+    encoder.write_all(&decoded)?;
+    let output = encoder.finish()?;
     Ok(output.bytes.into())
 }
 

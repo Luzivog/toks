@@ -17,7 +17,7 @@ pub(super) async fn handle(
     account: &AccountId,
     turn: &mut Turn,
     message: ServerMessage,
-) -> Result<(), ()> {
+) -> Option<()> {
     let mut delivers_response = false;
     if let ServerMessage::Text(text) = &message {
         if let Some(block) = websocket_usage_block(text) {
@@ -41,7 +41,7 @@ pub(super) async fn handle(
             None => {}
         }
     }
-    client.send(to_client(message)).await.map_err(|_| ())?;
+    client.send(to_client(message)).await.ok()?;
     turn.delivered |= delivers_response;
-    Ok(())
+    Some(())
 }

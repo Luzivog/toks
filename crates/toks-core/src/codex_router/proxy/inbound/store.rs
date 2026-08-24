@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 use super::Admission;
-use crate::storage::LockMode;
+use crate::storage::{LockMode, StoreUpdate};
 
 const VERSION: u8 = 1;
 
@@ -73,11 +73,11 @@ impl AdmissionStore {
     /// Serializes the complete admission read-modify-write across workers.
     pub fn update<T>(
         &self,
-        change: impl FnOnce(&mut BTreeMap<[u8; 32], Admission>) -> (T, bool),
+        change: impl FnOnce(&mut BTreeMap<[u8; 32], Admission>) -> StoreUpdate<T>,
     ) -> Result<T> {
         let Some(path) = &self.path else {
             let mut admissions = BTreeMap::new();
-            return Ok(change(&mut admissions).0);
+            return Ok(change(&mut admissions).into_parts().0);
         };
         let parent = path
             .parent()
@@ -96,7 +96,7 @@ impl AdmissionStore {
         )
         .context("locking inbound token admissions")?;
         let mut admissions = self.load()?;
-        let (value, changed) = change(&mut admissions);
+        let (value, changed) = change(&mut admissions).into_parts();
         if changed {
             self.save(&admissions)?;
         }

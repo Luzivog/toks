@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::{Catalogue, Credentials, Engine, SharedCredentials};
+use super::{Catalogue, Credentials, Engine, EngineConfig, SharedCredentials};
 use crate::accounts::AccountId;
 use crate::rotation::{RotationRuntimeStore, RotationSettings, RotationSettingsStore, ThreadId};
 
@@ -33,13 +33,16 @@ fn only_known_root_or_unknown_threads_enter_the_external_resume_queue() {
     let credentials: SharedCredentials = Arc::new(Credentials {
         accounts: vec![account],
     });
-    let engine = Engine::with_catalogue_and_thread_sources(
+    let engine = Engine::new(EngineConfig {
         credentials,
-        settings_store,
-        runtime_store.clone(),
-        Catalogue::at(None),
-        crate::codex_router::thread_source::ThreadSourceStore::for_database(database),
-    )
+        settings: settings_store,
+        runtime_store: runtime_store.clone(),
+        catalogue: Catalogue::at(None),
+        connection_owner: None,
+        thread_sources: crate::codex_router::thread_source::ThreadSourceStore::for_database(
+            database,
+        ),
+    })
     .unwrap();
 
     engine.waiting(&ThreadId::new("child")).unwrap();

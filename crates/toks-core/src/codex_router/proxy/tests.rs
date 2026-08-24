@@ -13,12 +13,13 @@ use tempfile::TempDir;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use crate::accounts::AccountId;
+use crate::codex_router::thread_source::ThreadSourceStore;
 use crate::rotation::{
     RotationEventKind, RotationRuntimeStore, RotationSettings, RotationSettingsStore,
     UsageLimitClassification, UsageLimitPhase, UsageLimitTier, UsageLimitTierOrigin,
 };
 
-use super::engine::Engine;
+use super::engine::{Engine, EngineConfig};
 use super::protocol::{usage_block, websocket_usage_block, RETRY_FRAME};
 use super::types::{CredentialFailure, CredentialSource, RouteCredential, SharedCredentials};
 use super::{app, InboundTokens, ProxyState, RouterRuntimeHandle, Upstream};
@@ -166,12 +167,14 @@ impl Harness {
             ]}"#,
         )
         .unwrap();
-        let engine = Engine::with_catalogue(
-            source.clone(),
-            settings_store,
-            RotationRuntimeStore::for_data_dir(directory.path()),
-            super::catalogue::Catalogue::at(Some(catalogue_path)),
-        )
+        let engine = Engine::new(EngineConfig {
+            credentials: source.clone(),
+            settings: settings_store,
+            runtime_store: RotationRuntimeStore::for_data_dir(directory.path()),
+            catalogue: super::catalogue::Catalogue::at(Some(catalogue_path)),
+            connection_owner: None,
+            thread_sources: ThreadSourceStore::discover(),
+        })
         .unwrap();
         Self {
             _directory: directory,

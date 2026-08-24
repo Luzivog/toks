@@ -3,6 +3,7 @@ use toks_core::{
     accounts::AccountId,
     codex_router::{self, RouterDeploymentStatus, RouterInstallStatus},
     rotation::{RotationRuntime, RotationRuntimeStore, RotationSettings, RotationSettingsStore},
+    StoreUpdate,
 };
 
 use super::{RotationServiceAction, SettingsAction};
@@ -37,7 +38,7 @@ pub(super) fn change_settings(
                 settings.move_waiting_to(&thread, index);
             }
         }
-        ((), true)
+        StoreUpdate::Changed(())
     })?;
     load_rotation(accounts)
 }
@@ -50,7 +51,7 @@ pub(super) fn load_rotation(accounts: Option<&[AccountId]>) -> Result<LoadedRota
     let settings = settings_store.update(|settings| {
         let accounts_changed = accounts.is_some_and(|accounts| settings.reconcile(accounts));
         let changed = accounts_changed | settings.reconcile_waiting(&waiting);
-        (settings.clone(), changed)
+        StoreUpdate::from_changed(settings.clone(), changed)
     })?;
     Ok(LoadedRotation {
         settings,

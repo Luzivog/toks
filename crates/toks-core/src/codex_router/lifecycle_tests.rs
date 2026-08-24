@@ -209,7 +209,7 @@ impl Fixture {
 
     fn set_enabled(&self, enabled: bool) {
         crate::rotation::RotationSettingsStore::for_data_dir(self.root.path().join("data/toks"))
-            .update(|settings| ((), settings.set_enabled(enabled)))
+            .update(|settings| crate::StoreUpdate::from_changed((), settings.set_enabled(enabled)))
             .unwrap();
     }
 

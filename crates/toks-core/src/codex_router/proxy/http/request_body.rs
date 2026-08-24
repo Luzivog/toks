@@ -12,6 +12,38 @@ pub(super) struct CodexHttpBody {
     encoding: Encoding,
 }
 
+pub(super) struct RewrittenBody {
+    pub wire: Bytes,
+    pub forced_fast: bool,
+    pub forwarded: String,
+}
+
+#[derive(Debug)]
+pub(super) enum RewriteError {
+    Compression(std::io::Error),
+    WorkerStopped(tokio::task::JoinError),
+}
+
+impl std::fmt::Display for RewriteError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Compression(error) => write!(formatter, "compressing request body: {error}"),
+            Self::WorkerStopped(error) => {
+                write!(formatter, "request rewrite worker stopped: {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for RewriteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Compression(error) => Some(error),
+            Self::WorkerStopped(error) => Some(error),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Encoding {
     Identity,
@@ -82,27 +114,40 @@ impl CodexHttpBody {
         tier: &str,
         is_fast: bool,
         max_wire_bytes: usize,
-    ) -> Result<(Bytes, bool, String), ()> {
+    ) -> Result<RewrittenBody, RewriteError> {
         let Some(rewritten) = rewrite_service_tier(self.text().unwrap_or_default(), tier) else {
-            return Ok((
-                self.wire(),
-                false,
-                self.text().unwrap_or_default().to_owned(),
-            ));
+            return Ok(RewrittenBody {
+                wire: self.wire(),
+                forced_fast: false,
+                forwarded: self.text().unwrap_or_default().to_owned(),
+            });
         };
-        let forced = is_fast && rewritten.as_bytes() != self.decoded.as_ref();
+        let forced_fast = is_fast && rewritten.as_bytes() != self.decoded.as_ref();
         if rewritten.as_bytes() == self.decoded.as_ref() {
-            return Ok((self.wire(), forced, rewritten));
+            return Ok(RewrittenBody {
+                wire: self.wire(),
+                forced_fast,
+                forwarded: rewritten,
+            });
         }
         let forwarded = rewritten.clone();
         let decoded = Bytes::from(rewritten);
         match self.encoding {
-            Encoding::Identity => Ok((decoded, forced, forwarded)),
+            Encoding::Identity => Ok(RewrittenBody {
+                wire: decoded,
+                forced_fast,
+                forwarded,
+            }),
             Encoding::Zstd => tokio::task::spawn_blocking(move || {
-                encode_zstd(decoded, max_wire_bytes).map(|wire| (wire, forced, forwarded))
+                encode_zstd(decoded, max_wire_bytes).map(|wire| RewrittenBody {
+                    wire,
+                    forced_fast,
+                    forwarded,
+                })
             })
             .await
-            .map_err(|_| ())?,
+            .map_err(RewriteError::WorkerStopped)?
+            .map_err(RewriteError::Compression),
         }
     }
 }

@@ -21,16 +21,16 @@ pub(super) async fn handle(
     account: &AccountId,
     turn: &mut Turn,
     message: Message,
-) -> Result<(), ()> {
+) -> Option<()> {
     if matches!(message, Message::Binary(_)) {
         admission::reject_thread(client).await?;
-        return Err(());
+        return None;
     }
     if let Message::Text(text) = &message {
         match ClientRequestFrame::from_payload(text.as_bytes()) {
             ClientRequestFrame::Denied => {
                 admission::reject_thread(client).await?;
-                return Err(());
+                return None;
             }
             ClientRequestFrame::ResponseCreate(payload_identity) => {
                 let identity = turn
@@ -40,12 +40,12 @@ pub(super) async fn handle(
                     .merge(payload_identity);
                 if identity == ThreadIdentity::Denied {
                     admission::reject_thread(client).await?;
-                    return Err(());
+                    return None;
                 }
                 let requested_thread = identity.into_thread().or_else(|| turn.thread.clone());
                 if turn.active {
                     admission::reject_thread(client).await?;
-                    return Err(());
+                    return None;
                 }
                 match admission::select(
                     engine,
@@ -55,23 +55,20 @@ pub(super) async fn handle(
                     Ok(super::super::super::engine::RouteSelection::Selected(selected))
                         if &selected != account =>
                     {
-                        client
-                            .send(Message::Text(RETRY_FRAME.into()))
-                            .await
-                            .map_err(|_| ())?;
-                        return Err(());
+                        client.send(Message::Text(RETRY_FRAME.into())).await.ok()?;
+                        return None;
                     }
                     Ok(super::super::super::engine::RouteSelection::ResumeDenied) => {
                         admission::reject(client).await?;
-                        return Err(());
+                        return None;
                     }
                     Ok(super::super::super::engine::RouteSelection::Unavailable) => {
                         usage_limit::wait(engine, &requested_thread);
                         admission::reject(client).await?;
-                        return Err(());
+                        return None;
                     }
                     Ok(super::super::super::engine::RouteSelection::Selected(_)) => {}
-                    Err(_) => return Err(()),
+                    Err(_) => return None,
                 }
                 attach(engine, account, turn, requested_thread.as_ref(), client).await?;
                 turn.thread = requested_thread;
@@ -86,14 +83,14 @@ pub(super) async fn handle(
                     return upstream
                         .send(ServerMessage::Text(upgraded.into()))
                         .await
-                        .map_err(|_| ());
+                        .ok();
                 }
                 turn.begin_request(text, UsageLimitTierOrigin::Client);
             }
             ClientRequestFrame::Other => {}
         }
     }
-    upstream.send(to_server(message)).await.map_err(|_| ())
+    upstream.send(to_server(message)).await.ok()
 }
 
 async fn attach(
@@ -102,14 +99,16 @@ async fn attach(
     turn: &mut Turn,
     thread: Option<&crate::rotation::ThreadId>,
     client: &mut WebSocket,
-) -> Result<(), ()> {
-    let Some(thread) = thread else { return Ok(()) };
+) -> Option<()> {
+    let Some(thread) = thread else {
+        return Some(());
+    };
     if turn
         .attachment
         .as_ref()
         .is_some_and(|attached| attached.matches(thread))
     {
-        return Ok(());
+        return Some(());
     }
     turn.attachment = None;
     match ThreadAttachment::open(
@@ -120,10 +119,10 @@ async fn attach(
     ) {
         Ok(Some(attachment)) => {
             turn.attachment = Some(attachment);
-            Ok(())
+            Some(())
         }
         Ok(None) => retry(client).await,
-        Err(_) => Err(()),
+        Err(_) => None,
     }
 }
 
@@ -132,12 +131,12 @@ async fn open_lease(
     account: &AccountId,
     turn: &mut Turn,
     client: &mut WebSocket,
-) -> Result<(), ()> {
+) -> Option<()> {
     let Some(thread) = turn.thread.as_ref() else {
-        return Ok(());
+        return Some(());
     };
     if turn.lease.is_some() {
-        return Ok(());
+        return Some(());
     }
     match StreamLease::open(
         engine.clone(),
@@ -147,17 +146,14 @@ async fn open_lease(
     ) {
         Ok(Some(lease)) => {
             turn.lease = Some(lease);
-            Ok(())
+            Some(())
         }
         Ok(None) => retry(client).await,
-        Err(_) => Err(()),
+        Err(_) => None,
     }
 }
 
-async fn retry(client: &mut WebSocket) -> Result<(), ()> {
-    client
-        .send(Message::Text(RETRY_FRAME.into()))
-        .await
-        .map_err(|_| ())?;
-    Err(())
+async fn retry(client: &mut WebSocket) -> Option<()> {
+    let _ = client.send(Message::Text(RETRY_FRAME.into())).await;
+    None
 }

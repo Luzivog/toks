@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::accounts::AccountId;
 use crate::rotation::{RotationEventKind, ThreadId};
+use crate::storage::StoreUpdate;
 
 use super::super::{now, Engine, RouteTier};
 use super::{policy::selected_account, RouteSelection};
@@ -22,7 +23,7 @@ impl Engine {
             let attached = self.runtime.update(|runtime| {
                 if !runtime.resume_route_authorized(thread, resume_attempt, account) {
                     let changed = runtime.release_reservation(account, thread);
-                    return (false, changed);
+                    return StoreUpdate::from_changed(false, changed);
                 }
                 let selected = selected_account(
                     settings,
@@ -35,18 +36,18 @@ impl Engine {
                 );
                 if selected != RouteSelection::Selected(account.clone()) {
                     let changed = runtime.release_reservation(account, thread);
-                    return (false, changed);
+                    return StoreUpdate::from_changed(false, changed);
                 }
                 let attached = match self.connection_owner {
                     Some(owner) => runtime.thread_attached_by(owner, account, thread),
                     None => runtime.thread_attached(account, thread),
                 };
                 match attached {
-                    Ok(changed) => (true, changed),
-                    Err(_) => (false, false),
+                    Ok(changed) => StoreUpdate::from_changed(true, changed),
+                    Err(_) => StoreUpdate::Unchanged(false),
                 }
             });
-            (attached, false)
+            StoreUpdate::Unchanged(attached)
         })?
     }
 
@@ -63,7 +64,7 @@ impl Engine {
             let routed = self.runtime.update(|runtime| {
                 if !runtime.resume_route_authorized(thread, resume_attempt, account) {
                     let changed = runtime.release_reservation(account, thread);
-                    return (None, changed);
+                    return StoreUpdate::from_changed(None, changed);
                 }
                 let selected = selected_account(
                     settings,
@@ -76,7 +77,7 @@ impl Engine {
                 );
                 if selected != RouteSelection::Selected(account.clone()) {
                     let changed = runtime.release_reservation(account, thread);
-                    return (None, changed);
+                    return StoreUpdate::from_changed(None, changed);
                 }
                 let tier = if runtime.can_drain(account, thread, at) {
                     if runtime.requires_standard_tier(account, thread, at) {
@@ -102,15 +103,15 @@ impl Engine {
                     None => runtime.connection_opened(account, thread, at),
                 };
                 if opened.is_err() {
-                    return (None, false);
+                    return StoreUpdate::Unchanged(None);
                 }
                 if let Some(previous) = previous.filter(|previous| previous != account) {
                     runtime.rotated(thread, &previous, account, at);
                 }
                 runtime.resumed(thread, account, at);
-                (Some(tier), true)
+                StoreUpdate::Changed(Some(tier))
             });
-            (routed, false)
+            StoreUpdate::Unchanged(routed)
         })?
     }
 

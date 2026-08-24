@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use super::model::{Document, DOCUMENT_VERSION};
-use crate::storage::{LockMode, PrivateFileLock};
+use crate::storage::{LockMode, PrivateFileLock, StoreUpdate};
 
 #[derive(Clone, Debug)]
 pub(super) struct Store {
@@ -38,10 +38,13 @@ impl Store {
         Ok(document)
     }
 
-    pub(super) fn update<T>(&self, change: impl FnOnce(&mut Document) -> (T, bool)) -> Result<T> {
+    pub(super) fn update<T>(
+        &self,
+        change: impl FnOnce(&mut Document) -> StoreUpdate<T>,
+    ) -> Result<T> {
         let _lock = lock(&self.path)?;
         let mut document = self.load()?;
-        let (value, changed) = change(&mut document);
+        let (value, changed) = change(&mut document).into_parts();
         if changed {
             let bytes = serde_json::to_vec_pretty(&document)?;
             crate::storage::write_private_atomic(&self.path, &bytes, "account activation state")?;

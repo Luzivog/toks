@@ -1,11 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use crate::accounts::AccountId;
+use crate::codex_router::thread_source::ThreadSourceStore;
 use crate::rotation::{RotationRuntimeStore, RotationSettings, RotationSettingsStore, ThreadId};
 
 use super::super::super::super::catalogue::Catalogue;
 use super::super::super::super::types::SharedCredentials;
-use super::super::super::Engine;
+use super::super::super::{Engine, EngineConfig};
 use super::{credential_with_token, CredentialState, RepairableCredentials};
 
 #[tokio::test]
@@ -25,8 +26,15 @@ async fn a_newer_unauthorized_response_wins_over_an_inflight_repair_proof() {
     settings.save(&configured).unwrap();
     let store = RotationRuntimeStore::for_data_dir(directory.path());
     let source: SharedCredentials = credentials.clone();
-    let engine =
-        Engine::with_catalogue(source, settings, store.clone(), Catalogue::at(None)).unwrap();
+    let engine = Engine::new(EngineConfig {
+        credentials: source,
+        settings,
+        runtime_store: store.clone(),
+        catalogue: Catalogue::at(None),
+        connection_owner: None,
+        thread_sources: ThreadSourceStore::discover(),
+    })
+    .unwrap();
     engine
         .permanent_auth_failure(&credential_with_token(&account, "token-a"))
         .unwrap();

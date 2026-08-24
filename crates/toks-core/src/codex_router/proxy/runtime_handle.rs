@@ -3,15 +3,18 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use super::engine::EngineConfig;
 use super::types::{LocalCredentials, SharedCredentials};
 use super::{Engine, RouterRuntimeHandle};
 use crate::accounts::AccountId;
-use crate::rotation::{ResumeAuthorization, ResumeTerminal, ThreadId, WaitingId, WaitingThread};
+use crate::rotation::{
+    ResumeAuthorization, ResumeTerminal, ThreadId, WaitingId, WaitingThread, WorkerConnectionOwner,
+};
 
 impl RouterRuntimeHandle {
     pub fn discover() -> Result<Self> {
         let credentials: SharedCredentials = Arc::new(LocalCredentials);
-        let engine = Engine::discover(credentials.clone())?;
+        let engine = Engine::new(EngineConfig::discover(credentials.clone())?)?;
         Ok(Self {
             engine,
             credentials,
@@ -20,7 +23,11 @@ impl RouterRuntimeHandle {
 
     pub(crate) fn discover_for_worker(generation: u64, instance_id: u64) -> Result<Self> {
         let credentials: SharedCredentials = Arc::new(LocalCredentials);
-        let engine = Engine::discover_for_worker(credentials.clone(), generation, instance_id)?;
+        let owner = WorkerConnectionOwner::new(generation, instance_id)
+            .ok_or_else(|| anyhow::anyhow!("router worker identity must be nonzero"))?;
+        let mut config = EngineConfig::discover(credentials.clone())?;
+        config.connection_owner = Some(owner);
+        let engine = Engine::new(config)?;
         Ok(Self {
             engine,
             credentials,

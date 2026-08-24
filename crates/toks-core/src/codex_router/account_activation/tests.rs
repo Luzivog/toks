@@ -6,6 +6,7 @@ use crate::accounts::{
     CredentialProfileId, CredentialProfileKind, ProviderAccount, ProviderLimitCollection,
 };
 use crate::limits::{LimitSnapshot, LimitWindow, Provider, SnapshotFreshness, SnapshotStatus};
+use crate::storage::StoreUpdate;
 
 use super::authority::{Authority, WeeklyUsage};
 use super::model::{Document, FailureReason, JobPhase, PROVISIONAL_WEEK_MS};
@@ -310,7 +311,7 @@ fn persisted_success_does_not_repeat_with_a_rolling_unused_reset() {
     store
         .update(|stored| {
             *stored = document.clone();
-            ((), true)
+            StoreUpdate::Changed(())
         })
         .unwrap();
     let mut reloaded = store.load().unwrap();

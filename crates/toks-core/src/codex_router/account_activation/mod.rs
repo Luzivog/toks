@@ -4,6 +4,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 
 use crate::accounts::{AccountId, ProviderLimitCollection};
+use crate::storage::StoreUpdate;
 
 mod authority;
 mod catalogue;
@@ -35,7 +36,7 @@ pub fn request_test(account: &AccountId) -> Result<ManualRequest> {
     let result = Store::discover()?.update(|document| {
         let result = requests::manual(document, account, owner, now_ms);
         let changed = result == ManualRequest::Queued;
-        (result, changed)
+        StoreUpdate::from_changed(result, changed)
     })?;
     if result == ManualRequest::Queued {
         let account = account.clone();
@@ -57,7 +58,7 @@ pub fn set_automatic(account: &AccountId, enabled: bool) -> Result<()> {
         let before = document.clone();
         requests::set_automatic(document, account, enabled);
         let changed = *document != before;
-        ((), changed)
+        StoreUpdate::from_changed((), changed)
     })
 }
 
@@ -67,7 +68,7 @@ pub fn status(account: &AccountId) -> Result<AccountActivationStatus> {
         let before = document.clone();
         requests::reconcile_account(document, account, now_ms);
         let status = requests::status(document, account);
-        (status, *document != before)
+        StoreUpdate::from_changed(status, *document != before)
     })
 }
 
@@ -99,7 +100,7 @@ fn run_manual_pass(account: AccountId) {
                     FailureReason::ProfileUnavailable,
                     now_ms,
                 );
-                ((), changed)
+                StoreUpdate::from_changed((), changed)
             })
         });
         return;
@@ -123,7 +124,7 @@ fn mark_pending_failed(account: &AccountId, reason: FailureReason) {
     let _ = Store::discover().and_then(|store| {
         store.update(|document| {
             let changed = planner::fail_pending_manual(document, account, reason, now_ms);
-            ((), changed)
+            StoreUpdate::from_changed((), changed)
         })
     });
 }
@@ -139,7 +140,7 @@ fn claim(
         let before = document.clone();
         let launches = planner::observe(document, &authorities, now_ms);
         let changed = *document != before;
-        (launches, changed)
+        StoreUpdate::from_changed(launches, changed)
     })
 }
 
@@ -159,7 +160,7 @@ fn record_outcome(id: &str, result: std::result::Result<(), FailureReason>) -> R
     };
     Store::discover()?.update(|document| {
         let changed = planner::finish(document, id, success, reason, now_ms);
-        ((), changed)
+        StoreUpdate::from_changed((), changed)
     })
 }
 

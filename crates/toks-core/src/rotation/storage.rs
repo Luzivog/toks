@@ -7,6 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use super::runtime::RUNTIME_VERSION;
 use super::settings::SETTINGS_VERSION;
 use super::{RotationRuntime, RotationSettings};
+use crate::storage::StoreUpdate;
 
 mod lock;
 use lock::lock_document;
@@ -83,10 +84,13 @@ impl RotationSettingsStore {
 
     /// Serialize a settings read-modify-write across UI polls, actions, and
     /// other Toks processes.
-    pub fn update<T>(&self, change: impl FnOnce(&mut RotationSettings) -> (T, bool)) -> Result<T> {
+    pub fn update<T>(
+        &self,
+        change: impl FnOnce(&mut RotationSettings) -> StoreUpdate<T>,
+    ) -> Result<T> {
         let _lock = lock_document(&self.path, "rotation settings")?;
         let mut settings = self.load()?;
-        let (value, changed) = change(&mut settings);
+        let (value, changed) = change(&mut settings).into_parts();
         if changed {
             write_json(&self.path, &settings, "rotation settings")?;
         }
@@ -142,11 +146,11 @@ impl RotationRuntimeStore {
     /// Serializes a read-modify-write transaction across router generations.
     pub(crate) fn update<T>(
         &self,
-        change: impl FnOnce(&mut RotationRuntime) -> (T, bool),
+        change: impl FnOnce(&mut RotationRuntime) -> StoreUpdate<T>,
     ) -> Result<T> {
         let _lock = lock_document(&self.path, "rotation runtime")?;
         let mut runtime = self.load()?;
-        let (value, changed) = change(&mut runtime);
+        let (value, changed) = change(&mut runtime).into_parts();
         if changed {
             runtime.validate()?;
             self.save_unlocked(&runtime)?;

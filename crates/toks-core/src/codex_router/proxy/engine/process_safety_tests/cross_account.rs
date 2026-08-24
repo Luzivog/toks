@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::accounts::AccountId;
 use crate::rotation::{ThreadId, UnixMillis, WorkerConnectionOwner};
+use crate::storage::StoreUpdate;
 
 use super::Engines;
 
@@ -23,7 +24,7 @@ async fn live_ownership_blocks_cross_account_execution_until_complete_release() 
         .update(|runtime| {
             let outcome = runtime.reserve_thread(&b, &thread, UnixMillis::new(2));
             let changed = outcome.is_ok();
-            (outcome, changed)
+            StoreUpdate::from_changed(outcome, changed)
         })
         .unwrap()
         .unwrap_err();
@@ -40,7 +41,7 @@ async fn live_ownership_blocks_cross_account_execution_until_complete_release() 
                 UnixMillis::new(3),
             );
             let changed = outcome.is_ok();
-            (outcome, changed)
+            StoreUpdate::from_changed(outcome, changed)
         })
         .unwrap()
         .unwrap_err();
@@ -56,7 +57,7 @@ async fn live_ownership_blocks_cross_account_execution_until_complete_release() 
                 &thread,
             );
             let changed = outcome.as_ref().is_ok_and(|changed| *changed);
-            (outcome, changed)
+            StoreUpdate::from_changed(outcome, changed)
         })
         .unwrap()
         .unwrap_err();
@@ -110,7 +111,7 @@ fn concurrent_cross_account_reservations_have_exactly_one_winner() {
                     .update(|runtime| {
                         let outcome = runtime.reserve_thread(&account, &thread, UnixMillis::new(1));
                         let changed = outcome.is_ok();
-                        (outcome, changed)
+                        StoreUpdate::from_changed(outcome, changed)
                     })
                     .unwrap()
             })

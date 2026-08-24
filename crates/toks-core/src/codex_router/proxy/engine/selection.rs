@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use crate::accounts::AccountId;
 use crate::rotation::ThreadId;
+use crate::storage::StoreUpdate;
 
 use super::super::headers::ResumeMarker;
 use super::super::types::{CredentialFailure, RouteCredential};
@@ -39,7 +40,7 @@ impl Engine {
                 now(),
                 rejected.map(RouteCredential::fingerprint).as_deref(),
             );
-            ((), true)
+            StoreUpdate::Changed(())
         })
     }
 
@@ -156,13 +157,13 @@ impl Engine {
                             } else {
                                 RouteSelection::Unavailable
                             };
-                            return (denied, false);
+                            return StoreUpdate::Unchanged(denied);
                         }
                     }
                 }
-                (selected, changed)
+                StoreUpdate::from_changed(selected, changed)
             });
-            (selected, false)
+            StoreUpdate::Unchanged(selected)
         })?
     }
 

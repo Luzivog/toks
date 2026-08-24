@@ -54,7 +54,7 @@ pub(super) async fn run(
             client_message = client.next() => {
                 let Some(Ok(message)) = client_message else { break };
                 if client::handle(&mut client, &mut upstream, &engine, &account,
-                    &mut turn, message).await.is_err() {
+                    &mut turn, message).await.is_none() {
                     break;
                 }
             }
@@ -67,7 +67,7 @@ pub(super) async fn run(
                     &account,
                     &mut turn,
                     message,
-                ).await.is_err() {
+                ).await.is_none() {
                     break;
                 }
             }

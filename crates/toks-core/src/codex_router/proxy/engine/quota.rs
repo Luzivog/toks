@@ -6,6 +6,7 @@ use crate::rotation::{
     account_quota_drain, BlockWindow, FastLimitDisposition, FastLimitOutcome, ThreadId, UnixMillis,
     UsageLimitIncident,
 };
+use crate::storage::StoreUpdate;
 
 use super::{now, Engine};
 
@@ -48,8 +49,8 @@ impl Engine {
         let at = now();
         self.runtime.update(
             |runtime| match runtime.reserve_thread(account, thread, at) {
-                Ok(()) => (Ok(()), true),
-                Err(conflict) => (Err(conflict), false),
+                Ok(()) => StoreUpdate::Changed(Ok(())),
+                Err(conflict) => StoreUpdate::Unchanged(Err(conflict)),
             },
         )??;
         Ok(())
@@ -84,7 +85,7 @@ impl Engine {
                 let (outcome, _material_changed) =
                     runtime.fast_limit_reached(account, thread, window, disposition, at);
                 runtime.usage_limited(account, incident, at);
-                (outcome, true)
+                StoreUpdate::Changed(outcome)
             })?;
             return Ok(match (outcome, delivery) {
                 (FastLimitOutcome::UseStandard, ResponseDelivery::NothingDelivered) => {
@@ -108,12 +109,12 @@ impl Engine {
             Some(thread) => self.runtime.update(|runtime| {
                 runtime.thread_blocked(account, thread, window, at);
                 runtime.usage_limited(account, incident, at);
-                ((), true)
+                StoreUpdate::Changed(())
             })?,
             None => self.runtime.update(|runtime| {
                 runtime.block_admission(account, window, at);
                 runtime.usage_limited(account, incident, at);
-                ((), true)
+                StoreUpdate::Changed(())
             })?,
         }
         Ok(match delivery {
@@ -128,7 +129,7 @@ impl Engine {
         let window = block_window(account, reset);
         self.runtime.update(|runtime| {
             runtime.block_admission(account, window, at);
-            ((), true)
+            StoreUpdate::Changed(())
         })
     }
 
@@ -143,7 +144,7 @@ impl Engine {
         self.runtime.update(|runtime| {
             runtime.block_admission(account, window, at);
             runtime.usage_limited(account, incident, at);
-            ((), true)
+            StoreUpdate::Changed(())
         })
     }
 }

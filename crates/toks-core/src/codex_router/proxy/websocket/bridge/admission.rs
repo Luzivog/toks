@@ -22,18 +22,18 @@ pub(super) fn select(
 
 pub(in crate::codex_router::proxy::websocket) async fn reject(
     client: &mut WebSocket,
-) -> Result<(), ()> {
+) -> Option<()> {
     client
         .send(Message::Text(ALL_UNAVAILABLE_FRAME.into()))
         .await
-        .map_err(|_| ())
+        .ok()
 }
 
 pub(in crate::codex_router::proxy::websocket) async fn reject_thread(
     client: &mut WebSocket,
-) -> Result<(), ()> {
+) -> Option<()> {
     client
         .send(Message::Text(BAD_THREAD_FRAME.into()))
         .await
-        .map_err(|_| ())
+        .ok()
 }

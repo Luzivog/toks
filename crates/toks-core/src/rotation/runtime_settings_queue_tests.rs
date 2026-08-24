@@ -1,4 +1,5 @@
 use crate::accounts::AccountId;
+use crate::storage::StoreUpdate;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -115,7 +116,7 @@ fn stale_poll_and_cancel_transactions_cannot_overwrite_each_other() {
                 poll_loaded_tx.send(()).unwrap();
                 release_poll_rx.recv().unwrap();
                 let changed = settings.reconcile_waiting(&[polled_thread]);
-                ((), changed)
+                StoreUpdate::from_changed((), changed)
             })
             .unwrap();
     });
@@ -125,7 +126,7 @@ fn stale_poll_and_cancel_transactions_cannot_overwrite_each_other() {
         cancelling
             .update(|settings| {
                 let changed = settings.cancel_waiting(&cancelled_thread);
-                ((), changed)
+                StoreUpdate::from_changed((), changed)
             })
             .unwrap();
         cancel_done_tx.send(()).unwrap();

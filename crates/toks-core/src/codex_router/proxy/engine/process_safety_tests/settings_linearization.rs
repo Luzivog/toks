@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use crate::accounts::AccountId;
 use crate::rotation::{ResumeAuthorization, RotationSettingsStore, ThreadId};
+use crate::storage::StoreUpdate;
 
 use super::{Engines, ATTEMPT};
 
@@ -24,7 +25,7 @@ fn committed_cancellation_wins_before_resume_authorization() {
                 held_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
                 let changed = settings.cancel_waiting(&cancelled_thread);
-                ((), changed)
+                StoreUpdate::from_changed((), changed)
             })
             .unwrap();
     });
@@ -77,7 +78,7 @@ fn committed_exclusion_wins_before_route_opens_a_connection() {
                 held_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
                 let changed = settings.set_included(&excluded_account, false);
-                ((), changed)
+                StoreUpdate::from_changed((), changed)
             })
             .unwrap();
     });

@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, fs};
 
 use crate::accounts::AccountId;
+use crate::storage::StoreUpdate;
 
 use super::{
     AccountAvailability, BlockWindow, QuotaObservation, RotationEventKind, RotationRuntime,
@@ -364,7 +365,7 @@ fn runtime_transactions_from_two_router_generations_do_not_lose_updates() {
             store
                 .update(|runtime| {
                     let changed = runtime.waiting(&ThreadId::new(thread), UnixMillis::new(1));
-                    ((), changed)
+                    StoreUpdate::from_changed((), changed)
                 })
                 .unwrap();
         })

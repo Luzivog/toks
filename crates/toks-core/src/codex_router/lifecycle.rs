@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use super::{codex_binary, codex_config, credentials, systemd};
+use crate::storage::StoreUpdate;
 
 /// Install and start the router before directing new Codex processes to it.
 pub fn enable(router_executable: &Path) -> Result<()> {
@@ -100,6 +101,6 @@ fn set_enabled(enabled: bool) -> Result<()> {
     store.update(|settings| {
         settings.reconcile(&credentials::account_ids());
         settings.set_enabled(enabled);
-        ((), true)
+        StoreUpdate::Changed(())
     })
 }

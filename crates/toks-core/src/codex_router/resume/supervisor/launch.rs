@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use super::{ResumeAttempt, ResumePhase, ResumeQueue, Supervisor, TaskUnits, RETRY_DELAY_MILLIS};
 use crate::rotation::{RotationSettings, UnixMillis, WaitingId};
+use crate::storage::StoreUpdate;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::codex_router::resume) enum AuthorizationOutcome {
@@ -105,7 +106,7 @@ impl<Q: ResumeQueue, U: TaskUnits> Supervisor<Q, U> {
                             .and_then(|()| self.units.launch(attempt))
                             .map(|()| AuthorizationOutcome::Launched)
                     };
-                    (outcome, false)
+                    StoreUpdate::Unchanged(outcome)
                 })?
             }
             crate::rotation::ResumeAuthorization::Cancelled => {

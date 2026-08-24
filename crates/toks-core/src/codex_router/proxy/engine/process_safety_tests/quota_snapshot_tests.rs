@@ -7,6 +7,7 @@ use crate::accounts::{
     AccountId, AccountIdentityKind, AccountProfile, AccountSource, CredentialProfileId,
     CredentialProfileKind, ProviderAccount, ProviderLimitCollection,
 };
+use crate::codex_router::thread_source::ThreadSourceStore;
 use crate::limits::{
     LimitIssue, LimitIssueKind, LimitSnapshot, LimitWindow, Provider, SnapshotFreshness,
     SnapshotStatus,
@@ -15,10 +16,11 @@ use crate::rotation::{
     AccountAvailability, BlockWindow, FastLimitDisposition, QuotaObservation, RotationRuntimeStore,
     RotationSettings, RotationSettingsStore, ThreadId, UnixMillis,
 };
+use crate::storage::StoreUpdate;
 
 use super::super::super::catalogue::Catalogue;
 use super::super::super::types::SharedCredentials;
-use super::super::Engine;
+use super::super::{Engine, EngineConfig};
 use super::Credentials;
 
 struct QuotaFixture {
@@ -62,12 +64,14 @@ impl QuotaFixture {
             .into_iter()
             .collect();
         let credentials: SharedCredentials = Arc::new(Credentials { accounts });
-        Engine::with_catalogue(
+        Engine::new(EngineConfig {
             credentials,
-            self.settings.clone(),
-            self.store.clone(),
-            Catalogue::at(None),
-        )
+            settings: self.settings.clone(),
+            runtime_store: self.store.clone(),
+            catalogue: Catalogue::at(None),
+            connection_owner: None,
+            thread_sources: ThreadSourceStore::discover(),
+        })
         .unwrap()
     }
 
@@ -98,7 +102,7 @@ impl QuotaFixture {
                     FastLimitDisposition::RetryingStandard,
                     UnixMillis::new(11),
                 );
-                ((), true)
+                StoreUpdate::Changed(())
             })
             .unwrap();
     }
@@ -328,7 +332,7 @@ async fn only_a_current_proved_healthy_snapshot_clears_a_confirmed_hard_block() 
                 BlockWindow::known(UnixMillis::new(i64::MAX)),
                 UnixMillis::new(10),
             );
-            ((), changed)
+            StoreUpdate::from_changed((), changed)
         })
         .unwrap();
 
@@ -399,7 +403,7 @@ async fn proved_current_account_window_uses_the_exact_one_percent_boundary() {
             runtime
                 .thread_attached(&fixture.account, &existing)
                 .unwrap();
-            ((), true)
+            StoreUpdate::Changed(())
         })
         .unwrap();
 

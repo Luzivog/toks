@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 
 use crate::accounts::AccountId;
+use crate::storage::StoreUpdate;
 
 use super::super::super::types::RouteCredential;
 use super::super::Engine;
@@ -40,7 +41,7 @@ impl Engine {
             let restored = self.runtime.update(|runtime| {
                 let restored =
                     runtime.sign_in_restored_by_proof(&account, failure.clone(), &fingerprint);
-                (restored, restored)
+                StoreUpdate::from_changed(restored, restored)
             })?;
             if restored {
                 repaired.insert(account, credential);

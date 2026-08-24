@@ -3,16 +3,18 @@ use std::sync::Arc;
 use futures_util::future::BoxFuture;
 
 use crate::accounts::AccountId;
+use crate::codex_router::thread_source::ThreadSourceStore;
 use crate::rotation::{
     QuotaObservation, ResumeAuthorization, RotationRuntimeStore, RotationSettings,
-    RotationSettingsStore, ThreadId, UnixMillis,
+    RotationSettingsStore, ThreadId, UnixMillis, WorkerConnectionOwner,
 };
+use crate::storage::StoreUpdate;
 
 use super::super::catalogue::Catalogue;
 use super::super::types::{
     CredentialFailure, CredentialSource, RouteCredential, SharedCredentials,
 };
-use super::Engine;
+use super::{Engine, EngineConfig};
 
 mod auth_repair;
 mod cross_account;
@@ -79,12 +81,14 @@ impl Engines {
             accounts: accounts.clone(),
         });
         let build = || {
-            Engine::with_catalogue(
-                credentials.clone(),
-                settings_store.clone(),
-                store.clone(),
-                Catalogue::at(None),
-            )
+            Engine::new(EngineConfig {
+                credentials: credentials.clone(),
+                settings: settings_store.clone(),
+                runtime_store: store.clone(),
+                catalogue: Catalogue::at(None),
+                connection_owner: None,
+                thread_sources: ThreadSourceStore::discover(),
+            })
             .expect("engine")
         };
         let first = build();
@@ -102,14 +106,17 @@ impl Engines {
         let credentials: SharedCredentials = Arc::new(Credentials {
             accounts: self.accounts.clone(),
         });
-        Engine::with_catalogue_for_worker(
+        Engine::new(EngineConfig {
             credentials,
-            RotationSettingsStore::for_data_dir(self._directory.path()),
-            self.store.clone(),
-            Catalogue::at(None),
-            generation,
-            instance_id,
-        )
+            settings: RotationSettingsStore::for_data_dir(self._directory.path()),
+            runtime_store: self.store.clone(),
+            catalogue: Catalogue::at(None),
+            connection_owner: Some(
+                WorkerConnectionOwner::new(generation, instance_id)
+                    .expect("worker identity is nonzero"),
+            ),
+            thread_sources: ThreadSourceStore::discover(),
+        })
         .expect("worker engine")
     }
 
@@ -280,7 +287,10 @@ fn overlapping_engines_serialize_the_whole_read_modify_write() {
             .update(|runtime| {
                 entered_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
-                ((), runtime.waiting(&ThreadId::new("first"), super::now()))
+                StoreUpdate::from_changed(
+                    (),
+                    runtime.waiting(&ThreadId::new("first"), super::now()),
+                )
             })
             .unwrap();
     });
@@ -361,7 +371,7 @@ fn cold_reconciliation_preserves_only_surviving_worker_connections() {
                 )]),
                 UnixMillis::new(10),
             );
-            ((), changed)
+            StoreUpdate::from_changed((), changed)
         })
         .unwrap();
 
@@ -403,12 +413,14 @@ fn starting_another_engine_preserves_live_connections() {
     let credentials: SharedCredentials = Arc::new(Credentials {
         accounts: vec![account.clone()],
     });
-    let _third = Engine::with_catalogue(
+    let _third = Engine::new(EngineConfig {
         credentials,
-        RotationSettingsStore::for_data_dir(engines._directory.path()),
-        engines.store.clone(),
-        Catalogue::at(None),
-    )
+        settings: RotationSettingsStore::for_data_dir(engines._directory.path()),
+        runtime_store: engines.store.clone(),
+        catalogue: Catalogue::at(None),
+        connection_owner: None,
+        thread_sources: ThreadSourceStore::discover(),
+    })
     .unwrap();
 
     assert_eq!(engines.store.load().unwrap().active_threads(&account), 1);
@@ -426,7 +438,7 @@ fn explicit_cold_start_reset_clears_only_live_process_ownership() {
             runtime
                 .connection_opened(&account, &thread, UnixMillis::new(10))
                 .unwrap();
-            ((), true)
+            StoreUpdate::Changed(())
         })
         .unwrap();
 
@@ -453,7 +465,7 @@ fn quota_updates_in_a_new_generation_see_old_worker_attachments() {
                 )]),
                 crate::rotation::UnixMillis::new(10),
             );
-            ((), changed)
+            StoreUpdate::from_changed((), changed)
         })
         .unwrap();
 

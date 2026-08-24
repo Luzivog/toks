@@ -5,6 +5,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use sha2::{Digest, Sha256};
 
 use crate::accounts::AccountId;
+use crate::storage::StoreUpdate;
 
 use super::types::SharedCredentials;
 
@@ -42,7 +43,7 @@ impl InboundTokens {
         let admissions = store
             .update(|admissions| {
                 let changed = prune(admissions, &active, now());
-                (admissions.clone(), changed)
+                StoreUpdate::from_changed(admissions.clone(), changed)
             })
             .unwrap_or_default();
         Self {
@@ -89,7 +90,7 @@ impl InboundTokens {
                 true
             };
             changed |= prune(admissions, &active, now);
-            ((accepted, admissions.clone()), changed)
+            StoreUpdate::from_changed((accepted, admissions.clone()), changed)
         }) {
             Ok((accepted, current)) => {
                 merge_store_state(&mut validated, current);
@@ -113,7 +114,7 @@ impl InboundTokens {
     ) {
         if let Ok(current) = self.store.update(|admissions| {
             let changed = prune(admissions, active, now);
-            (admissions.clone(), changed)
+            StoreUpdate::from_changed(admissions.clone(), changed)
         }) {
             merge_store_state(validated, current);
         }
