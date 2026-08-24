@@ -6534,7 +6534,6 @@ dependencies = [
  "tokio-tungstenite",
  "toks-ingest",
  "toml_edit 0.22.27",
- "tower",
  "uuid",
  "zstd",
 ]
@@ -6546,7 +6545,7 @@ dependencies = [
  "bincode",
  "chrono",
  "chrono-tz",
- "dirs 5.0.1",
+ "dirs 6.0.0",
  "fs2",
  "getrandom 0.3.4",
  "hmac",

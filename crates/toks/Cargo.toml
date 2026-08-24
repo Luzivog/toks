@@ -24,5 +24,4 @@ name = "toks"
 path = "src/main.rs"
 
 [dev-dependencies]
-gpui = "0.2.2"
 serde_json.workspace = true

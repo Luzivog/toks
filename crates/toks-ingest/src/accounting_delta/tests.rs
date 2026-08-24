@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 use super::{AccountingDeltaCollector, AccountingDeltaOptions};
+use crate::parse_all_messages_with_pricing_with_env_strategy as parse;
 
 pub(super) fn options(home: &Path) -> AccountingDeltaOptions {
     AccountingDeltaOptions {
@@ -419,9 +420,8 @@ fn source_message_cache_seed_is_archived_then_suffix_is_exact_once() {
     let mut env = crate::paths::test_env::EnvGuard::capture(&["TOKSCOPE_CONFIG_DIR"]);
     env.set("TOKSCOPE_CONFIG_DIR", config.path());
     let path = write_initial(home.path());
-    let home_text = home.path().to_string_lossy();
-    let cached =
-        crate::parse_all_messages_with_pricing(home_text.as_ref(), &["codex".to_string()], None);
+    let (home_text, settings) = (home.path().to_string_lossy(), Default::default());
+    let cached = parse(&home_text, &["codex".into()], None, true, &settings);
     assert_eq!(cached.len(), 1);
     OpenOptions::new()
         .append(true)

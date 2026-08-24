@@ -712,21 +712,6 @@ pub fn get_home_dir_string(home_dir_option: &Option<String>) -> Result<String, S
         })
 }
 
-#[allow(dead_code)]
-fn parse_all_messages_with_pricing(
-    home_dir: &str,
-    clients: &[String],
-    pricing: Option<&pricing::PricingService>,
-) -> Vec<UnifiedMessage> {
-    parse_all_messages_with_pricing_with_env_strategy(
-        home_dir,
-        clients,
-        pricing,
-        true,
-        &scanner::ScannerSettings::default(),
-    )
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SourceCachePolicy {
     Persistent,
@@ -4666,7 +4651,7 @@ pub fn parse_local_clients(options: LocalParseOptions) -> Result<ParsedMessages,
         }
     }
 
-    // Filter BEFORE normalization (see parse_all_messages_with_pricing).
+    // Filter BEFORE normalization (see parse_all_messages_with_pricing_with_env_strategy).
     if !include_all {
         let requested: HashSet<&str> = clients.iter().map(String::as_str).collect();
         messages.retain(|msg| {

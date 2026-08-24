@@ -43,6 +43,3 @@ pub(super) fn gauge_color(w: &LimitWindow, accent: Hsla, cx: &App) -> Hsla {
         _ => accent,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Sidebar

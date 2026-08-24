@@ -33,7 +33,6 @@ use std::collections::BTreeMap;
 #[cfg(test)]
 use std::path::Path;
 #[cfg(test)]
-#[allow(unused_imports)]
 pub(super) use test_support::{
     advance_projection_at_for_test, load_projection_metadata_at_for_test,
     stream_projection_at_for_test,

@@ -14,6 +14,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
+dirs = "6"
+rusqlite = { version = "0.32", features = ["bundled"] }
+zstd = "0.13"
+sha2 = "0.10"
+hmac = "0.12"
+getrandom = "0.3"
+tempfile = "3"
 
 [profile.dev]
 debug = "line-tables-only"
