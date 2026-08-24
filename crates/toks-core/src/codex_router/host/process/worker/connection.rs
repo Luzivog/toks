@@ -38,6 +38,10 @@ impl Handoffs {
 
     pub(super) fn finalize(&mut self, handoff_id: HandoffId) {
         self.committed.remove(&handoff_id);
+        // The coordinator also finalizes handoffs it abandoned mid-delivery,
+        // and those can still be parked pre-commit. That descriptor will never
+        // be committed, so drop it instead of holding it for the epoch.
+        self.pending.remove(&handoff_id);
     }
 }
 
@@ -145,6 +149,25 @@ mod tests {
         handoffs.finalize(id);
 
         assert!(!handoffs.committed.contains(&id));
+    }
+
+    #[tokio::test]
+    async fn finalizing_an_abandoned_handoff_drops_its_parked_descriptor() {
+        let id = HandoffId::new(17, 5);
+        let mut handoffs = Handoffs::default();
+        handoffs.pending.insert(id, stream().await);
+
+        handoffs.finalize(id);
+
+        assert!(handoffs.pending.is_empty());
+    }
+
+    async fn stream() -> tokio::net::TcpStream {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let client = tokio::spawn(tokio::net::TcpStream::connect(address));
+        listener.accept().await.unwrap();
+        client.await.unwrap().unwrap()
     }
 
     #[test]

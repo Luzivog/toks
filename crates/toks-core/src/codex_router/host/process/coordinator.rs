@@ -27,6 +27,7 @@ mod pending_retry_tests;
 mod planning;
 #[cfg(test)]
 mod planning_tests;
+mod reaping;
 #[cfg(test)]
 mod recovery_tests;
 mod registration;
@@ -83,7 +84,7 @@ pub(crate) async fn run(runtime: RouterRuntimeHandle) -> Result<()> {
                 stopping = Some(tokio::time::Instant::now());
             }
             _ = reconcile.tick() => {
-                coordinator.reap_stale_handoffs();
+                coordinator.reap_stale_handoffs(tokio::time::Instant::now()).await;
                 coordinator.retry_all_pending().await;
                 coordinator.expire_waits().await?;
                 coordinator.advance().await?;

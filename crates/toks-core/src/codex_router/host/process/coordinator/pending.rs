@@ -6,7 +6,7 @@ use crate::codex_router::handoff::{GenerationId as WireGenerationId, HandoffId};
 
 mod reap;
 use reap::DeliveryPhase;
-pub(super) use reap::HANDOFF_SETTLE_TIMEOUT;
+pub(super) use reap::{AbandonedStage, HANDOFF_SETTLE_TIMEOUT};
 
 // Once this many descriptors are in flight, the systemd socket backlog buffers
 // new clients until a worker completes a handoff.

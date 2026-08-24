@@ -1,7 +1,7 @@
 use super::super::channel::AsyncChannel;
 use super::super::paths::HostPaths;
 use super::core::{Coordinator, WorkerSlot};
-use super::pending::{Pending, HANDOFF_SETTLE_TIMEOUT};
+use super::pending::{AbandonedStage, Pending, HANDOFF_SETTLE_TIMEOUT};
 use crate::codex_router::handoff::{
     Control, GenerationId as WireGenerationId, HandoffChannel, HandoffListener, Received,
     WorkerInstanceId,
@@ -214,7 +214,7 @@ async fn an_unsettled_handoff_is_abandoned_and_its_slot_reclaimed() {
 
     assert_eq!(abandoned.len(), 1);
     assert_eq!(abandoned[0].id, delivered.handoff_id);
-    assert_eq!(abandoned[0].stage, "preparing");
+    assert_eq!(abandoned[0].stage, AbandonedStage::Preparing);
     assert!(coordinator.pending.is_empty());
 }
 
@@ -233,6 +233,92 @@ async fn a_handoff_still_inside_the_settle_window_is_left_alone() {
 
     assert!(abandoned.is_empty());
     assert!(!coordinator.pending.is_empty());
+}
+
+#[tokio::test]
+async fn a_handoff_reaped_mid_commit_still_tells_the_worker_to_forget_it() {
+    let (_directory, mut coordinator, peer, generation) = fixture().await;
+    let (_client, server) = tcp_pair().await;
+    coordinator.handoff(server).await.unwrap();
+    let Received::Connection(connection, _copy) = peer.receive().await.unwrap() else {
+        panic!("expected descriptor")
+    };
+    coordinator
+        .handle_message(
+            generation.get(),
+            Control::ConnectionAck {
+                handoff_id: connection.handoff_id,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        peer.receive().await.unwrap(),
+        Received::Control(Control::ConnectionCommitted { handoff_id })
+            if handoff_id == connection.handoff_id
+    ));
+
+    // The commit acknowledgement never arrives, so the reaper abandons the
+    // handoff — but the worker may have committed (tombstone) or still be
+    // parking the descriptor, so it must be told to forget the handoff.
+    coordinator
+        .reap_stale_handoffs(tokio::time::Instant::now() + HANDOFF_SETTLE_TIMEOUT)
+        .await;
+
+    assert!(coordinator.pending.is_empty());
+    assert!(matches!(
+        peer.receive().await.unwrap(),
+        Received::Control(Control::ConnectionFinalized { handoff_id })
+            if handoff_id == connection.handoff_id
+    ));
+}
+
+#[tokio::test]
+async fn a_reaped_finalization_still_tells_the_worker_to_drop_its_tombstone() {
+    let (_directory, mut coordinator, peer, generation) = fixture().await;
+    let (_client, server) = tcp_pair().await;
+    coordinator.handoff(server).await.unwrap();
+    let Received::Connection(connection, _copy) = peer.receive().await.unwrap() else {
+        panic!("expected descriptor")
+    };
+    coordinator
+        .handle_message(
+            generation.get(),
+            Control::ConnectionCommitAck {
+                handoff_id: connection.handoff_id,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        peer.receive().await.unwrap(),
+        Received::Control(Control::ConnectionFinalized { handoff_id })
+            if handoff_id == connection.handoff_id
+    ));
+
+    // The finalization acknowledgement never arrives, so the reaper abandons
+    // the handoff — but the worker committed, so it must still be told to
+    // release its idempotency tombstone.
+    coordinator
+        .reap_stale_handoffs(tokio::time::Instant::now() + HANDOFF_SETTLE_TIMEOUT)
+        .await;
+
+    assert!(coordinator.pending.is_empty());
+    assert!(matches!(
+        peer.receive().await.unwrap(),
+        Received::Control(Control::ConnectionFinalized { handoff_id })
+            if handoff_id == connection.handoff_id
+    ));
+    // The worker's late acknowledgement of that notification is a no-op.
+    coordinator
+        .handle_message(
+            generation.get(),
+            Control::ConnectionFinalizedAck {
+                handoff_id: connection.handoff_id,
+            },
+        )
+        .await
+        .unwrap();
 }
 
 async fn fixture() -> (

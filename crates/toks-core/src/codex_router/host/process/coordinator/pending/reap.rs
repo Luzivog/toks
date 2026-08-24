@@ -20,7 +20,32 @@ pub(crate) const HANDOFF_SETTLE_TIMEOUT: Duration = Duration::from_secs(15);
 pub(crate) struct AbandonedHandoff {
     pub(crate) generation: WireGenerationId,
     pub(crate) id: HandoffId,
-    pub(crate) stage: &'static str,
+    pub(crate) stage: AbandonedStage,
+}
+
+/// The delivery stage a handoff was stuck in when it was abandoned.
+///
+/// The stage matters beyond the log line: every stage past `Queued` may have
+/// left state in the worker — a parked descriptor before the commit, an
+/// idempotency tombstone after it — so the reaper owes those handoffs one
+/// last `ConnectionFinalized`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AbandonedStage {
+    Queued,
+    Preparing,
+    Committing,
+    Finalizing,
+}
+
+impl AbandonedStage {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Preparing => "preparing",
+            Self::Committing => "committing",
+            Self::Finalizing => "finalizing",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -31,11 +56,11 @@ pub(super) enum DeliveryPhase {
 }
 
 impl DeliveryPhase {
-    fn stage(self) -> &'static str {
+    fn stage(self) -> AbandonedStage {
         match self {
-            Self::Queued => "queued",
-            Self::Preparing => "preparing",
-            Self::Committing => "committing",
+            Self::Queued => AbandonedStage::Queued,
+            Self::Preparing => AbandonedStage::Preparing,
+            Self::Committing => AbandonedStage::Committing,
         }
     }
 }
@@ -68,7 +93,7 @@ impl Pending {
                 abandoned.push(AbandonedHandoff {
                     generation: WireGenerationId::new(generation),
                     id: HandoffId::new(epoch, sequence),
-                    stage: "finalizing",
+                    stage: AbandonedStage::Finalizing,
                 });
                 false
             });

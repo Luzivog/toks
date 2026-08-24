@@ -73,26 +73,6 @@ impl Coordinator {
         Ok(())
     }
 
-    /// Reclaims handoff slots whose client gave up before delivery settled.
-    ///
-    /// Every abandoned handoff also releases the client descriptor the
-    /// coordinator was holding for a redelivery that will never happen.
-    pub(super) fn reap_stale_handoffs(&mut self) {
-        let abandoned = self.pending.reap_expired(
-            tokio::time::Instant::now(),
-            super::pending::HANDOFF_SETTLE_TIMEOUT,
-        );
-        for handoff in abandoned {
-            eprintln!(
-                "router abandoned handoff {}/{} for generation {} stuck in {}",
-                handoff.id.coordinator_epoch(),
-                handoff.id.sequence(),
-                handoff.generation.raw(),
-                handoff.stage,
-            );
-        }
-    }
-
     pub(super) async fn retry_all_pending(&mut self) {
         let generations = self
             .workers
