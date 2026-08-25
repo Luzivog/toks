@@ -3,11 +3,11 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 
 use crate::accounts::AccountId;
-use crate::rotation::{RotationEventKind, ThreadId, UnixMillis};
+use crate::rotation::{RotationEventKind, ThreadId, ThreadRequestSettings, UnixMillis};
 use crate::storage::StoreUpdate;
 
 use super::{policy::selected_account, RouteSelection};
-use crate::codex_router::proxy::engine::{Engine, RouteTier};
+use crate::codex_router::proxy::engine::{AuthorizedRoute, Engine, RouteTier};
 
 impl Engine {
     pub fn attach_authorized(
@@ -51,16 +51,29 @@ impl Engine {
         })?
     }
 
+    #[cfg(test)]
     pub fn route_authorized(
         &self,
         account: &AccountId,
         thread: &ThreadId,
         resume_attempt: Option<&str>,
     ) -> Result<Option<RouteTier>> {
+        self.route_request_authorized(account, thread, resume_attempt, None)
+            .map(|route| route.map(|route| route.tier()))
+    }
+
+    pub(in crate::codex_router::proxy) fn route_request_authorized(
+        &self,
+        account: &AccountId,
+        thread: &ThreadId,
+        resume_attempt: Option<&str>,
+        request_settings: Option<&ThreadRequestSettings>,
+    ) -> Result<Option<AuthorizedRoute>> {
         let discovered = self.credentials.account_ids();
         let at = UnixMillis::now();
         self.settings.update(|settings| {
             settings.reconcile(&discovered);
+            let request_override = settings.thread_override(thread).cloned();
             let routed = self.runtime.update(|runtime| {
                 if !runtime.resume_route_authorized(thread, resume_attempt, account) {
                     let changed = runtime.release_reservation(account, thread);
@@ -98,9 +111,22 @@ impl Engine {
                         } if thread_id == thread => Some(account_id.clone()),
                         _ => None,
                     });
-                let opened = match self.connection_owner {
-                    Some(owner) => runtime.connection_opened_by(owner, account, thread, at),
-                    None => runtime.connection_opened(account, thread, at),
+                let opened = match (self.connection_owner, request_settings) {
+                    (Some(owner), Some(request_settings)) => runtime.connection_opened_by_observed(
+                        owner,
+                        account,
+                        thread,
+                        at,
+                        request_settings.clone(),
+                    ),
+                    (None, Some(request_settings)) => runtime.connection_opened_observed(
+                        account,
+                        thread,
+                        at,
+                        request_settings.clone(),
+                    ),
+                    (Some(owner), None) => runtime.connection_opened_by(owner, account, thread, at),
+                    (None, None) => runtime.connection_opened(account, thread, at),
                 };
                 if opened.is_err() {
                     return StoreUpdate::Unchanged(None);
@@ -109,7 +135,7 @@ impl Engine {
                     runtime.rotated(thread, &previous, account, at);
                 }
                 runtime.resumed(thread, account, at);
-                StoreUpdate::Changed(Some(tier))
+                StoreUpdate::Changed(Some(AuthorizedRoute::new(tier, request_override.clone())))
             });
             StoreUpdate::Unchanged(routed)
         })?

@@ -1,7 +1,9 @@
 use axum::body::Bytes;
 use axum::http::header::CONTENT_ENCODING;
 use axum::http::{HeaderMap, StatusCode};
-use serde_json::Value;
+
+use crate::codex_router::proxy::protocol::{rewrite_request, RequestEnvelope};
+use crate::rotation::ThreadOverride;
 
 mod compression;
 use compression::{decode_zstd, encode_zstd};
@@ -14,8 +16,8 @@ pub(super) struct CodexHttpBody {
 
 pub(super) struct RewrittenBody {
     pub wire: Bytes,
-    pub forced_fast: bool,
     pub forwarded: String,
+    pub automatic_tier_applied: bool,
 }
 
 #[derive(Debug)]
@@ -109,40 +111,45 @@ impl CodexHttpBody {
         self.wire.clone()
     }
 
-    pub(super) async fn with_service_tier(
+    pub(super) async fn rewrite_request(
         &self,
-        tier: &str,
-        is_fast: bool,
+        request_override: Option<&ThreadOverride>,
+        automatic_tier: Option<&str>,
         max_wire_bytes: usize,
     ) -> Result<RewrittenBody, RewriteError> {
-        let Some(rewritten) = rewrite_service_tier(self.text().unwrap_or_default(), tier) else {
+        let Some(rewritten) = rewrite_request(
+            self.text().unwrap_or_default(),
+            RequestEnvelope::HttpResponses,
+            request_override,
+            automatic_tier,
+        ) else {
             return Ok(RewrittenBody {
                 wire: self.wire(),
-                forced_fast: false,
                 forwarded: self.text().unwrap_or_default().to_owned(),
+                automatic_tier_applied: false,
             });
         };
-        let forced_fast = is_fast && rewritten.as_bytes() != self.decoded.as_ref();
-        if rewritten.as_bytes() == self.decoded.as_ref() {
+        if rewritten.payload.as_bytes() == self.decoded.as_ref() {
             return Ok(RewrittenBody {
                 wire: self.wire(),
-                forced_fast,
-                forwarded: rewritten,
+                forwarded: rewritten.payload,
+                automatic_tier_applied: rewritten.automatic_tier_applied,
             });
         }
-        let forwarded = rewritten.clone();
-        let decoded = Bytes::from(rewritten);
+        let forwarded = rewritten.payload;
+        let automatic_tier_applied = rewritten.automatic_tier_applied;
+        let decoded = Bytes::from(forwarded.clone());
         match self.encoding {
             Encoding::Identity => Ok(RewrittenBody {
                 wire: decoded,
-                forced_fast,
                 forwarded,
+                automatic_tier_applied,
             }),
             Encoding::Zstd => tokio::task::spawn_blocking(move || {
                 encode_zstd(decoded, max_wire_bytes).map(|wire| RewrittenBody {
                     wire,
-                    forced_fast,
                     forwarded,
+                    automatic_tier_applied,
                 })
             })
             .await
@@ -173,24 +180,4 @@ impl Encoding {
         }
         Ok(encoding.unwrap_or(Self::Identity))
     }
-}
-
-fn rewrite_service_tier(payload: &str, tier: &str) -> Option<String> {
-    let mut value: Value = serde_json::from_str(payload).ok()?;
-    let object = value.as_object_mut()?;
-    if object
-        .get("type")
-        .is_some_and(|kind| kind.as_str() != Some("response.create"))
-    {
-        return None;
-    }
-    if object
-        .get("service_tier")
-        .and_then(Value::as_str)
-        .is_some_and(|tier| matches!(tier, "fast" | "priority" | "ultrafast"))
-    {
-        return Some(payload.to_owned());
-    }
-    object.insert("service_tier".into(), Value::String(tier.to_owned()));
-    serde_json::to_string(&value).ok()
 }

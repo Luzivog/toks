@@ -16,6 +16,9 @@ mod events;
 mod mutations;
 mod reconcile;
 mod resume_admissions;
+mod thread_rows;
+#[cfg(test)]
+mod thread_rows_tests;
 mod validation;
 mod waiting;
 
@@ -24,6 +27,7 @@ pub(crate) use active_threads::ThreadOwnership;
 pub(crate) use connection_owner::WorkerConnectionOwner;
 use connection_owner::{AttachedThread, WorkerConnectionCount};
 pub(crate) use resume_admissions::{ResumeAuthorization, ResumeRoute, ResumeTerminal};
+pub use thread_rows::{ThreadRequestSettings, ThreadRow, ThreadStatus};
 pub use waiting::{WaitingId, WaitingThread};
 
 pub(super) const RUNTIME_VERSION: u8 = 1;

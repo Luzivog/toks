@@ -1,15 +1,13 @@
-use std::collections::BTreeMap;
-
 use crate::accounts::AccountId;
 
 use super::ActiveThread;
 use crate::rotation::runtime::{
-    RotationEventKind, RotationRuntime, ThreadAccountConflict, ThreadId, UnixMillis,
-    WorkerConnectionCount, WorkerConnectionOwner,
+    RotationEventKind, RotationRuntime, ThreadAccountConflict, ThreadId, ThreadRequestSettings,
+    UnixMillis, WorkerConnectionCount, WorkerConnectionOwner,
 };
 
 impl ActiveThread {
-    pub(super) fn stream_count(&self) -> u32 {
+    pub(in crate::rotation::runtime) fn stream_count(&self) -> u32 {
         self.stream_owners
             .values()
             .fold(self.streams, |total, owner| {
@@ -67,6 +65,7 @@ impl RotationRuntime {
         account: &AccountId,
         thread: &ThreadId,
         at: UnixMillis,
+        request_settings: Option<ThreadRequestSettings>,
     ) -> Result<(), ThreadAccountConflict> {
         self.claim_thread_account(account, thread)?;
         self.accounts.entry(account.clone()).or_default();
@@ -76,19 +75,14 @@ impl RotationRuntime {
         let active = self
             .active_threads
             .entry(thread.clone())
-            .or_insert_with(|| ActiveThread {
-                account_id: account.clone(),
-                streams: 0,
-                stream_owners: BTreeMap::new(),
-                reservations: 0,
-                awaiting_follow_up: false,
-                started_at: Some(at),
-                last_activity_at: at,
-            });
+            .or_insert_with(|| ActiveThread::new(account.clone(), at));
         active.reservations = active.reservations.saturating_sub(1);
         active.awaiting_follow_up = false;
         active.open(owner);
         active.last_activity_at = at;
+        if let Some(request_settings) = request_settings {
+            active.request_settings = request_settings;
+        }
         self.push_event(
             at,
             RotationEventKind::Routed {
@@ -106,6 +100,10 @@ impl RotationRuntime {
         thread: &ThreadId,
         at: UnixMillis,
     ) -> bool {
+        let attached = self
+            .attached_threads
+            .get(thread)
+            .is_some_and(|attachment| attachment.connections() > 0);
         let Some(active) = self
             .active_threads
             .get_mut(thread)
@@ -117,7 +115,11 @@ impl RotationRuntime {
             return false;
         }
         active.last_activity_at = at;
-        if active.stream_count() == 0 && active.reservations == 0 && !active.awaiting_follow_up {
+        if active.stream_count() == 0
+            && active.reservations == 0
+            && !active.awaiting_follow_up
+            && !attached
+        {
             self.active_threads.remove(thread);
         }
         true
@@ -143,57 +145,5 @@ impl RotationRuntime {
         active.awaiting_follow_up = true;
         active.last_activity_at = at;
         true
-    }
-}
-
-impl RotationRuntime {
-    /// Clear only live transport ownership that no longer has a worker.
-    /// Reservations and follow-up intent are logical task state, not socket
-    /// ownership, so they deliberately survive this reconciliation.
-    pub(crate) fn reconcile_connection_owners(&mut self, surviving: &BTreeMap<u64, u64>) -> bool {
-        let active_before = self.active_threads.clone();
-        let attached_before = self.attached_threads.clone();
-        for active in self.active_threads.values_mut() {
-            active.streams = 0;
-            active.stream_owners.retain(|generation, owner| {
-                surviving.get(generation) == Some(&owner.instance_id) && owner.count > 0
-            });
-        }
-        self.active_threads.retain(|_, active| {
-            active.stream_count() > 0 || active.reservations > 0 || active.awaiting_follow_up
-        });
-        for attached in self.attached_threads.values_mut() {
-            attached.connections = 0;
-            attached.connection_owners.retain(|generation, owner| {
-                surviving.get(generation) == Some(&owner.instance_id) && owner.count > 0
-            });
-        }
-        self.attached_threads
-            .retain(|_, attached| attached.connections() > 0);
-        self.active_threads != active_before || self.attached_threads != attached_before
-    }
-
-    /// Register the process now serving one systemd generation. Reusing a
-    /// generation number after a worker crash cannot inherit the dead
-    /// process's socket counts.
-    pub(crate) fn adopt_worker_instance(&mut self, owner: WorkerConnectionOwner) -> bool {
-        let mut surviving = self
-            .active_threads
-            .values()
-            .flat_map(|active| {
-                active
-                    .stream_owners
-                    .iter()
-                    .map(|(generation, streams)| (*generation, streams.instance_id))
-            })
-            .chain(self.attached_threads.values().flat_map(|attached| {
-                attached
-                    .connection_owners
-                    .iter()
-                    .map(|(generation, connections)| (*generation, connections.instance_id))
-            }))
-            .collect::<BTreeMap<_, _>>();
-        surviving.insert(owner.generation(), owner.instance_id());
-        self.reconcile_connection_owners(&surviving)
     }
 }

@@ -16,10 +16,12 @@ pub use quota::{account_quota_drain, AccountQuotaDrain};
 pub(crate) use runtime::ThreadOwnership;
 pub use runtime::{
     AccountAvailability, AccountRuntime, RotationRuntime, RouterHealth, ThreadAccountConflict,
-    WaitingId, WaitingThread,
+    ThreadRequestSettings, ThreadRow, ThreadStatus, WaitingId, WaitingThread,
 };
 pub(crate) use runtime::{ResumeAuthorization, ResumeRoute, ResumeTerminal, WorkerConnectionOwner};
-pub use settings::RotationSettings;
+pub use settings::{
+    InvalidThreadOverrideValue, RotationSettings, ThreadOverride, ThreadOverrideChange,
+};
 pub use storage::{RotationPaths, RotationRuntimeStore, RotationSettingsStore};
 pub use types::{
     BlockWindow, RotationEvent, RotationEventKind, ThreadId, UnixMillis, UsageLimitClassification,

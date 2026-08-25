@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use crate::accounts::AccountId;
-use crate::rotation::ThreadId;
+use crate::rotation::{ThreadId, ThreadOverride, ThreadRequestSettings};
 
-use super::engine::{Engine, RouteTier};
+use super::engine::{AuthorizedRoute, Engine, RouteTier};
 
 pub(super) struct StreamLease {
     engine: Arc<Engine>,
     account: AccountId,
     thread: ThreadId,
-    tier: RouteTier,
+    route: AuthorizedRoute,
     continues: bool,
 }
 
@@ -20,26 +20,59 @@ pub(super) struct ThreadAttachment {
 }
 
 impl StreamLease {
+    #[cfg(test)]
     pub fn open(
         engine: Arc<Engine>,
         account: &AccountId,
         thread: &ThreadId,
         resume_attempt: Option<&str>,
     ) -> anyhow::Result<Option<Self>> {
-        let Some(tier) = engine.route_authorized(account, thread, resume_attempt)? else {
+        Self::open_with_settings(engine, account, thread, resume_attempt, None)
+    }
+
+    pub fn open_observed(
+        engine: Arc<Engine>,
+        account: &AccountId,
+        thread: &ThreadId,
+        resume_attempt: Option<&str>,
+        request_settings: &ThreadRequestSettings,
+    ) -> anyhow::Result<Option<Self>> {
+        Self::open_with_settings(
+            engine,
+            account,
+            thread,
+            resume_attempt,
+            Some(request_settings),
+        )
+    }
+
+    fn open_with_settings(
+        engine: Arc<Engine>,
+        account: &AccountId,
+        thread: &ThreadId,
+        resume_attempt: Option<&str>,
+        request_settings: Option<&ThreadRequestSettings>,
+    ) -> anyhow::Result<Option<Self>> {
+        let Some(route) =
+            engine.route_request_authorized(account, thread, resume_attempt, request_settings)?
+        else {
             return Ok(None);
         };
         Ok(Some(Self {
             engine,
             account: account.clone(),
             thread: thread.clone(),
-            tier,
+            route,
             continues: false,
         }))
     }
 
     pub fn tier(&self) -> RouteTier {
-        self.tier
+        self.route.tier()
+    }
+
+    pub fn request_override(&self) -> Option<&ThreadOverride> {
+        self.route.request_override()
     }
 
     pub fn continue_after_response(&mut self) {

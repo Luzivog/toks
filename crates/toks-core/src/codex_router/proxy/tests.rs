@@ -41,6 +41,7 @@ mod remote_control;
 mod resume_boundary;
 mod terminal_tombstone;
 mod thread_identity;
+mod thread_overrides;
 
 struct FakeCredentials {
     ids: Vec<AccountId>,

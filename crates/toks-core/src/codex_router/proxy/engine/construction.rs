@@ -52,13 +52,15 @@ impl Engine {
             state.heartbeat(observed_at);
             StoreUpdate::Changed(())
         })?;
-        Ok(Arc::new(Self {
+        let engine = Arc::new(Self {
             credentials,
             settings,
             runtime,
             catalogue,
             connection_owner,
             thread_sources,
-        }))
+        });
+        engine.reconcile_thread_overrides(observed_at)?;
+        Ok(engine)
     }
 }

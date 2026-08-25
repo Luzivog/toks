@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +7,11 @@ use crate::accounts::AccountId;
 use super::{RotationRuntime, ThreadId, ThreadOwnership};
 
 mod queue;
+mod thread_overrides;
+#[cfg(test)]
+mod thread_overrides_tests;
+
+pub use thread_overrides::{InvalidThreadOverrideValue, ThreadOverride, ThreadOverrideChange};
 
 pub(super) const SETTINGS_VERSION: u8 = 1;
 
@@ -19,6 +24,8 @@ pub struct RotationSettings {
     excluded: BTreeSet<AccountId>,
     cancelled_threads: BTreeSet<ThreadId>,
     waiting_priority: Vec<ThreadId>,
+    #[serde(default)]
+    thread_overrides: BTreeMap<ThreadId, ThreadOverride>,
 }
 
 impl Default for RotationSettings {
@@ -30,6 +37,7 @@ impl Default for RotationSettings {
             excluded: BTreeSet::new(),
             cancelled_threads: BTreeSet::new(),
             waiting_priority: Vec::new(),
+            thread_overrides: BTreeMap::new(),
         }
     }
 }
@@ -155,5 +163,6 @@ impl RotationSettings {
         let mut seen = BTreeSet::new();
         self.priority.retain(|account| seen.insert(account.clone()));
         self.normalize_waiting();
+        self.normalize_thread_overrides();
     }
 }
