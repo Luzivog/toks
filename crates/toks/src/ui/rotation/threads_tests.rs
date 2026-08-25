@@ -18,7 +18,7 @@ fn active_thread_statuses_use_terse_labels() {
 }
 
 #[test]
-fn selector_labels_are_values_without_column_prefixes() {
+fn selector_labels_prefer_overrides_then_observed_values_then_a_placeholder() {
     let overridden = selector_label(Some("gpt-5.6"), Some("gpt-5.5"));
     assert_eq!(overridden.text, "gpt-5.6");
     assert_eq!(overridden.source, SelectorSource::Override);
@@ -27,9 +27,9 @@ fn selector_labels_are_values_without_column_prefixes() {
     assert_eq!(observed.text, "gpt-5.5");
     assert_eq!(observed.source, SelectorSource::Observed);
 
-    let automatic = selector_label(None, None);
-    assert_eq!(automatic.text, "Auto");
-    assert_eq!(automatic.source, SelectorSource::Auto);
+    let placeholder = selector_label(None, None);
+    assert_eq!(placeholder.text, "—");
+    assert_eq!(placeholder.source, SelectorSource::Placeholder);
 }
 
 #[test]

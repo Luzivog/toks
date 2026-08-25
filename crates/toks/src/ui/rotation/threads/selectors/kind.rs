@@ -41,9 +41,9 @@ impl SelectorKind {
 
     pub(super) const fn tooltip(self) -> &'static str {
         match self {
-            Self::Model => "Model override. Auto follows the thread's own requests.",
-            Self::Reasoning => "Reasoning effort override. Auto follows the thread's own requests.",
-            Self::Tier => "Service tier override. Auto follows the thread's own requests.",
+            Self::Model => "Choose a model override for this thread.",
+            Self::Reasoning => "Choose a reasoning effort override for this thread.",
+            Self::Tier => "Choose a service tier override for this thread.",
         }
     }
 
