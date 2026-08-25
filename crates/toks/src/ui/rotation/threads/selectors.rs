@@ -1,12 +1,8 @@
 use gpui::{div, prelude::*, px, Corner};
-use gpui_component::{
-    h_flex,
-    menu::{DropdownMenu, PopupMenuItem},
-    ActiveTheme, Disableable, StyledExt,
-};
-use toks_core::rotation::{ThreadId, ThreadOverrideChange, ThreadRow};
+use gpui_component::{h_flex, menu::DropdownMenu, ActiveTheme, Disableable, StyledExt};
+use toks_core::rotation::{ThreadId, ThreadRow};
 
-use crate::{app::SettingsAction, ToksApp};
+use crate::ToksApp;
 
 use super::{
     choices::{self, Choice},
@@ -14,7 +10,13 @@ use super::{
 };
 
 mod kind;
+mod menu;
 use kind::SelectorKind;
+use menu::SelectorMenuEntry;
+
+#[cfg(test)]
+mod tests;
+
 struct SelectorSpec {
     kind: SelectorKind,
     thread_override: Option<String>,
@@ -131,7 +133,12 @@ fn selector(
     };
     let handle = cx.entity().downgrade();
     let menu_thread = thread.clone();
-    let current = thread_override.clone();
+    let menu_entries = menu::entries(
+        kind,
+        choices,
+        thread_override.as_deref(),
+        observed.as_deref(),
+    );
     let value_selector = format!("rotation-thread-{}-{}-value", kind.slug(), thread.as_str());
     super::super::super::action_button(
         format!("rotation-thread-{}-{}", kind.slug(), thread.as_str()),
@@ -159,41 +166,25 @@ fn selector(
             })
             .child(kind.display(&label.text)),
     )
-    .dropdown_menu_with_anchor(Corner::TopRight, move |mut menu, _, _| {
-        menu = menu.min_w(px(160.)).item(menu_item(
-            "Auto".into(),
-            current.is_none(),
-            menu_thread.clone(),
-            kind.change(None),
-            handle.clone(),
-        ));
-        for choice in &choices {
-            menu = menu.item(menu_item(
-                choice.label.clone(),
-                current.as_deref() == Some(choice.value.as_str()),
-                menu_thread.clone(),
-                kind.change(Some(choice.value.clone())),
-                handle.clone(),
-            ));
+    .dropdown_menu_with_anchor(Corner::TopRight, move |mut popup, _, _| {
+        popup = popup.min_w(px(160.));
+        for entry in &menu_entries {
+            popup = match entry {
+                SelectorMenuEntry::Choice { choice, checked } => popup.item(menu::choice_item(
+                    choice.clone(),
+                    *checked,
+                    menu_thread.clone(),
+                    kind,
+                    handle.clone(),
+                )),
+                SelectorMenuEntry::Separator => popup.separator(),
+                SelectorMenuEntry::ClearOverride => popup.item(menu::clear_override_item(
+                    menu_thread.clone(),
+                    kind,
+                    handle.clone(),
+                )),
+            };
         }
-        menu
+        popup
     })
-}
-
-fn menu_item(
-    label: String,
-    checked: bool,
-    thread: ThreadId,
-    change: ThreadOverrideChange,
-    app: gpui::WeakEntity<ToksApp>,
-) -> PopupMenuItem {
-    PopupMenuItem::new(label)
-        .checked(checked)
-        .on_click(move |_, _, cx| {
-            let thread = thread.clone();
-            let change = change.clone();
-            let _ = app.update(cx, |app, cx| {
-                app.change_rotation_settings(SettingsAction::SetThreadOverride(thread, change), cx);
-            });
-        })
 }
