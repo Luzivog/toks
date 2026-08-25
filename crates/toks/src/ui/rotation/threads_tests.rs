@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use toks_core::rotation::{ThreadId, ThreadStatus};
+use toks_core::{
+    codex_router::thread_lineage::{ThreadLineage, ThreadLineageKind},
+    rotation::{ThreadId, ThreadStatus},
+};
 
 use super::threads::{
     header_count, selector_label, status_label, thread_title, visible_rows, SelectorSource,
@@ -36,10 +39,35 @@ fn selector_labels_are_values_without_column_prefixes() {
 fn thread_title_falls_back_to_the_thread_id() {
     let thread = ThreadId::new("thread-42");
     let mut titles = BTreeMap::new();
-    assert_eq!(thread_title(&titles, &thread), "thread-42");
+    assert_eq!(thread_title(&titles, None, &thread), "thread-42");
 
     titles.insert(thread.clone(), "Repair router handoff".into());
-    assert_eq!(thread_title(&titles, &thread), "Repair router handoff");
+    assert_eq!(
+        thread_title(&titles, None, &thread),
+        "Repair router handoff"
+    );
+}
+
+#[test]
+fn untitled_subagents_use_their_agent_nickname() {
+    let thread = ThreadId::new("thread-42");
+    let subagent = ThreadLineage {
+        kind: ThreadLineageKind::Subagent { parent: None },
+        agent_nickname: Some("Dirac".into()),
+    };
+    assert_eq!(
+        thread_title(&BTreeMap::new(), Some(&subagent), &thread),
+        "Dirac"
+    );
+
+    let user = ThreadLineage {
+        kind: ThreadLineageKind::TopLevel,
+        agent_nickname: Some("Not a title".into()),
+    };
+    assert_eq!(
+        thread_title(&BTreeMap::new(), Some(&user), &thread),
+        "thread-42"
+    );
 }
 
 #[test]

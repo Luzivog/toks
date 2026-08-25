@@ -6,6 +6,9 @@ use crate::ToksApp;
 use super::{card_header_annotation, card_header_title, card_with_header, empty_row};
 
 mod choices;
+mod grouping;
+#[cfg(test)]
+mod grouping_tests;
 mod presentation;
 mod row;
 mod selectors;
@@ -40,7 +43,12 @@ pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
     if rows.is_empty() {
         return panel.child(empty_row("No active threads.", cx));
     }
-    for thread in presentation::visible_rows(&rows) {
+    let display_rows = grouping::group_rows(
+        &rows,
+        &app.rotation.thread_lineage,
+        &app.rotation.thread_titles,
+    );
+    for thread in presentation::visible_rows(&display_rows) {
         panel = panel.child(row::thread_row(app, thread, cx));
     }
     panel

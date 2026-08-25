@@ -7,22 +7,30 @@ use toks_core::{
 
 use crate::{Page, ToksApp};
 
-use super::{presentation, selectors};
+use super::{grouping::DisplayThread, presentation, selectors};
 
+const INDENT_WIDTH: f32 = 14.;
+const MAX_VISUAL_DEPTH: usize = 3;
 const STATUS_WIDTH: f32 = 150.;
 
 pub(super) fn thread_row(
     app: &ToksApp,
-    row: &ThreadRow,
+    display: &DisplayThread<'_>,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
+    let row: &ThreadRow = display.row;
     let thread_id = row.thread_id.as_str();
     let row_selector = format!("rotation-thread-row-{thread_id}");
     let title_selector = format!("rotation-thread-title-{thread_id}");
     let status_selector = format!("rotation-thread-status-{thread_id}");
     let status_dot_selector = format!("rotation-thread-status-dot-{thread_id}");
-    let title = presentation::thread_title(&app.rotation.thread_titles, &row.thread_id);
+    let title = presentation::thread_title(
+        &app.rotation.thread_titles,
+        app.rotation.thread_lineage.get(&row.thread_id),
+        &row.thread_id,
+    );
     let show_id = title != thread_id;
+    let indicator = display.indicator.as_deref();
     let status = match row.last_activity_at {
         Some(at) => format!(
             "{} · {}",
@@ -56,38 +64,64 @@ pub(super) fn thread_row(
                 .flex_1()
                 .min_w_0()
                 .gap_0p5()
+                .pl(px(INDENT_WIDTH * display.depth.min(MAX_VISUAL_DEPTH) as f32))
                 .child(
-                    div()
-                        .when(show_id, |title| {
-                            title.debug_selector(move || title_selector.clone())
+                    h_flex()
+                        .min_w_0()
+                        .gap_1p5()
+                        .when(display.depth > 0, |title| {
+                            title.child(
+                                div()
+                                    .flex_shrink_0()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("└"),
+                            )
                         })
-                        .text_sm()
-                        .font_medium()
-                        .truncate()
-                        .child(title),
+                        .child(
+                            div()
+                                .when(show_id, |title| {
+                                    title.debug_selector(move || title_selector.clone())
+                                })
+                                .min_w_0()
+                                .text_sm()
+                                .font_medium()
+                                .truncate()
+                                .child(title),
+                        ),
                 )
-                .when(show_id || account.is_some(), |column| {
-                    column.child(
-                        h_flex()
-                            .min_w_0()
-                            .gap_1()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .when(show_id, |details| {
-                                details.child(div().truncate().child(thread_id.to_owned()))
-                            })
-                            .when(show_id && account.is_some(), |details| details.child("·"))
-                            .when_some(account, |details, account| {
-                                details.child(super::super::format::account_identity(
-                                    app,
-                                    account,
-                                    &account_surface,
-                                    div().truncate(),
-                                    cx,
-                                ))
-                            }),
-                    )
-                }),
+                .when(
+                    show_id || account.is_some() || indicator.is_some(),
+                    |column| {
+                        column.child(
+                            h_flex()
+                                .min_w_0()
+                                .gap_1()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .when(show_id, |details| {
+                                    details.child(div().truncate().child(thread_id.to_owned()))
+                                })
+                                .when(show_id && account.is_some(), |details| details.child("·"))
+                                .when_some(account, |details, account| {
+                                    details.child(super::super::format::account_identity(
+                                        app,
+                                        account,
+                                        &account_surface,
+                                        div().truncate(),
+                                        cx,
+                                    ))
+                                })
+                                .when(
+                                    indicator.is_some() && (show_id || account.is_some()),
+                                    |details| details.child("·"),
+                                )
+                                .when_some(indicator, |details, indicator| {
+                                    details.child(div().truncate().child(indicator.to_owned()))
+                                }),
+                        )
+                    },
+                ),
         )
         .child(
             h_flex()

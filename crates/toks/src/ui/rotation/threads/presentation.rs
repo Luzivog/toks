@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use toks_core::rotation::{ThreadId, ThreadStatus};
+use toks_core::{
+    codex_router::thread_lineage::{ThreadLineage, ThreadLineageKind},
+    rotation::{ThreadId, ThreadStatus},
+};
 
 const VISIBLE_THREAD_LIMIT: usize = 100;
 
@@ -48,11 +51,19 @@ pub(in crate::ui::rotation) fn visible_rows<T>(rows: &[T]) -> impl Iterator<Item
 
 pub(in crate::ui::rotation) fn thread_title(
     titles: &BTreeMap<ThreadId, String>,
+    lineage: Option<&ThreadLineage>,
     thread: &ThreadId,
 ) -> String {
     titles
         .get(thread)
         .cloned()
+        .or_else(|| {
+            let lineage = lineage?;
+            match &lineage.kind {
+                ThreadLineageKind::Subagent { .. } => lineage.agent_nickname.clone(),
+                ThreadLineageKind::TopLevel => None,
+            }
+        })
         .unwrap_or_else(|| thread.as_str().to_owned())
 }
 
