@@ -36,7 +36,8 @@ pub(super) fn waiting_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
             pending.push((waiting, true));
         }
     }
-    let mut panel = card("Pending threads", pending.len().to_string(), cx);
+    let mut panel = card("Pending threads", pending.len().to_string(), cx)
+        .debug_selector(|| "rotation-pending-threads-card".into());
     if pending.is_empty() {
         return panel.child(empty_row("No threads are waiting or resuming.", cx));
     }

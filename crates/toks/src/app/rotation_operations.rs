@@ -1,11 +1,14 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use anyhow::Result;
 use gpui::{AppContext, Context};
 use toks_core::{
     accounts::AccountId,
-    codex_router::{RouterDeploymentStatus, RouterInstallStatus},
-    rotation::{RotationRuntime, RotationSettings, ThreadId},
+    codex_router::{
+        account_activation::SelectableModel, thread_titles::ThreadTitleStore,
+        RouterDeploymentStatus, RouterInstallStatus,
+    },
+    rotation::{RotationRuntime, RotationSettings, ThreadId, ThreadOverrideChange},
     Provider,
 };
 
@@ -13,6 +16,8 @@ use super::remote_control_operations::RemoteControlUiState;
 use crate::ToksApp;
 
 mod io;
+#[cfg(test)]
+mod io_tests;
 mod state;
 use io::{change_settings, load_rotation, run_service_action, LoadedRotation};
 
@@ -28,12 +33,15 @@ pub(crate) enum SettingsAction {
     MoveAccount(AccountId, usize),
     Cancel(ThreadId),
     MoveWaiting(ThreadId, usize),
+    SetThreadOverride(ThreadId, ThreadOverrideChange),
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct RotationUiState {
     pub settings: RotationSettings,
     pub runtime: RotationRuntime,
+    pub thread_titles: BTreeMap<ThreadId, String>,
+    pub selectable_models: Vec<SelectableModel>,
     pub install: RouterInstallStatus,
     pub deployment: RouterDeploymentStatus,
     pub error: Option<String>,
@@ -44,6 +52,7 @@ pub(crate) struct RotationUiState {
 
 pub(super) fn spawn(cx: &mut Context<ToksApp>) {
     super::remote_control_operations::spawn(cx);
+    let title_store = ThreadTitleStore::discover();
     cx.spawn(async move |this, cx| loop {
         let request = this
             .update(cx, |app, _| {
@@ -57,8 +66,9 @@ pub(super) fn spawn(cx: &mut Context<ToksApp>) {
             .ok()
             .flatten();
         if let Some((generation, accounts)) = request {
+            let title_store = title_store.clone();
             let loaded = cx
-                .background_spawn(async move { load_rotation(accounts.as_deref()) })
+                .background_spawn(async move { load_rotation(accounts.as_deref(), &title_store) })
                 .await;
             if this
                 .update(cx, |app, cx| {
@@ -121,7 +131,8 @@ impl ToksApp {
             let result = cx
                 .background_spawn(async move {
                     run_service_action(action)?;
-                    load_rotation(accounts.as_deref())
+                    let title_store = ThreadTitleStore::discover();
+                    load_rotation(accounts.as_deref(), &title_store)
                 })
                 .await;
             let _ = this.update(cx, |app, cx| {
@@ -158,10 +169,7 @@ impl ToksApp {
     fn apply_rotation_result(&mut self, result: Result<LoadedRotation>) {
         match result {
             Ok(loaded) => {
-                self.rotation.settings = loaded.settings;
-                self.rotation.runtime = loaded.runtime;
-                self.rotation.install = loaded.install;
-                self.rotation.deployment = loaded.deployment;
+                self.apply_loaded_rotation(loaded);
                 self.rotation.error = None;
             }
             Err(error) => self.rotation.error = Some(error.to_string()),
@@ -170,16 +178,20 @@ impl ToksApp {
 
     fn apply_rotation_poll(&mut self, result: Result<LoadedRotation>) {
         match result {
-            Ok(loaded) => {
-                self.rotation.settings = loaded.settings;
-                self.rotation.runtime = loaded.runtime;
-                self.rotation.install = loaded.install;
-                self.rotation.deployment = loaded.deployment;
-            }
+            Ok(loaded) => self.apply_loaded_rotation(loaded),
             Err(error) if self.rotation.error.is_none() => {
                 self.rotation.error = Some(error.to_string());
             }
             Err(_) => {}
         }
+    }
+
+    fn apply_loaded_rotation(&mut self, loaded: LoadedRotation) {
+        self.rotation.settings = loaded.settings;
+        self.rotation.runtime = loaded.runtime;
+        self.rotation.thread_titles = loaded.thread_titles;
+        self.rotation.selectable_models = loaded.selectable_models;
+        self.rotation.install = loaded.install;
+        self.rotation.deployment = loaded.deployment;
     }
 }

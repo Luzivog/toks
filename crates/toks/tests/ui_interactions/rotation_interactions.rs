@@ -5,12 +5,12 @@ use gpui::{point, px, size, Modifiers, MouseButton, TestAppContext};
 use toks::{
     test_support::{
         current_page, emails_hidden, prepare_rotation_accounts, set_page,
-        set_rotation_active_threads, set_rotation_blocked,
+        set_rotation_active_threads, set_rotation_blocked, set_rotation_thread_title,
     },
     Page, ToksApp,
 };
 
-use super::support::{rotation_limit_snapshot, Harness};
+use super::support::{rotation_limit_snapshot, Harness, VIEWPORT};
 
 #[gpui::test]
 fn rotation_sidebar_entry_opens_the_private_dashboard(cx: &mut TestAppContext) {
@@ -39,6 +39,40 @@ fn rotation_sidebar_entry_opens_the_private_dashboard(cx: &mut TestAppContext) {
     harness.cx.executor().advance_clock(Duration::from_secs(1));
     harness.cx.run_until_parked();
     assert!(harness.has("rotation-routing-toggle-tooltip"));
+}
+
+#[gpui::test]
+fn active_threads_render_above_pending_threads(cx: &mut TestAppContext) {
+    let mut harness = Harness::open_page(cx, Page::Rotation, VIEWPORT);
+
+    assert!(harness.above(
+        "rotation-active-threads-card",
+        "rotation-pending-threads-card"
+    ));
+}
+
+#[gpui::test]
+fn active_thread_renders_its_title_and_request_selectors(cx: &mut TestAppContext) {
+    let now = Utc
+        .with_ymd_and_hms(2026, 8, 22, 19, 0, 0)
+        .single()
+        .expect("valid fixture timestamp");
+    let mut app = ToksApp::from_snapshots(
+        None,
+        vec![rotation_limit_snapshot(now, "active", 42.0)],
+        now,
+    );
+    prepare_rotation_accounts(&mut app);
+    set_rotation_active_threads(&mut app, "active", 1);
+    set_rotation_thread_title(&mut app, "active-fixture-0", "Repair router handoff");
+    set_page(&mut app, Page::Rotation);
+    let mut harness = Harness::open(cx, app, VIEWPORT);
+
+    assert!(harness.has("rotation-thread-row-active-fixture-0"));
+    assert!(harness.has("rotation-thread-title-active-fixture-0"));
+    assert!(harness.has("rotation-thread-model-active-fixture-0"));
+    assert!(harness.has("rotation-thread-reasoning-active-fixture-0"));
+    assert!(harness.has("rotation-thread-tier-active-fixture-0"));
 }
 
 #[gpui::test]

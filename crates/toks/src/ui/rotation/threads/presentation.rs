@@ -1,0 +1,71 @@
+use std::collections::BTreeMap;
+
+use toks_core::rotation::{ThreadId, ThreadStatus};
+
+const VISIBLE_THREAD_LIMIT: usize = 100;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui::rotation) enum SelectorSource {
+    Override,
+    Observed,
+    Auto,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::ui::rotation) struct SelectorLabel {
+    pub(in crate::ui::rotation) text: String,
+    pub(in crate::ui::rotation) source: SelectorSource,
+}
+
+pub(in crate::ui::rotation) fn header_count(total: usize) -> String {
+    if total > VISIBLE_THREAD_LIMIT {
+        format!("{VISIBLE_THREAD_LIMIT} of {total}")
+    } else {
+        format!("{total} active")
+    }
+}
+
+pub(in crate::ui::rotation) fn visible_rows<T>(rows: &[T]) -> impl Iterator<Item = &T> {
+    rows.iter().take(VISIBLE_THREAD_LIMIT)
+}
+
+pub(in crate::ui::rotation) fn thread_title(
+    titles: &BTreeMap<ThreadId, String>,
+    thread: &ThreadId,
+) -> String {
+    titles
+        .get(thread)
+        .cloned()
+        .unwrap_or_else(|| thread.as_str().to_owned())
+}
+
+pub(in crate::ui::rotation) const fn status_label(status: ThreadStatus) -> &'static str {
+    match status {
+        ThreadStatus::Streaming { .. } => "Streaming",
+        ThreadStatus::ReservationPending => "Starting",
+        ThreadStatus::AwaitingFollowUp => "Waiting for follow-up",
+        ThreadStatus::AttachedIdle => "Connected",
+    }
+}
+
+pub(in crate::ui::rotation) fn selector_label(
+    thread_override: Option<&str>,
+    observed: Option<&str>,
+) -> SelectorLabel {
+    if let Some(value) = thread_override {
+        SelectorLabel {
+            text: value.to_owned(),
+            source: SelectorSource::Override,
+        }
+    } else if let Some(value) = observed {
+        SelectorLabel {
+            text: value.to_owned(),
+            source: SelectorSource::Observed,
+        }
+    } else {
+        SelectorLabel {
+            text: "Auto".into(),
+            source: SelectorSource::Auto,
+        }
+    }
+}

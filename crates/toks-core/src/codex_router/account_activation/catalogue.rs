@@ -16,6 +16,15 @@ pub(super) struct ModelChoice {
     pub(super) reasoning: String,
 }
 
+/// One API-capable model shown by Codex's model picker.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SelectableModel {
+    /// Model identifier sent with a request.
+    pub slug: String,
+    /// Reasoning efforts advertised for this model, in catalogue order.
+    pub reasoning_efforts: Vec<String>,
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct Cache {
     fetched_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -54,10 +63,36 @@ pub(super) fn best_for_profile(config: &Path) -> ModelChoice {
     })
 }
 
+/// Models the active Codex profile advertises for API requests, ordered by
+/// catalogue priority. A missing or malformed cache yields no choices.
+pub fn selectable_models() -> Vec<SelectableModel> {
+    crate::limits::codex::codex_home()
+        .map(|home| selectable_models_at(&home.join("models_cache.json")))
+        .unwrap_or_default()
+}
+
+fn selectable_models_at(path: &Path) -> Vec<SelectableModel> {
+    let Some(mut models) = read_cache(path).map(|cache| cache.models) else {
+        return Vec::new();
+    };
+    models.sort_by_key(|model| model.priority);
+    models
+        .into_iter()
+        .filter(selectable)
+        .map(|model| SelectableModel {
+            slug: model.slug,
+            reasoning_efforts: model
+                .supported_reasoning_levels
+                .into_iter()
+                .map(|level| level.effort)
+                .filter(|effort| !effort.is_empty())
+                .collect(),
+        })
+        .collect()
+}
+
 fn best_at(path: &Path, now_ms: i64) -> Option<ModelChoice> {
-    let cache = std::fs::read(path)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Cache>(&bytes).ok())?;
+    let cache = read_cache(path)?;
     let fetched_at_ms = cache.fetched_at?.timestamp_millis();
     if fetched_at_ms > now_ms.saturating_add(MAX_CLOCK_SKEW_MS)
         || now_ms.saturating_sub(fetched_at_ms) > MAX_CACHE_AGE_MS
@@ -67,9 +102,7 @@ fn best_at(path: &Path, now_ms: i64) -> Option<ModelChoice> {
     cache
         .models
         .into_iter()
-        .filter(|model| {
-            model.visibility == "list" && model.supported_in_api && !model.slug.is_empty()
-        })
+        .filter(selectable)
         .filter_map(|model| {
             lowest(&model.supported_reasoning_levels).map(|reasoning| {
                 (
@@ -83,6 +116,16 @@ fn best_at(path: &Path, now_ms: i64) -> Option<ModelChoice> {
         })
         .min_by_key(|(priority, _)| *priority)
         .map(|(_, choice)| choice)
+}
+
+fn read_cache(path: &Path) -> Option<Cache> {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Cache>(&bytes).ok())
+}
+
+fn selectable(model: &Model) -> bool {
+    model.visibility == "list" && model.supported_in_api && !model.slug.is_empty()
 }
 
 fn lowest(levels: &[Reasoning]) -> Option<String> {
@@ -114,4 +157,9 @@ const fn last_priority() -> u64 {
 #[cfg(test)]
 pub(super) fn best_for_test(path: PathBuf, now_ms: i64) -> Option<ModelChoice> {
     best_at(&path, now_ms)
+}
+
+#[cfg(test)]
+pub(super) fn selectable_models_for_test(path: PathBuf) -> Vec<SelectableModel> {
+    selectable_models_at(&path)
 }

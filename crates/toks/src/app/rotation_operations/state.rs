@@ -10,6 +10,8 @@ impl Default for RotationUiState {
         Self {
             settings: RotationSettings::default(),
             runtime: RotationRuntime::default(),
+            thread_titles: Default::default(),
+            selectable_models: Vec::new(),
             install: RouterInstallStatus {
                 configured: false,
                 service_installed: false,

@@ -132,6 +132,12 @@ pub mod test_support {
         }
     }
 
+    pub fn set_rotation_thread_title(app: &mut ToksApp, thread: &str, title: &str) {
+        app.rotation
+            .thread_titles
+            .insert(toks_core::rotation::ThreadId::new(thread), title.to_owned());
+    }
+
     pub fn set_rotation_blocked(app: &mut ToksApp, account: &str) {
         let account = toks_core::accounts::AccountId::new(account);
         let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());

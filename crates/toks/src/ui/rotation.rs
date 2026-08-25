@@ -5,7 +5,6 @@ use toks_core::Provider;
 use crate::ToksApp;
 
 mod accounts;
-mod events;
 mod format;
 #[cfg(test)]
 mod format_tests;
@@ -13,6 +12,9 @@ mod remote_control;
 #[cfg(test)]
 mod remote_control_tests;
 mod status;
+mod threads;
+#[cfg(test)]
+mod threads_tests;
 mod waiting;
 
 pub(super) fn rotation_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
@@ -52,8 +54,8 @@ pub(super) fn rotation_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
         )
         .child(status::service_card(app, cx))
         .child(accounts::accounts_card(app, cx))
-        .child(waiting::waiting_card(app, cx))
-        .child(events::events_card(app, cx));
+        .child(threads::threads_card(app, cx))
+        .child(waiting::waiting_card(app, cx));
 
     if let Some(error) = &app.rotation.error {
         page = page.child(

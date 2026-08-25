@@ -9,6 +9,8 @@ use crate::storage::StoreUpdate;
 
 mod authority;
 mod catalogue;
+#[cfg(test)]
+mod catalogue_tests;
 mod command;
 mod job;
 mod model;
@@ -20,6 +22,7 @@ mod requests;
 mod status;
 mod store;
 
+pub use catalogue::{selectable_models, SelectableModel};
 use model::FailureReason;
 pub use status::{AccountActivationStatus, AutomaticTestStatus, ManualTestStatus};
 use store::Store;

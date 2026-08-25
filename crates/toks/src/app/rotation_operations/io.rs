@@ -1,8 +1,16 @@
+use std::collections::BTreeMap;
+
 use anyhow::{Context as _, Result};
 use toks_core::{
     accounts::AccountId,
-    codex_router::{self, RouterDeploymentStatus, RouterInstallStatus},
-    rotation::{RotationRuntime, RotationRuntimeStore, RotationSettings, RotationSettingsStore},
+    codex_router::{
+        self, account_activation::SelectableModel, thread_titles::ThreadTitleStore,
+        RouterDeploymentStatus, RouterInstallStatus,
+    },
+    rotation::{
+        InvalidThreadOverrideValue, RotationRuntime, RotationRuntimeStore, RotationSettings,
+        RotationSettingsStore, ThreadId, ThreadOverrideChange,
+    },
     StoreUpdate,
 };
 
@@ -11,6 +19,8 @@ use super::{RotationServiceAction, SettingsAction};
 pub(super) struct LoadedRotation {
     pub settings: RotationSettings,
     pub runtime: RotationRuntime,
+    pub thread_titles: BTreeMap<ThreadId, String>,
+    pub selectable_models: Vec<SelectableModel>,
     pub install: RouterInstallStatus,
     pub deployment: RouterDeploymentStatus,
 }
@@ -19,31 +29,91 @@ pub(super) fn change_settings(
     action: SettingsAction,
     accounts: Option<&[AccountId]>,
 ) -> Result<LoadedRotation> {
+    let allowed_reasoning = allowed_reasoning_for_model_change(&action)?;
     let store = RotationSettingsStore::discover()?;
     store.update(|settings| {
-        if let Some(accounts) = accounts {
-            settings.reconcile(accounts);
-        }
-        match action {
+        let reconciled = accounts.is_some_and(|accounts| settings.reconcile(accounts));
+        let changed = match action {
             SettingsAction::Include(account, included) => {
-                settings.set_included(&account, included);
+                Ok(settings.set_included(&account, included))
             }
-            SettingsAction::MoveAccount(account, index) => {
-                settings.move_to(&account, index);
-            }
-            SettingsAction::Cancel(thread) => {
-                settings.cancel_waiting(&thread);
-            }
+            SettingsAction::MoveAccount(account, index) => Ok(settings.move_to(&account, index)),
+            SettingsAction::Cancel(thread) => Ok(settings.cancel_waiting(&thread)),
             SettingsAction::MoveWaiting(thread, index) => {
-                settings.move_waiting_to(&thread, index);
+                Ok(settings.move_waiting_to(&thread, index))
             }
+            SettingsAction::SetThreadOverride(thread, change) => {
+                apply_thread_override(settings, &thread, change, allowed_reasoning.as_deref())
+            }
+        };
+        match changed {
+            Ok(changed) => StoreUpdate::from_changed(Ok(()), reconciled | changed),
+            Err(error) => StoreUpdate::Unchanged(Err(error)),
         }
-        StoreUpdate::Changed(())
-    })?;
-    load_rotation(accounts)
+    })??;
+    let title_store = ThreadTitleStore::discover();
+    load_rotation(accounts, &title_store)
 }
 
-pub(super) fn load_rotation(accounts: Option<&[AccountId]>) -> Result<LoadedRotation> {
+fn allowed_reasoning_for_model_change(action: &SettingsAction) -> Result<Option<Vec<String>>> {
+    let SettingsAction::SetThreadOverride(thread, ThreadOverrideChange::Model(model)) = action
+    else {
+        return Ok(None);
+    };
+    let effective_model = match model {
+        Some(model) => Some(model.clone()),
+        None => RotationRuntimeStore::discover()?
+            .load()?
+            .thread_rows()
+            .into_iter()
+            .find(|row| &row.thread_id == thread)
+            .and_then(|row| row.request_settings.model),
+    };
+    let catalogue = codex_router::account_activation::selectable_models();
+    Ok(Some(reasoning_efforts(
+        &catalogue,
+        effective_model.as_deref(),
+    )))
+}
+
+fn reasoning_efforts(catalogue: &[SelectableModel], model: Option<&str>) -> Vec<String> {
+    catalogue
+        .iter()
+        .find(|choice| Some(choice.slug.as_str()) == model)
+        .map(|choice| choice.reasoning_efforts.clone())
+        .filter(|efforts| !efforts.is_empty())
+        .unwrap_or_else(|| {
+            ["low", "medium", "high", "xhigh", "max"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        })
+}
+
+pub(super) fn apply_thread_override(
+    settings: &mut RotationSettings,
+    thread: &ThreadId,
+    change: ThreadOverrideChange,
+    allowed_reasoning: Option<&[String]>,
+) -> std::result::Result<bool, InvalidThreadOverrideValue> {
+    let mut changed = settings.set_thread_override(thread, change)?;
+    let reasoning_is_invalid = allowed_reasoning.is_some_and(|allowed| {
+        settings
+            .thread_override(thread)
+            .and_then(|thread_override| thread_override.reasoning_effort())
+            .is_some_and(|reasoning| !allowed.iter().any(|effort| effort == reasoning))
+    });
+    if reasoning_is_invalid {
+        changed |=
+            settings.set_thread_override(thread, ThreadOverrideChange::ReasoningEffort(None))?;
+    }
+    Ok(changed)
+}
+
+pub(super) fn load_rotation(
+    accounts: Option<&[AccountId]>,
+    title_store: &ThreadTitleStore,
+) -> Result<LoadedRotation> {
     let settings_store = RotationSettingsStore::discover()?;
     let runtime = RotationRuntimeStore::discover()?.load()?;
     let deployment = codex_router::deployment_status(&runtime)?;
@@ -53,8 +123,15 @@ pub(super) fn load_rotation(accounts: Option<&[AccountId]>) -> Result<LoadedRota
         let changed = accounts_changed | settings.reconcile_waiting(&waiting);
         StoreUpdate::from_changed(settings.clone(), changed)
     })?;
+    let thread_ids = runtime
+        .thread_rows()
+        .into_iter()
+        .map(|row| row.thread_id)
+        .collect::<Vec<_>>();
     Ok(LoadedRotation {
         settings,
+        thread_titles: title_store.titles(&thread_ids),
+        selectable_models: codex_router::account_activation::selectable_models(),
         runtime,
         install: codex_router::status(),
         deployment,
