@@ -395,7 +395,7 @@ fn cancellation_retires_launching_missing_and_starting_units() {
             harness.units.0.borrow_mut().states.remove(&attempt);
         }
         let mut settings = harness.settings.load().unwrap();
-        settings.cancel_waiting(&ThreadId::new("cancelled"));
+        settings.cancel_thread(&ThreadId::new("cancelled"));
         harness.settings.save(&settings).unwrap();
 
         harness.supervisor().tick(NOW).unwrap();
@@ -414,7 +414,7 @@ fn failed_cancellation_keeps_the_attempt_for_safe_retry() {
     let attempt = harness.attempt();
     harness.units.0.borrow_mut().fail_cancels = 1;
     let mut settings = harness.settings.load().unwrap();
-    settings.cancel_waiting(&ThreadId::new("cancel-retry"));
+    settings.cancel_thread(&ThreadId::new("cancel-retry"));
     harness.settings.save(&settings).unwrap();
 
     assert!(harness.supervisor().tick(NOW).is_err());

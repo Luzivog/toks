@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use super::{
     ResumeAuthorization, ResumeTerminal, RotationRuntime, RotationSettings, RotationSettingsStore,
-    ThreadId, UnixMillis, WaitingId,
+    ThreadId, ThreadOverrideChange, UnixMillis, WaitingId,
 };
 
 const ACTIVE_RESUME_ATTEMPT: &str = "00000000-0000-4000-8000-000000000010";
@@ -21,7 +21,7 @@ fn active_resume_remains_logically_queued_for_a_concurrent_cancellation() {
     runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
     runtime.waiting(&thread, UnixMillis::new(1));
     let waiting = runtime.waiting_threads()[0].clone();
-    settings.reconcile_waiting(&runtime.queued_or_resuming_threads());
+    settings.reconcile_thread_state(&runtime);
     assert_eq!(
         runtime.authorize_resume(
             &settings,
@@ -42,8 +42,8 @@ fn active_resume_remains_logically_queued_for_a_concurrent_cancellation() {
         std::slice::from_ref(&thread)
     );
 
-    settings.cancel_waiting(&thread);
-    settings.reconcile_waiting(&runtime.queued_or_resuming_threads());
+    settings.cancel_thread(&thread);
+    settings.reconcile_thread_state(&runtime);
 
     assert!(settings.cancelled_threads().contains(&thread));
 }
@@ -60,7 +60,7 @@ fn active_then_failed_resume_keeps_its_existing_queue_priority() {
     runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
     runtime.waiting(&first, UnixMillis::new(1));
     runtime.waiting(&second, UnixMillis::new(2));
-    settings.reconcile_waiting(&runtime.queued_or_resuming_threads());
+    settings.reconcile_thread_state(&runtime);
     let waiting = runtime.waiting_threads()[0].clone();
     assert_eq!(
         settings.waiting_priority(),
@@ -78,7 +78,7 @@ fn active_then_failed_resume_keeps_its_existing_queue_priority() {
         ResumeAuthorization::Acquired
     );
 
-    settings.reconcile_waiting(&runtime.queued_or_resuming_threads());
+    settings.reconcile_thread_state(&runtime);
     assert_eq!(
         settings.waiting_priority(),
         &[first.clone(), second.clone()]
@@ -90,9 +90,39 @@ fn active_then_failed_resume_keeps_its_existing_queue_priority() {
         WaitingId::for_attempt(ACTIVE_RESUME_ATTEMPT),
         UnixMillis::new(4),
     );
-    settings.reconcile_waiting(&runtime.queued_or_resuming_threads());
+    settings.reconcile_thread_state(&runtime);
 
     assert_eq!(settings.waiting_priority(), &[first, second]);
+}
+
+#[test]
+fn active_cancellation_survives_polling_without_entering_the_waiting_order() {
+    let account = AccountId::new("account");
+    let thread = ThreadId::new("active-follow-up");
+    let mut runtime = RotationRuntime::default();
+    runtime
+        .connection_opened(&account, &thread, UnixMillis::new(1))
+        .unwrap();
+    assert!(runtime.connection_continues(&account, &thread, UnixMillis::new(2)));
+    let mut settings = RotationSettings::default();
+    settings.cancel_thread(&thread);
+    settings
+        .set_thread_override(
+            &thread,
+            ThreadOverrideChange::ServiceTier(Some("priority".into())),
+        )
+        .unwrap();
+
+    settings.reconcile_thread_state(&runtime);
+
+    assert!(settings.cancelled_threads().contains(&thread));
+    assert!(settings.waiting_priority().is_empty());
+    assert!(settings.thread_override(&thread).is_some());
+
+    settings.reconcile_thread_state(&RotationRuntime::default());
+
+    assert!(!settings.cancelled_threads().contains(&thread));
+    assert!(settings.thread_override(&thread).is_none());
 }
 
 #[test]
@@ -115,7 +145,7 @@ fn stale_poll_and_cancel_transactions_cannot_overwrite_each_other() {
             .update(|settings| {
                 poll_loaded_tx.send(()).unwrap();
                 release_poll_rx.recv().unwrap();
-                let changed = settings.reconcile_waiting(&[polled_thread]);
+                let changed = settings.reconcile_threads(&[polled_thread], &[]);
                 StoreUpdate::from_changed((), changed)
             })
             .unwrap();
@@ -125,7 +155,7 @@ fn stale_poll_and_cancel_transactions_cannot_overwrite_each_other() {
         cancel_started_tx.send(()).unwrap();
         cancelling
             .update(|settings| {
-                let changed = settings.cancel_waiting(&cancelled_thread);
+                let changed = settings.cancel_thread(&cancelled_thread);
                 StoreUpdate::from_changed((), changed)
             })
             .unwrap();

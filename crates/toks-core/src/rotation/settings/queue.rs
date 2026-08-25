@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{RotationSettings, ThreadId};
+use super::{RotationRuntime, RotationSettings, ThreadId};
 
 impl RotationSettings {
     pub fn cancelled_threads(&self) -> &BTreeSet<ThreadId> {
@@ -11,7 +11,7 @@ impl RotationSettings {
         &self.waiting_priority
     }
 
-    pub fn cancel_waiting(&mut self, thread: &ThreadId) -> bool {
+    pub fn cancel_thread(&mut self, thread: &ThreadId) -> bool {
         let changed = self.cancelled_threads.insert(thread.clone());
         self.waiting_priority.retain(|queued| queued != thread);
         changed
@@ -44,17 +44,39 @@ impl RotationSettings {
         true
     }
 
-    pub fn reconcile_waiting(&mut self, waiting: &[ThreadId]) -> bool {
-        let before = (
-            self.cancelled_threads.clone(),
-            self.waiting_priority.clone(),
-        );
-        let known: BTreeSet<_> = waiting.iter().cloned().collect();
+    pub fn reconcile_thread_state(&mut self, runtime: &RotationRuntime) -> bool {
+        let waiting = runtime.queued_or_resuming_threads();
+        let active = runtime
+            .thread_rows()
+            .into_iter()
+            .map(|row| row.thread_id)
+            .collect::<Vec<_>>();
+        self.reconcile_threads(&waiting, &active)
+    }
+
+    pub(crate) fn reconcile_threads(&mut self, waiting: &[ThreadId], active: &[ThreadId]) -> bool {
+        let cancelled_before = self.cancelled_threads.clone();
+        let priority_before = self.waiting_priority.clone();
+        let waiting_set = waiting.iter().cloned().collect::<BTreeSet<_>>();
+        let present = waiting_set
+            .iter()
+            .chain(active)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let forgotten = self
+            .cancelled_threads
+            .iter()
+            .filter(|thread| !present.contains(*thread))
+            .cloned()
+            .collect::<BTreeSet<_>>();
         self.cancelled_threads
-            .retain(|thread| known.contains(thread));
+            .retain(|thread| present.contains(thread));
+        let overrides_before = self.thread_overrides.len();
+        self.thread_overrides
+            .retain(|thread, _| !forgotten.contains(thread));
         let mut seen = BTreeSet::new();
         self.waiting_priority.retain(|thread| {
-            known.contains(thread)
+            waiting_set.contains(thread)
                 && !self.cancelled_threads.contains(thread)
                 && seen.insert(thread.clone())
         });
@@ -63,11 +85,9 @@ impl RotationSettings {
                 self.waiting_priority.push(thread.clone());
             }
         }
-        before
-            != (
-                self.cancelled_threads.clone(),
-                self.waiting_priority.clone(),
-            )
+        cancelled_before != self.cancelled_threads
+            || priority_before != self.waiting_priority
+            || overrides_before != self.thread_overrides.len()
     }
 
     pub(super) fn normalize_waiting(&mut self) {

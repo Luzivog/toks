@@ -4,11 +4,13 @@ use super::engine::SnapshotApplication;
 use super::Engine;
 use super::RouterRuntimeHandle;
 use crate::accounts::ProviderLimitCollection;
+use crate::rotation::UnixMillis;
 
 pub(crate) async fn heartbeat(runtime: RouterRuntimeHandle) {
     let mut interval = tokio::time::interval(Duration::from_secs(5));
     loop {
         interval.tick().await;
+        let _ = runtime.engine.apply_rotation_settings(UnixMillis::now());
         if let Some((snapshots, observed_at)) = refresh_quota(&runtime.engine, || {
             crate::accounts::collect_provider_limits(crate::limits::Provider::Codex)
         })

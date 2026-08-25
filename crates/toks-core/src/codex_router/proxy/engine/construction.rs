@@ -60,7 +60,7 @@ impl Engine {
             connection_owner,
             thread_sources,
         });
-        engine.reconcile_thread_overrides(observed_at)?;
+        engine.apply_rotation_settings(observed_at)?;
         Ok(engine)
     }
 }

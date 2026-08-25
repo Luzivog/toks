@@ -39,7 +39,7 @@ pub(super) fn change_settings(
                 Ok(settings.set_included(&account, included))
             }
             SettingsAction::MoveAccount(account, index) => Ok(settings.move_to(&account, index)),
-            SettingsAction::Cancel(thread) => Ok(settings.cancel_waiting(&thread)),
+            SettingsAction::Cancel(thread) => Ok(settings.cancel_thread(&thread)),
             SettingsAction::MoveWaiting(thread, index) => {
                 Ok(settings.move_waiting_to(&thread, index))
             }
@@ -118,10 +118,9 @@ pub(super) fn load_rotation(
     let settings_store = RotationSettingsStore::discover()?;
     let runtime = RotationRuntimeStore::discover()?.load()?;
     let deployment = codex_router::deployment_status(&runtime)?;
-    let waiting = runtime.queued_or_resuming_threads();
     let settings = settings_store.update(|settings| {
         let accounts_changed = accounts.is_some_and(|accounts| settings.reconcile(accounts));
-        let changed = accounts_changed | settings.reconcile_waiting(&waiting);
+        let changed = accounts_changed | settings.reconcile_thread_state(&runtime);
         StoreUpdate::from_changed(settings.clone(), changed)
     })?;
     let thread_metadata = metadata_stores.load(&runtime);

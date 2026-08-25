@@ -72,7 +72,7 @@ fn cancellation_committed_after_authorization_prevents_launch() {
     harness.store.save(&state).unwrap();
     harness
         .settings
-        .update(|settings| StoreUpdate::from_changed((), settings.cancel_waiting(&thread)))
+        .update(|settings| StoreUpdate::from_changed((), settings.cancel_thread(&thread)))
         .unwrap();
 
     assert_eq!(

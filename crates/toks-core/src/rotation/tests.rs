@@ -177,14 +177,14 @@ fn waiting_queue_controls_are_settings_owned_and_idempotent() {
     let third = ThreadId::new("third");
     let mut settings = RotationSettings::default();
 
-    assert!(settings.reconcile_waiting(&[first.clone(), second.clone(), third.clone()]));
+    assert!(settings.reconcile_threads(&[first.clone(), second.clone(), third.clone()], &[]));
     assert_eq!(
         settings.waiting_priority(),
         &[first.clone(), second.clone(), third.clone()]
     );
     assert!(settings.move_waiting_to(&third, 0));
-    assert!(settings.cancel_waiting(&second));
-    assert!(!settings.cancel_waiting(&second));
+    assert!(settings.cancel_thread(&second));
+    assert!(!settings.cancel_thread(&second));
     assert!(settings.cancelled_threads().contains(&second));
     assert_eq!(settings.waiting_priority(), &[third.clone(), first.clone()]);
 
@@ -194,7 +194,7 @@ fn waiting_queue_controls_are_settings_owned_and_idempotent() {
         settings.waiting_priority(),
         &[third.clone(), first.clone(), second.clone()]
     );
-    assert!(settings.reconcile_waiting(&[second.clone(), third.clone()]));
+    assert!(settings.reconcile_threads(&[second.clone(), third.clone()], &[]));
     assert_eq!(settings.waiting_priority(), &[third, second]);
 }
 

@@ -24,7 +24,7 @@ fn committed_cancellation_wins_before_resume_authorization() {
             .update(|settings| {
                 held_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
-                let changed = settings.cancel_waiting(&cancelled_thread);
+                let changed = settings.cancel_thread(&cancelled_thread);
                 StoreUpdate::from_changed((), changed)
             })
             .unwrap();

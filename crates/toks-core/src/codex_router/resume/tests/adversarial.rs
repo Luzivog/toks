@@ -24,7 +24,7 @@ fn running_cancellation_stops_before_retiring_and_retries_stop_failure() {
     harness.set_unit(&attempt, TaskState::Running);
     harness.units.0.borrow_mut().fail_cancels = 1;
     let mut settings = harness.settings.load().unwrap();
-    settings.cancel_waiting(&ThreadId::new("running-cancel"));
+    settings.cancel_thread(&ThreadId::new("running-cancel"));
     harness.settings.save(&settings).unwrap();
 
     assert!(harness.supervisor().tick(NOW).is_err());
@@ -231,7 +231,7 @@ fn cancellation_after_authorization_crash_restores_waiting_without_launch() {
     harness.queue.0.borrow_mut().crash_after_authorize = 1;
     assert!(harness.supervisor().tick(NOW).is_err());
     let mut settings = harness.settings.load().unwrap();
-    settings.cancel_waiting(&ThreadId::new("cancel-authorizing"));
+    settings.cancel_thread(&ThreadId::new("cancel-authorizing"));
     harness.settings.save(&settings).unwrap();
 
     harness.supervisor().tick(NOW).unwrap();
@@ -390,7 +390,7 @@ fn cancelled_tombstone_stays_cleaning_until_forget_converges() {
     let attempt = harness.attempt();
     harness.set_unit(&attempt, TaskState::Running);
     let mut settings = harness.settings.load().unwrap();
-    settings.cancel_waiting(&ThreadId::new("cancel-forget-retry"));
+    settings.cancel_thread(&ThreadId::new("cancel-forget-retry"));
     harness.settings.save(&settings).unwrap();
     harness.queue.0.borrow_mut().fail_forgets = 1;
 

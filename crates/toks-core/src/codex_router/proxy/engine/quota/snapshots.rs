@@ -67,7 +67,7 @@ impl Engine {
             runtime.heartbeat(at);
             StoreUpdate::Changed(())
         })?;
-        self.reconcile_thread_overrides(at)
+        self.apply_rotation_settings(at)
     }
 
     pub(crate) fn begin_snapshot_refresh(&self) -> Result<SnapshotRefreshEpoch> {
@@ -150,7 +150,7 @@ impl Engine {
             crate::limits::live::forget_profile(crate::Provider::Codex, profile_id);
         }
         update?;
-        self.reconcile_thread_overrides(at)?;
+        self.apply_rotation_settings(at)?;
         Ok(if stale_profiles.is_empty() {
             SnapshotApplication::Applied
         } else {

@@ -131,7 +131,7 @@ impl Engines {
     fn cancel(&self, thread: &ThreadId) {
         let store = RotationSettingsStore::for_data_dir(self._directory.path());
         let mut settings = store.load().unwrap();
-        assert!(settings.cancel_waiting(thread));
+        assert!(settings.cancel_thread(thread));
         store.save(&settings).unwrap();
     }
 }

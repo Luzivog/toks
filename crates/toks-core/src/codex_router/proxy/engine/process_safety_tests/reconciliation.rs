@@ -11,6 +11,8 @@ use crate::codex_router::proxy::catalogue::Catalogue;
 use crate::codex_router::proxy::engine::{Engine, EngineConfig};
 use crate::codex_router::proxy::types::SharedCredentials;
 
+mod dismissal_tests;
+
 struct Reconciliation {
     _directory: tempfile::TempDir,
     settings: RotationSettingsStore,

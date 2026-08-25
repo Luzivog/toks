@@ -322,7 +322,7 @@ fn current_cancellation_prevents_durable_resume_authorization() {
     let mut runtime = RotationRuntime::default();
     runtime.waiting(&thread, UnixMillis::new(1));
     let waiting = runtime.waiting_threads()[0].clone();
-    settings.cancel_waiting(&thread);
+    settings.cancel_thread(&thread);
 
     assert_eq!(
         runtime.authorize_resume(

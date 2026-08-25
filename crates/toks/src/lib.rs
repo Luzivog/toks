@@ -140,6 +140,15 @@ pub mod test_support {
         }
     }
 
+    pub fn set_rotation_thread_waiting(app: &mut ToksApp, account: &str, thread: &str) {
+        let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+        assert!(app.rotation.runtime.connection_continues(
+            &toks_core::accounts::AccountId::new(account),
+            &toks_core::rotation::ThreadId::new(thread),
+            at,
+        ));
+    }
+
     pub fn set_rotation_thread_title(app: &mut ToksApp, thread: &str, title: &str) {
         app.rotation
             .thread_titles

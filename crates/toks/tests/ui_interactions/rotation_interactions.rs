@@ -6,6 +6,7 @@ use toks::{
     test_support::{
         current_page, emails_hidden, prepare_rotation_accounts, set_page,
         set_rotation_active_threads, set_rotation_blocked, set_rotation_thread_title,
+        set_rotation_thread_waiting,
     },
     Page, ToksApp,
 };
@@ -71,6 +72,7 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
     );
     prepare_rotation_accounts(&mut app);
     set_rotation_active_threads(&mut app, "active", 2);
+    set_rotation_thread_waiting(&mut app, "active", "active-fixture-0");
     set_rotation_thread_title(&mut app, "active-fixture-0", "Repair router handoff");
     set_page(&mut app, Page::Rotation);
     let mut harness = Harness::open(cx, app, VIEWPORT);
@@ -85,6 +87,8 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
     assert!(harness.has("rotation-thread-model-active-fixture-0"));
     assert!(harness.has("rotation-thread-reasoning-active-fixture-0"));
     assert!(harness.has("rotation-thread-tier-active-fixture-0"));
+    assert!(harness.has("rotation-dismiss-thread-active-fixture-0"));
+    assert!(!harness.has("rotation-dismiss-thread-active-fixture-1"));
     assert_eq!(
         harness
             .bounds("rotation-thread-status-active-fixture-0")
@@ -98,6 +102,11 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
             .size,
         size(px(6.), px(6.))
     );
+    let status = harness.bounds("rotation-thread-status-active-fixture-0");
+    let dismiss = harness.bounds("rotation-dismiss-thread-active-fixture-0");
+    let model = harness.bounds("rotation-thread-model-active-fixture-0");
+    assert!(status.right() <= dismiss.left());
+    assert!(dismiss.right() <= model.left());
 
     let title = harness.bounds("rotation-active-threads-title");
     let count = harness.bounds("rotation-active-threads-count");

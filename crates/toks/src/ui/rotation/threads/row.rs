@@ -1,17 +1,18 @@
 use gpui::{div, prelude::*, px};
-use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
+use gpui_component::{h_flex, v_flex, ActiveTheme, Disableable, StyledExt};
 use toks_core::{
     rotation::{ThreadRow, ThreadStatus},
     Provider,
 };
 
-use crate::{Page, ToksApp};
+use crate::{app::SettingsAction, Page, ToksApp};
 
 use super::{grouping::DisplayThread, presentation, selectors};
 
 const INDENT_WIDTH: f32 = 14.;
 const MAX_VISUAL_DEPTH: usize = 3;
 const STATUS_WIDTH: f32 = 150.;
+const ACTION_WIDTH: f32 = 64.;
 
 pub(super) fn thread_row(
     app: &ToksApp,
@@ -144,5 +145,35 @@ pub(super) fn thread_row(
                 )
                 .child(div().min_w_0().truncate().child(status)),
         )
+        .child(dismiss_action(app, row, cx))
         .child(selectors::selectors(app, row, cx))
+}
+
+fn dismiss_action(app: &ToksApp, row: &ThreadRow, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
+    let thread = row.thread_id.clone();
+    let pending = app.rotation.settings.cancelled_threads().contains(&thread);
+    div()
+        .w(px(ACTION_WIDTH))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_end()
+        .when(
+            matches!(row.status, ThreadStatus::AwaitingFollowUp),
+            |slot| {
+                slot.child(
+                    super::super::super::text_action(
+                        format!("rotation-dismiss-thread-{}", thread.as_str()),
+                        "Dismiss",
+                        cx,
+                    )
+                    .compact()
+                    .disabled(app.rotation.busy.is_some() || pending)
+                    .tooltip("Remove this dormant thread from Toks without deleting it in Codex")
+                    .on_click(cx.listener(move |app, _, _, cx| {
+                        app.change_rotation_settings(SettingsAction::Cancel(thread.clone()), cx);
+                    })),
+                )
+            },
+        )
 }

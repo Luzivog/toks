@@ -9,6 +9,7 @@ use super::{RotationRuntime, ThreadId, ThreadRequestSettings, UnixMillis};
 const ABANDONED_FOLLOW_UP_MILLIS: i64 = 24 * 60 * 60 * 1_000;
 
 mod account_claim;
+mod dismissal;
 mod ownership;
 mod reconciliation;
 mod reservations;
