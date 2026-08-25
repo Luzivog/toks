@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use super::RefreshOutcome;
 use crate::accounts::CredentialProfileId;
-use crate::limits::{credentials::CredentialRevision, LimitSnapshot, SnapshotStatus};
+use crate::limits::{credentials::CredentialRevision, LimitSnapshot};
 use crate::Provider;
 
 #[derive(Clone)]
@@ -28,7 +28,7 @@ pub(super) fn get(
     baseline: Option<LimitSnapshot>,
     credential_revision: Option<CredentialRevision>,
 ) -> Option<RefreshOutcome> {
-    let entries = memo().lock().unwrap_or_else(|poison| poison.into_inner());
+    let mut entries = memo().lock().unwrap_or_else(|poison| poison.into_inner());
     let entry = entries.get(key)?;
     if entry.credential_revision != credential_revision
         || entry.attempted_at.elapsed() >= entry.retry_for
@@ -36,16 +36,12 @@ pub(super) fn get(
         return None;
     }
 
-    let mut outcome = entry.outcome.clone();
-    if is_newer(&baseline, &outcome.snapshot) {
-        outcome.snapshot = baseline.map(|mut snapshot| {
-            if let Some(issue) = &outcome.issue {
-                snapshot.status = SnapshotStatus::failed(snapshot.status.freshness, issue.clone());
-            }
-            snapshot
-        });
+    if is_newer(&baseline, &entry.outcome.snapshot) {
+        entries.remove(key);
+        return None;
     }
-    Some(outcome)
+
+    Some(entry.outcome.clone())
 }
 
 pub(super) fn previous_failures(key: &str) -> u32 {

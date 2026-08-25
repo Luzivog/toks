@@ -65,6 +65,7 @@ fn runtime_written_before_thread_overrides_keeps_its_drain_affinity() {
     let runtime = store.load().unwrap();
     let account = account("a");
     let thread = ThreadId::new("thread");
+    assert_eq!(runtime.accounts()[&account].reset_acknowledged_at(), None);
     assert!(runtime.can_drain(&account, &thread, UnixMillis::new(50)));
     assert!(!runtime.requires_standard_tier(&account, &thread, UnixMillis::new(50)));
 }

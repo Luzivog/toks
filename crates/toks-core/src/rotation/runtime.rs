@@ -51,6 +51,8 @@ pub struct AccountRuntime {
     block_reset_known: bool,
     #[serde(default)]
     quota_authority_revision: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reset_acknowledged_at: Option<UnixMillis>,
     #[serde(default, rename = "quotaExhaustion")]
     quota_drain: Option<QuotaDrainState>,
     #[serde(default)]

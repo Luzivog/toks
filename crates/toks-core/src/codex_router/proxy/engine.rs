@@ -20,7 +20,7 @@ mod request_route;
 mod runtime_writer;
 mod selection;
 use crate::codex_router::thread_source::ThreadSourceStore;
-pub(crate) use quota::{AttemptedTier, ResponseDelivery, UsageLimitAction};
+pub(crate) use quota::{AttemptedTier, ResponseDelivery, SnapshotApplication, UsageLimitAction};
 pub(in crate::codex_router::proxy) use request_route::AuthorizedRoute;
 use runtime_writer::RuntimeWriter;
 pub(super) use selection::RouteSelection;

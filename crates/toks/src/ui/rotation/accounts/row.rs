@@ -2,7 +2,7 @@ use gpui::{div, prelude::*, px, SharedString};
 use gpui_component::{
     h_flex, switch::Switch, v_flex, ActiveTheme, Disableable, Sizable, StyledExt,
 };
-use toks_core::{rotation::UnixMillis, LimitSnapshot};
+use toks_core::LimitSnapshot;
 
 use crate::{app::SettingsAction, ToksApp};
 
@@ -22,10 +22,6 @@ pub(super) fn account_row(
 ) -> gpui::Div {
     let id = snapshot.account.id.clone();
     let included = !app.rotation.settings.excluded().contains(&id);
-    let available = app
-        .rotation
-        .runtime
-        .is_available(&id, UnixMillis::new(app.now.timestamp_millis()));
     let busy = app.rotation.busy.is_some();
     let state = account_state(app, snapshot, &id, cx);
     let active = app.rotation.runtime.active_threads(&id);
@@ -52,7 +48,7 @@ pub(super) fn account_row(
             cx,
         )))
         .when_some(
-            super::reset_action::banked_reset_action(app, snapshot, available, cx),
+            super::reset_action::banked_reset_action(app, snapshot, cx),
             |identity, action| identity.child(action),
         )
         .child(

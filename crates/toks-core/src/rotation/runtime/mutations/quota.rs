@@ -9,17 +9,24 @@ const REPROBE_AFTER_MILLIS: i64 = 60_000;
 
 impl RotationRuntime {
     /// A confirmed provider redemption overrides the router's old reset time.
-    pub fn banked_reset_consumed(&mut self, account: &AccountId) -> bool {
-        let Some(state) = self.accounts.get_mut(account) else {
-            return false;
-        };
-        let changed = state.blocked_until.take().is_some()
+    pub fn banked_reset_consumed(
+        &mut self,
+        account: &AccountId,
+        acknowledged_at: UnixMillis,
+    ) -> bool {
+        let state = self.accounts.entry(account.clone()).or_default();
+        let acknowledged_at = state
+            .reset_acknowledged_at
+            .map_or(acknowledged_at, |current| current.max(acknowledged_at));
+        let changed = (state.reset_acknowledged_at != Some(acknowledged_at))
+            | state.blocked_until.take().is_some()
             | state.block_confirmed
             | state.block_reset_known
             | state.quota_drain.take().is_some()
             | !state.grandfathered_threads.is_empty()
             | !state.provisional_threads.is_empty()
             | !state.thread_usage.is_empty();
+        state.reset_acknowledged_at = Some(acknowledged_at);
         state.block_confirmed = false;
         state.block_reset_known = false;
         state.grandfathered_threads.clear();

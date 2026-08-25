@@ -59,17 +59,21 @@ pub fn deployment_status(
     deployment_status::load(runtime)
 }
 
-pub(crate) fn acknowledge_banked_reset(account: &crate::accounts::AccountId) -> Result<()> {
+pub(crate) fn acknowledge_banked_reset(
+    account: &crate::accounts::AccountId,
+    acknowledged_at: crate::rotation::UnixMillis,
+) -> Result<()> {
     let store = crate::rotation::RotationRuntimeStore::discover()?;
-    acknowledge_banked_reset_in(&store, account)
+    acknowledge_banked_reset_in(&store, account, acknowledged_at)
 }
 
 fn acknowledge_banked_reset_in(
     store: &crate::rotation::RotationRuntimeStore,
     account: &crate::accounts::AccountId,
+    acknowledged_at: crate::rotation::UnixMillis,
 ) -> Result<()> {
     store.update(|runtime| {
-        runtime.banked_reset_consumed(account);
+        runtime.banked_reset_consumed(account, acknowledged_at);
         StoreUpdate::Changed(())
     })
 }

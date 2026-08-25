@@ -15,6 +15,12 @@ const REPROBE_AFTER_MILLIS: i64 = 60_000;
 mod snapshots;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SnapshotApplication {
+    Applied,
+    Refetch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AttemptedTier {
     ToksForcedFast,
     Other,

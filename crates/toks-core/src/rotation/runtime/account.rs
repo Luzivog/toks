@@ -19,6 +19,10 @@ impl AccountRuntime {
         self.quota_authority_revision
     }
 
+    pub fn reset_acknowledged_at(&self) -> Option<UnixMillis> {
+        self.reset_acknowledged_at
+    }
+
     pub(super) fn advance_quota_authority(&mut self) {
         self.quota_authority_revision = self.quota_authority_revision.wrapping_add(1);
     }

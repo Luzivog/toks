@@ -11,7 +11,9 @@ mod reset_action;
 mod row;
 mod row_status;
 mod state;
-use banked::{banked_reset_note, banked_reset_result};
+#[cfg(test)]
+mod state_tests;
+use banked::banked_reset_error;
 use row::account_row;
 
 pub(super) fn accounts_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
@@ -38,11 +40,8 @@ pub(super) fn accounts_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
             panel = panel.child(account_row(app, snapshot, index, snapshots.len(), cx));
         }
     }
-    if let Some(result) = banked_reset_result(app, cx) {
-        panel = panel.child(result);
-    }
-    if let Some(note) = banked_reset_note(app, cx) {
-        panel = panel.child(note);
+    if let Some(error) = banked_reset_error(app, cx) {
+        panel = panel.child(error);
     }
     panel
 }

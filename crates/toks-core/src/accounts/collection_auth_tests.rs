@@ -1,5 +1,7 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
@@ -53,6 +55,46 @@ fn accepted_live_collection_preserves_the_exact_auth_proof_for_router_applicatio
     });
 
     assert_eq!(observed, Some(expected));
+}
+
+#[test]
+fn live_snapshot_age_starts_when_the_provider_request_starts() {
+    let directory = tempfile::tempdir().unwrap();
+    write_auth(directory.path(), &auth("account-a", "token-a"));
+    let mut profile = profile(directory.path(), "fetch-start-timestamp");
+    profile.account.id = super::read_codex_auth_for_test(&profile)
+        .unwrap()
+        .account_id;
+    crate::limits::forget_account_profile(profile.provider, &profile.profile_id);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/usage", listener.local_addr().unwrap());
+    let response_at = Arc::new(Mutex::new(None));
+    let server_response_at = Arc::clone(&response_at);
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0_u8; 4096];
+        assert!(stream.read(&mut request).unwrap() > 0);
+        std::thread::sleep(Duration::from_millis(10));
+        *server_response_at.lock().unwrap() = Some(chrono::Utc::now());
+        let body = br#"{"rate_limit":{"primary_window":{"used_percent":50,"limit_window_seconds":18000,"reset_at":1999999999}}}"#;
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .unwrap();
+        stream.write_all(body).unwrap();
+    });
+
+    let snapshot = super::collection::collect_profile_with(&profile, || {
+        crate::limits::live::refresh_for_test(&profile, || {
+            crate::limits::fetch_codex_for_test(&profile, &url)
+        })
+    });
+    server.join().unwrap();
+
+    assert!(snapshot.fetched_at.unwrap() < response_at.lock().unwrap().unwrap());
+    crate::limits::forget_account_profile(profile.provider, &profile.profile_id);
 }
 
 #[test]

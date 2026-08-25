@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -11,6 +11,7 @@ use crate::rotation::account_quota_drain;
 use crate::rotation::{QuotaObservation, UnixMillis};
 use crate::storage::StoreUpdate;
 
+use super::SnapshotApplication;
 use crate::codex_router::proxy::engine::Engine;
 
 type AuthFailure = (u64, Option<UnixMillis>, Option<String>);
@@ -36,6 +37,7 @@ impl Engine {
         };
         let epoch = self.begin_snapshot_refresh()?;
         self.apply_snapshots(&collection, &epoch, observed_at)
+            .map(|_| ())
     }
 
     /// Inject a provider-authoritative observation into downstream router
@@ -95,11 +97,12 @@ impl Engine {
         collection: &ProviderLimitCollection,
         epoch: &SnapshotRefreshEpoch,
         observed_at: DateTime<Utc>,
-    ) -> Result<()> {
+    ) -> Result<SnapshotApplication> {
         let discovered = self.credentials.account_ids();
         let candidates = quota_candidates(collection, &discovered);
         let at = UnixMillis::now();
-        self.runtime.update(|runtime| {
+        let mut stale_profiles = BTreeSet::new();
+        let update = self.runtime.update(|runtime| {
             runtime.reconcile(&discovered, at);
             for proof in &collection.codex_auth {
                 if !proof.auth_file_is_current() {
@@ -116,6 +119,16 @@ impl Engine {
             let observations = candidates
                 .iter()
                 .map(|(account, candidate)| {
+                    let stale = candidate.stale_profile_ids(
+                        runtime
+                            .accounts()
+                            .get(account)
+                            .and_then(|state| state.reset_acknowledged_at()),
+                    );
+                    if !stale.is_empty() {
+                        stale_profiles.extend(stale);
+                        return (account.clone(), QuotaObservation::Unknown);
+                    }
                     let expected = epoch
                         .quota_authority_revisions
                         .get(account)
@@ -132,7 +145,16 @@ impl Engine {
             runtime.apply_quota_observations(&observations, at);
             runtime.heartbeat(at);
             StoreUpdate::Changed(())
-        })?;
-        self.reconcile_thread_overrides(at)
+        });
+        for profile_id in &stale_profiles {
+            crate::limits::live::forget_profile(crate::Provider::Codex, profile_id);
+        }
+        update?;
+        self.reconcile_thread_overrides(at)?;
+        Ok(if stale_profiles.is_empty() {
+            SnapshotApplication::Applied
+        } else {
+            SnapshotApplication::Refetch
+        })
     }
 }

@@ -18,6 +18,7 @@ use crate::codex_router::proxy::types::{
 
 mod auth_repair;
 mod cross_account;
+mod quota_reset_tests;
 mod quota_snapshot_tests;
 mod reconciliation;
 mod resume_authorization;

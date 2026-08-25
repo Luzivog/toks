@@ -284,25 +284,6 @@ fn live_count_is_unique_per_thread_and_ignores_follow_up_retention() {
 }
 
 #[test]
-fn confirmed_banked_reset_clears_the_old_hard_block() {
-    let account = account("a");
-    let mut runtime = RotationRuntime::default();
-    runtime.reconcile(std::slice::from_ref(&account), UnixMillis::new(0));
-    runtime.block_admission(
-        &account,
-        BlockWindow::known(UnixMillis::new(10_000)),
-        UnixMillis::new(1),
-    );
-
-    assert!(runtime.banked_reset_consumed(&account));
-    assert_eq!(
-        runtime.accounts()[&account].availability(UnixMillis::new(2)),
-        AccountAvailability::Available
-    );
-    assert!(!runtime.banked_reset_consumed(&account));
-}
-
-#[test]
 fn overlapping_connections_keep_a_thread_attached_until_the_last_one_closes() {
     let account = account("a");
     let thread = ThreadId::new("thread");

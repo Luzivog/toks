@@ -1,8 +1,10 @@
-use toks_core::{accounts::BankedResetResult, limits::BankedResetAttempt, LimitSnapshot};
+use std::collections::BTreeMap;
+
+use toks_core::{limits::BankedResetAttempt, rotation::UnixMillis};
 
 mod request;
+mod result;
 pub(crate) use request::request_banked_reset;
-use request::success_message;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum BankedResetStatus {
@@ -34,7 +36,8 @@ enum State {
 #[derive(Default)]
 pub(crate) struct BankedResetOperations {
     state: State,
-    notice: Option<String>,
+    redeemed: BTreeMap<toks_core::accounts::AccountId, UnixMillis>,
+    error: Option<String>,
 }
 
 impl BankedResetOperations {
@@ -57,13 +60,16 @@ impl BankedResetOperations {
     pub(crate) fn confirm(&mut self, account: toks_core::accounts::AccountId) {
         if matches!(self.state, State::Ready) {
             self.state = State::Confirming(account);
-            self.notice = None;
+            self.error = None;
         }
     }
 
     pub(crate) fn cancel(&mut self, account: &toks_core::accounts::AccountId) {
-        if matches!(&self.state, State::Confirming(candidate) if candidate == account) {
+        if matches!(&self.state, State::Confirming(candidate) if candidate == account)
+            || matches!(&self.state, State::Retry { account: candidate, .. } if candidate == account)
+        {
             self.state = State::Ready;
+            self.error = None;
         }
     }
 
@@ -72,13 +78,16 @@ impl BankedResetOperations {
         account: &toks_core::accounts::AccountId,
         starting_count: u64,
     ) -> Option<BankedResetAttempt> {
-        let attempt = match &self.state {
-            State::Confirming(candidate) if candidate == account => BankedResetAttempt::new(),
+        let (attempt, starting_count) = match &self.state {
+            State::Confirming(candidate) if candidate == account => {
+                (BankedResetAttempt::new(), starting_count)
+            }
             State::Retry {
                 account: candidate,
                 attempt,
+                starting_count,
                 ..
-            } if candidate == account => attempt.clone(),
+            } if candidate == account => (attempt.clone(), *starting_count),
             _ => return None,
         };
         self.state = State::Pending {
@@ -89,65 +98,18 @@ impl BankedResetOperations {
         Some(attempt)
     }
 
-    fn finish(
-        &mut self,
+    pub(crate) fn redeemed_at(
+        &self,
         account: &toks_core::accounts::AccountId,
-        attempt: &BankedResetAttempt,
-        result: &anyhow::Result<BankedResetResult>,
-    ) {
-        let State::Pending {
-            account: pending,
-            attempt: pending_attempt,
-            starting_count,
-        } = &self.state
-        else {
-            return;
-        };
-        if pending != account || pending_attempt != attempt {
-            return;
-        }
-        let starting_count = *starting_count;
-        match result {
-            Ok(result) => {
-                self.notice = Some(success_message(*result));
-                self.state = State::Ready;
-            }
-            Err(error) => {
-                self.state = State::Retry {
-                    account: account.clone(),
-                    attempt: attempt.clone(),
-                    starting_count,
-                    message: format!("Couldn't confirm the reset: {error}"),
-                };
-            }
-        }
+    ) -> Option<UnixMillis> {
+        self.redeemed.get(account).copied()
     }
 
-    pub(crate) fn reconcile(&mut self, limits: &[LimitSnapshot]) {
-        let State::Retry {
-            account,
-            starting_count,
-            ..
-        } = &self.state
-        else {
-            return;
-        };
-        let current = limits
-            .iter()
-            .find(|snapshot| &snapshot.account.id == account)
-            .map(|snapshot| snapshot.banked_resets);
-        if current.is_some_and(|count| count < *starting_count) {
-            self.notice = Some("Banked reset confirmed by the refreshed account limits.".into());
-            self.state = State::Ready;
-        }
-    }
-
-    pub(crate) fn notice(&self) -> Option<&str> {
-        self.notice.as_deref()
-    }
-
-    pub(crate) fn dismiss_notice(&mut self) {
-        self.notice = None;
+    pub(crate) fn error(&self) -> Option<&str> {
+        self.error.as_deref().or(match &self.state {
+            State::Retry { message, .. } => Some(message.as_str()),
+            _ => None,
+        })
     }
 }
 

@@ -1,6 +1,8 @@
 //! Store-first live limit refresh with per-account backoff and in-flight deduplication.
 
 mod memo;
+#[cfg(test)]
+mod test_support;
 
 use std::time::Duration;
 
@@ -58,9 +60,11 @@ fn refresh_using(
     }
 
     let previous_failures = memo::previous_failures(&key);
+    let fetched_at = Utc::now();
     let (outcome, failures, retry_for, remembered_revision) = match fetch() {
         Ok(fetched) if fetch_is_current(profile, fetched.codex_auth.as_ref()) => {
             let mut snapshot = fetched.snapshot;
+            snapshot.fetched_at = Some(fetched_at);
             snapshot.status = SnapshotStatus::at(SnapshotFreshness::Live);
             snapshot.status.last_attempted_at = Some(Utc::now());
             snapshot.source = "live".into();
@@ -121,6 +125,9 @@ fn refresh_using(
     );
     outcome
 }
+
+#[cfg(test)]
+pub(crate) use test_support::memoized_or_fetch;
 
 #[cfg(test)]
 pub(crate) fn refresh_for_test(

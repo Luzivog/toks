@@ -166,10 +166,13 @@ fn reset_acknowledgement_updates_the_process_safe_runtime_store() {
     );
     store.save(&runtime).unwrap();
 
-    super::acknowledge_banked_reset_in(&store, &account).unwrap();
+    let acknowledged_at = UnixMillis::new(3);
+    super::acknowledge_banked_reset_in(&store, &account, acknowledged_at).unwrap();
 
-    assert!(!store
-        .load()
-        .unwrap()
-        .requires_standard_tier(&account, &thread, UnixMillis::new(3)));
+    let runtime = store.load().unwrap();
+    assert_eq!(
+        runtime.accounts()[&account].reset_acknowledged_at(),
+        Some(acknowledged_at)
+    );
+    assert!(!runtime.requires_standard_tier(&account, &thread, acknowledged_at));
 }

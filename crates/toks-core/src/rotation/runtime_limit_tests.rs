@@ -153,8 +153,18 @@ fn a_fast_limit_falls_back_only_that_thread_until_the_fast_tier_resets() {
     assert!(!runtime.requires_standard_tier(&account, &sibling, UnixMillis::new(23)));
     assert!(!runtime.requires_standard_tier(&account, &victim, UnixMillis::new(50)));
 
-    assert!(runtime.banked_reset_consumed(&account));
-    assert!(!runtime.requires_standard_tier(&account, &victim, UnixMillis::new(23)));
+    let acknowledged_at = UnixMillis::new(23);
+    assert!(runtime.banked_reset_consumed(&account, acknowledged_at));
+    assert_eq!(
+        runtime.accounts()[&account].reset_acknowledged_at(),
+        Some(acknowledged_at)
+    );
+    assert_eq!(
+        runtime.accounts()[&account].availability(acknowledged_at),
+        AccountAvailability::Available
+    );
+    assert!(!runtime.requires_standard_tier(&account, &victim, acknowledged_at));
+    assert!(!runtime.banked_reset_consumed(&account, acknowledged_at));
 }
 
 #[test]

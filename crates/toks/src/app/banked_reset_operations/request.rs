@@ -1,8 +1,5 @@
 use gpui::{AppContext, Context};
-use toks_core::{
-    accounts::{BankedResetResult, ProviderAccount},
-    limits::BankedResetOutcome,
-};
+use toks_core::accounts::ProviderAccount;
 
 use crate::ToksApp;
 
@@ -38,25 +35,10 @@ pub(crate) fn request_banked_reset(
                     snapshot.banked_resets = snapshot.banked_resets.saturating_sub(1);
                     snapshot.banked_reset_credits = None;
                 }
+                app.request_limits_refresh();
             }
             cx.notify();
         });
     })
     .detach();
-}
-
-pub(super) fn success_message(result: BankedResetResult) -> String {
-    let message = match result.outcome {
-        BankedResetOutcome::Reset => "Banked reset used. Codex limits will refresh shortly.",
-        BankedResetOutcome::AlreadyRedeemed => {
-            "This reset request already completed. Codex limits will refresh shortly."
-        }
-        BankedResetOutcome::NothingToReset => "This account has no eligible limit to reset.",
-        BankedResetOutcome::NoCredit => "No banked resets are available for this account.",
-    };
-    if result.outcome.used_credit() && !result.routing_updated {
-        format!("{message} Restart Codex routing if the account stays blocked.")
-    } else {
-        message.into()
-    }
 }

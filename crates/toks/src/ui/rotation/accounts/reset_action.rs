@@ -10,14 +10,27 @@ use crate::{
 pub(super) fn banked_reset_action(
     app: &ToksApp,
     snapshot: &LimitSnapshot,
-    available: bool,
     cx: &mut gpui::Context<ToksApp>,
 ) -> Option<gpui::Div> {
-    if snapshot.banked_resets == 0 || available {
+    let id = snapshot.account.id.clone();
+    let status = app.banked_resets.status(&id);
+    let derived = super::state::derive_account_state(
+        snapshot,
+        app.rotation.runtime.accounts().get(&id),
+        app.banked_resets.redeemed_at(&id),
+        app.now,
+    );
+    let resettable = matches!(
+        derived,
+        super::state::DerivedAccountState::Draining { .. }
+            | super::state::DerivedAccountState::Blocked { .. }
+    );
+    if matches!(status, BankedResetStatus::Ready | BankedResetStatus::Busy)
+        && (snapshot.banked_resets == 0 || !resettable)
+    {
         return None;
     }
-    let id = snapshot.account.id.clone();
-    let action = match app.banked_resets.status(&id) {
+    let action = match status {
         BankedResetStatus::Ready => {
             super::super::super::text_action(format!("rotation-use-reset-{id}"), "Use reset", cx)
                 .on_click(cx.listener({
@@ -78,6 +91,7 @@ pub(super) fn banked_reset_action(
         BankedResetStatus::Retry(message) => {
             let account = snapshot.account.clone();
             let count = snapshot.banked_resets;
+            let cancel_id = id.clone();
             h_flex()
                 .gap_1()
                 .items_center()
@@ -92,6 +106,18 @@ pub(super) fn banked_reset_action(
                     .tooltip(message)
                     .on_click(cx.listener(move |app, _, _, cx| {
                         request_banked_reset(app, account.clone(), count, cx);
+                    })),
+                )
+                .child(
+                    super::super::super::text_action(
+                        format!("rotation-cancel-reset-{id}"),
+                        "Cancel",
+                        cx,
+                    )
+                    .compact()
+                    .on_click(cx.listener(move |app, _, _, cx| {
+                        app.banked_resets.cancel(&cancel_id);
+                        cx.notify();
                     })),
                 )
                 .into_any_element()

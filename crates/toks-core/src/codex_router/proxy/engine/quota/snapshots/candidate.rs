@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 
-use crate::accounts::{AccountId, CodexAuthProof, ProviderLimitCollection};
+use crate::accounts::{AccountId, CodexAuthProof, CredentialProfileId, ProviderLimitCollection};
 use crate::limits::{LimitSnapshot, Provider, SnapshotFreshness};
-use crate::rotation::{account_quota_drain, QuotaObservation};
+use crate::rotation::{account_quota_drain, QuotaObservation, UnixMillis};
 
 pub(super) enum QuotaCandidate<'a> {
     Proved {
@@ -15,6 +15,35 @@ pub(super) enum QuotaCandidate<'a> {
 }
 
 impl QuotaCandidate<'_> {
+    pub(super) fn stale_profile_ids(
+        &self,
+        reset_acknowledged_at: Option<UnixMillis>,
+    ) -> Vec<CredentialProfileId> {
+        let (Self::Proved { snapshot, proof }, Some(acknowledged_at)) =
+            (self, reset_acknowledged_at)
+        else {
+            return Vec::new();
+        };
+        if snapshot
+            .fetched_at
+            .is_some_and(|fetched_at| fetched_at.timestamp_millis() > acknowledged_at.get())
+        {
+            return Vec::new();
+        }
+        let mut profiles = snapshot
+            .account
+            .sources
+            .iter()
+            .map(|source| source.profile_id.clone())
+            .collect::<Vec<_>>();
+        if profiles.is_empty() {
+            profiles.push(proof.profile_id().clone());
+        }
+        profiles.sort();
+        profiles.dedup();
+        profiles
+    }
+
     pub(super) fn observe(&self, observed_at: DateTime<Utc>) -> QuotaObservation {
         let Self::Proved { snapshot, proof } = self else {
             return QuotaObservation::Unknown;

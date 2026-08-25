@@ -23,17 +23,17 @@ use crate::codex_router::proxy::catalogue::Catalogue;
 use crate::codex_router::proxy::engine::{Engine, EngineConfig};
 use crate::codex_router::proxy::types::SharedCredentials;
 
-struct QuotaFixture {
+pub(super) struct QuotaFixture {
     _directory: tempfile::TempDir,
     auth_directory: std::path::PathBuf,
-    profile: AccountProfile,
-    account: AccountId,
+    pub(super) profile: AccountProfile,
+    pub(super) account: AccountId,
     settings: RotationSettingsStore,
-    store: RotationRuntimeStore,
+    pub(super) store: RotationRuntimeStore,
 }
 
 impl QuotaFixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
         let auth_directory = directory.path().join("auth");
         std::fs::create_dir(&auth_directory).unwrap();
@@ -58,7 +58,7 @@ impl QuotaFixture {
         }
     }
 
-    fn engine(&self, discovered: bool) -> Arc<Engine> {
+    pub(super) fn engine(&self, discovered: bool) -> Arc<Engine> {
         let accounts = discovered
             .then(|| self.account.clone())
             .into_iter()
@@ -75,7 +75,7 @@ impl QuotaFixture {
         .unwrap()
     }
 
-    fn proof(&self) -> crate::accounts::CodexAuthProof {
+    pub(super) fn proof(&self) -> crate::accounts::CodexAuthProof {
         crate::accounts::read_codex_auth_for_test(&self.profile)
             .unwrap()
             .proof()
@@ -121,7 +121,7 @@ impl QuotaFixture {
             .unwrap();
     }
 
-    fn snapshot(&self, percent_used: f64) -> LimitSnapshot {
+    pub(super) fn snapshot(&self, percent_used: f64) -> LimitSnapshot {
         let now = Utc::now();
         LimitSnapshot {
             windows: vec![LimitWindow {

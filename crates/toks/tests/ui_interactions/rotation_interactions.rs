@@ -215,4 +215,10 @@ fn rotation_hides_emails_and_confirms_resets_without_spending_one(cx: &mut TestA
     harness.cx.simulate_click(use_reset, Modifiers::none());
     harness.cx.run_until_parked();
     assert!(harness.has("rotation-confirm-reset-resettable"));
+    assert!(!harness.has("rotation-reset-error"));
+    assert!(!harness.has("rotation-dismiss-reset-notice"));
+
+    harness.click("rotation-cancel-reset-resettable");
+
+    assert!(harness.has("rotation-use-reset-resettable"));
 }

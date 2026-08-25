@@ -13,6 +13,9 @@ mod account_operations;
 mod account_removals;
 pub(crate) mod banked_reset_operations;
 mod history_task;
+mod limits_refresh;
+#[cfg(test)]
+mod limits_refresh_tests;
 mod navigation;
 #[cfg(test)]
 mod navigation_tests;
@@ -50,6 +53,7 @@ pub struct ToksApp {
     pub(crate) account_operations: AccountOperations,
     pub(crate) account_removals: AccountRemovals,
     pub(crate) banked_resets: BankedResetOperations,
+    limits_refresh: limits_refresh::LimitsRefreshSignal,
     pub(crate) emails_hidden: bool,
     pub(crate) usage_tables: UsageTablesState,
     pub(crate) model_tables: ModelTablesState,
@@ -61,6 +65,7 @@ pub struct ToksApp {
 
 impl ToksApp {
     pub(super) fn new(cx: &mut Context<Self>) -> Self {
+        let (limits_refresh, limits_refresh_requests) = limits_refresh::channel();
         // Paint last-good snapshots before starting provider requests.
         cx.spawn(async move |this, cx| {
             let mut hydrated = cx
@@ -106,7 +111,7 @@ impl ToksApp {
                 {
                     break;
                 }
-                smol::Timer::after(LIMITS_REFRESH).await;
+                limits_refresh::wait(&limits_refresh_requests, LIMITS_REFRESH).await;
             }
         })
         .detach();
@@ -128,7 +133,9 @@ impl ToksApp {
         history_task::spawn(cx);
         rotation_operations::spawn(cx);
 
-        Self::from_snapshots(None, Vec::new(), Utc::now())
+        let mut app = Self::from_snapshots(None, Vec::new(), Utc::now());
+        app.limits_refresh = limits_refresh;
+        app
     }
 
     /// Construct deterministic render state without filesystem or network work.
@@ -156,6 +163,7 @@ impl ToksApp {
             account_operations: AccountOperations::default(),
             account_removals: AccountRemovals::default(),
             banked_resets: BankedResetOperations::default(),
+            limits_refresh: limits_refresh::LimitsRefreshSignal::default(),
             emails_hidden: false,
             usage_tables: UsageTablesState::new(),
             model_tables: ModelTablesState::new(),
@@ -164,5 +172,9 @@ impl ToksApp {
             compact_layout: None,
             sidebar_motion: SidebarMotion::new(),
         }
+    }
+
+    pub(crate) fn request_limits_refresh(&self) {
+        self.limits_refresh.request();
     }
 }

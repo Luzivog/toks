@@ -31,7 +31,7 @@ pub use login::{
     begin_add_account, begin_reauthentication, cancel_login, login_outcome, LoginOutcome,
 };
 pub use order::{apply_saved_order, move_account_to, AccountOrderKey};
-pub use redemption::{redeem_banked_reset, BankedResetResult};
+pub use redemption::{acknowledge_observed_banked_reset, redeem_banked_reset, BankedResetResult};
 pub use removal::remove_from_toks;
 pub use suppression::{hide_account, unhide_account, unhide_profile};
 pub use types::{
