@@ -17,12 +17,29 @@ pub(in crate::ui::rotation) struct SelectorLabel {
     pub(in crate::ui::rotation) source: SelectorSource,
 }
 
-pub(in crate::ui::rotation) fn header_count(total: usize) -> String {
-    if total > VISIBLE_THREAD_LIMIT {
-        format!("{VISIBLE_THREAD_LIMIT} of {total}")
-    } else {
-        format!("{total} active")
+pub(in crate::ui::rotation) fn header_count(
+    statuses: impl IntoIterator<Item = ThreadStatus>,
+) -> String {
+    let mut total = 0;
+    let mut streaming = 0;
+    let mut idle = 0;
+    for status in statuses {
+        total += 1;
+        match status {
+            ThreadStatus::Streaming { .. } | ThreadStatus::ReservationPending => streaming += 1,
+            ThreadStatus::AwaitingFollowUp | ThreadStatus::AttachedIdle => idle += 1,
+        }
     }
+
+    let mut label = if idle == 0 {
+        format!("{streaming} streaming")
+    } else {
+        format!("{streaming} streaming · {idle} idle")
+    };
+    if total > VISIBLE_THREAD_LIMIT {
+        label.push_str(&format!(" · showing {VISIBLE_THREAD_LIMIT}"));
+    }
+    label
 }
 
 pub(in crate::ui::rotation) fn visible_rows<T>(rows: &[T]) -> impl Iterator<Item = &T> {

@@ -50,9 +50,34 @@ fn active_thread_rows_are_display_capped_at_one_hundred() {
 }
 
 #[test]
-fn active_thread_header_reports_visible_and_total_counts() {
-    assert_eq!(header_count(0), "0 active");
-    assert_eq!(header_count(3), "3 active");
-    assert_eq!(header_count(100), "100 active");
-    assert_eq!(header_count(101), "100 of 101");
+fn thread_header_reports_streaming_and_idle_counts() {
+    assert_eq!(header_count([]), "0 streaming");
+    assert_eq!(
+        header_count([
+            ThreadStatus::Streaming { stream_count: 2 },
+            ThreadStatus::ReservationPending,
+        ]),
+        "2 streaming"
+    );
+    assert_eq!(
+        header_count([
+            ThreadStatus::Streaming { stream_count: 1 },
+            ThreadStatus::ReservationPending,
+            ThreadStatus::AwaitingFollowUp,
+            ThreadStatus::AttachedIdle,
+        ]),
+        "2 streaming · 2 idle"
+    );
+}
+
+#[test]
+fn thread_header_reports_the_display_cap() {
+    let mut statuses = vec![ThreadStatus::ReservationPending; 100];
+    assert_eq!(header_count(statuses.iter().copied()), "100 streaming");
+
+    statuses.push(ThreadStatus::AttachedIdle);
+    assert_eq!(
+        header_count(statuses),
+        "100 streaming · 1 idle · showing 100"
+    );
 }
