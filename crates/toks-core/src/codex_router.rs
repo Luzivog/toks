@@ -17,6 +17,9 @@ mod lifecycle_tests;
 pub mod proxy;
 mod resume;
 mod systemd;
+pub mod thread_lineage;
+#[cfg(test)]
+mod thread_lineage_tests;
 mod thread_source;
 #[cfg(test)]
 mod thread_source_tests;
