@@ -187,6 +187,9 @@ fn normalize(value: &str) -> Option<String> {
 }
 
 fn display_label(value: &str) -> String {
+    let value = value.trim_start_matches(|character: char| {
+        character.is_whitespace() || matches!(character, '#' | '*' | '-' | '>' | '`')
+    });
     if value.chars().count() <= DISPLAY_TITLE_CHARS {
         return value.to_owned();
     }

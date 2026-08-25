@@ -87,8 +87,8 @@ impl RotationRuntime {
         let mut rows = rows.into_values().collect::<Vec<_>>();
         rows.sort_by(|left, right| {
             right
-                .last_activity_at
-                .cmp(&left.last_activity_at)
+                .started_at
+                .cmp(&left.started_at)
                 .then_with(|| left.thread_id.cmp(&right.thread_id))
         });
         rows

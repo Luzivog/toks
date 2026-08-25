@@ -13,15 +13,12 @@ fn active_thread_statuses_use_terse_labels() {
         "Streaming"
     );
     assert_eq!(status_label(ThreadStatus::ReservationPending), "Starting");
-    assert_eq!(
-        status_label(ThreadStatus::AwaitingFollowUp),
-        "Waiting for follow-up"
-    );
-    assert_eq!(status_label(ThreadStatus::AttachedIdle), "Connected");
+    assert_eq!(status_label(ThreadStatus::AwaitingFollowUp), "Waiting");
+    assert_eq!(status_label(ThreadStatus::AttachedIdle), "Idle");
 }
 
 #[test]
-fn selector_label_prefers_override_then_observed_then_auto() {
+fn selector_labels_are_values_without_column_prefixes() {
     let overridden = selector_label(Some("gpt-5.6"), Some("gpt-5.5"));
     assert_eq!(overridden.text, "gpt-5.6");
     assert_eq!(overridden.source, SelectorSource::Override);

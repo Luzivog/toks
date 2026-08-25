@@ -1,10 +1,29 @@
 use gpui::{div, prelude::*, px};
 use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
-use toks_core::{rotation::ThreadRow, Provider};
+use toks_core::{
+    rotation::{ThreadRow, ThreadStatus},
+    Provider,
+};
 
-use crate::ToksApp;
+use crate::{Page, ToksApp};
 
 use super::{presentation, selectors};
+
+const STATUS_WIDTH: f32 = 150.;
+
+pub(super) fn thread_captions(cx: &gpui::App) -> gpui::Div {
+    h_flex()
+        .debug_selector(|| "rotation-thread-captions".into())
+        .h(px(26.))
+        .items_center()
+        .gap_3()
+        .px_4()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .child(div().flex_1().min_w_0())
+        .child(div().w(px(STATUS_WIDTH)).flex_shrink_0())
+        .child(selectors::captions(cx))
+}
 
 pub(super) fn thread_row(
     app: &ToksApp,
@@ -14,6 +33,8 @@ pub(super) fn thread_row(
     let thread_id = row.thread_id.as_str();
     let row_selector = format!("rotation-thread-row-{thread_id}");
     let title_selector = format!("rotation-thread-title-{thread_id}");
+    let status_selector = format!("rotation-thread-status-{thread_id}");
+    let status_dot_selector = format!("rotation-thread-status-dot-{thread_id}");
     let title = presentation::thread_title(&app.rotation.thread_titles, &row.thread_id);
     let show_id = title != thread_id;
     let status = match row.last_activity_at {
@@ -23,6 +44,11 @@ pub(super) fn thread_row(
             super::super::format::age(app.now, at)
         ),
         None => presentation::status_label(row.status).to_owned(),
+    };
+    let status_color = if matches!(row.status, ThreadStatus::Streaming { .. }) {
+        super::super::super::page_accent(Page::Rotation, cx)
+    } else {
+        cx.theme().muted_foreground
     };
     let account = row.account_id.as_ref().filter(|account| {
         app.limits.iter().any(|snapshot| {
@@ -78,13 +104,25 @@ pub(super) fn thread_row(
                 }),
         )
         .child(
-            div()
-                .w(px(150.))
+            h_flex()
+                .debug_selector(move || status_selector.clone())
+                .w(px(STATUS_WIDTH))
                 .flex_shrink_0()
-                .text_right()
+                .min_w_0()
+                .items_center()
+                .justify_end()
+                .gap_1p5()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(status),
+                .child(
+                    div()
+                        .debug_selector(move || status_dot_selector.clone())
+                        .size(px(6.))
+                        .flex_shrink_0()
+                        .rounded_full()
+                        .bg(status_color),
+                )
+                .child(div().min_w_0().truncate().child(status)),
         )
         .child(selectors::selectors(app, row, cx))
 }

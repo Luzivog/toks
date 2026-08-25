@@ -45,6 +45,7 @@ fn rotation_sidebar_entry_opens_the_private_dashboard(cx: &mut TestAppContext) {
 fn active_threads_render_above_pending_threads(cx: &mut TestAppContext) {
     let mut harness = Harness::open_page(cx, Page::Rotation, VIEWPORT);
 
+    assert!(!harness.has("rotation-thread-captions"));
     assert!(harness.above(
         "rotation-active-threads-card",
         "rotation-pending-threads-card"
@@ -52,7 +53,7 @@ fn active_threads_render_above_pending_threads(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn active_thread_renders_its_title_and_request_selectors(cx: &mut TestAppContext) {
+fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut TestAppContext) {
     let now = Utc
         .with_ymd_and_hms(2026, 8, 22, 19, 0, 0)
         .single()
@@ -63,16 +64,71 @@ fn active_thread_renders_its_title_and_request_selectors(cx: &mut TestAppContext
         now,
     );
     prepare_rotation_accounts(&mut app);
-    set_rotation_active_threads(&mut app, "active", 1);
+    set_rotation_active_threads(&mut app, "active", 2);
     set_rotation_thread_title(&mut app, "active-fixture-0", "Repair router handoff");
     set_page(&mut app, Page::Rotation);
     let mut harness = Harness::open(cx, app, VIEWPORT);
 
     assert!(harness.has("rotation-thread-row-active-fixture-0"));
+    assert!(harness.has("rotation-thread-row-active-fixture-1"));
     assert!(harness.has("rotation-thread-title-active-fixture-0"));
+    assert!(harness.has("rotation-thread-captions"));
+    assert!(harness.has("rotation-thread-status-dot-active-fixture-0"));
     assert!(harness.has("rotation-thread-model-active-fixture-0"));
     assert!(harness.has("rotation-thread-reasoning-active-fixture-0"));
     assert!(harness.has("rotation-thread-tier-active-fixture-0"));
+    assert_eq!(
+        harness
+            .bounds("rotation-thread-status-active-fixture-0")
+            .size
+            .width,
+        px(150.)
+    );
+    assert_eq!(
+        harness
+            .bounds("rotation-thread-status-dot-active-fixture-0")
+            .size,
+        size(px(6.), px(6.))
+    );
+
+    for (caption, caption_label, first, first_value, second, width) in [
+        (
+            "rotation-thread-caption-model",
+            "rotation-thread-caption-model-label",
+            "rotation-thread-model-active-fixture-0",
+            "rotation-thread-model-active-fixture-0-value",
+            "rotation-thread-model-active-fixture-1",
+            140.,
+        ),
+        (
+            "rotation-thread-caption-reasoning",
+            "rotation-thread-caption-reasoning-label",
+            "rotation-thread-reasoning-active-fixture-0",
+            "rotation-thread-reasoning-active-fixture-0-value",
+            "rotation-thread-reasoning-active-fixture-1",
+            80.,
+        ),
+        (
+            "rotation-thread-caption-tier",
+            "rotation-thread-caption-tier-label",
+            "rotation-thread-tier-active-fixture-0",
+            "rotation-thread-tier-active-fixture-0-value",
+            "rotation-thread-tier-active-fixture-1",
+            80.,
+        ),
+    ] {
+        let caption = harness.bounds(caption);
+        let caption_label = harness.bounds(caption_label);
+        let first = harness.bounds(first);
+        let first_value = harness.bounds(first_value);
+        let second = harness.bounds(second);
+        assert_eq!(caption.left(), first.left());
+        assert_eq!(caption.size.width, first.size.width);
+        assert_eq!(first.left(), second.left());
+        assert_eq!(first.size.width, second.size.width);
+        assert_eq!(first.size.width, px(width));
+        assert!((caption_label.right() - first_value.right()).abs() <= px(1.));
+    }
 }
 
 #[gpui::test]

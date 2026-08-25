@@ -60,7 +60,7 @@ fn explicit_database_name_wins_and_whitespace_is_collapsed() {
     insert_thread(
         &connection,
         "named",
-        Some("  Assigned\n\ttitle  "),
+        Some("  # Assigned\n\t*title*  "),
         "Stale derived title",
         "Stale preview",
     );
@@ -75,7 +75,7 @@ fn explicit_database_name_wins_and_whitespace_is_collapsed() {
 
     assert_eq!(
         title(&ThreadTitleStore::new(home.path().to_path_buf()), "named"),
-        Some("Assigned title".to_owned())
+        Some("# Assigned *title*".to_owned())
     );
 }
 
@@ -94,14 +94,14 @@ fn session_index_rename_beats_a_name_less_database_title() {
         home.path().join("session_index.jsonl"),
         format!(
             "{}\n",
-            index_line("renamed", "  Project\nplan  ", "2026-08-25T10:00:00Z")
+            index_line("renamed", "  > Project\nplan  ", "2026-08-25T10:00:00Z")
         ),
     )
     .unwrap();
 
     assert_eq!(
         title(&ThreadTitleStore::new(home.path().to_path_buf()), "renamed"),
-        Some("Project plan".to_owned())
+        Some("> Project plan".to_owned())
     );
 }
 
@@ -137,7 +137,7 @@ fn changed_index_is_reparsed_and_the_last_valid_entry_wins() {
 fn derived_title_is_collapsed_and_truncated_to_eighty_characters() {
     let home = tempfile::tempdir().unwrap();
     let connection = create_database(home.path());
-    let prompt = format!("  First\n\tsecond   {}  ", "x".repeat(100));
+    let prompt = format!("  ## First\n\tsecond   {}  ", "x".repeat(100));
     insert_thread(&connection, "long", None, &prompt, "Unused preview");
 
     let resolved = title(&ThreadTitleStore::new(home.path().to_path_buf()), "long").unwrap();
@@ -146,10 +146,37 @@ fn derived_title_is_collapsed_and_truncated_to_eighty_characters() {
 }
 
 #[test]
+fn derived_title_strips_only_leading_markdown_decoration() {
+    let home = tempfile::tempdir().unwrap();
+    let connection = create_database(home.path());
+    insert_thread(
+        &connection,
+        "decorated",
+        None,
+        "  # * - > ``` Task: keep #tag, *note*, - detail, > quote, and `code`  ",
+        "Unused preview",
+    );
+
+    assert_eq!(
+        title(
+            &ThreadTitleStore::new(home.path().to_path_buf()),
+            "decorated"
+        ),
+        Some("Task: keep #tag, *note*, - detail, > quote, and `code`".to_owned())
+    );
+}
+
+#[test]
 fn blank_title_uses_preview() {
     let home = tempfile::tempdir().unwrap();
     let connection = create_database(home.path());
-    insert_thread(&connection, "previewed", None, " \n ", "  Preview\n text  ");
+    insert_thread(
+        &connection,
+        "previewed",
+        None,
+        " \n ",
+        "  > ``` Preview\n text  ",
+    );
 
     assert_eq!(
         title(

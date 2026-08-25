@@ -10,6 +10,8 @@ pub(super) enum SelectorKind {
 }
 
 impl SelectorKind {
+    pub(super) const ALL: [Self; 3] = [Self::Model, Self::Reasoning, Self::Tier];
+
     pub(super) const fn slug(self) -> &'static str {
         match self {
             Self::Model => "model",
@@ -28,9 +30,20 @@ impl SelectorKind {
 
     pub(super) const fn width(self) -> f32 {
         match self {
-            Self::Model => 170.,
-            Self::Reasoning => 145.,
-            Self::Tier => 120.,
+            Self::Model => 140.,
+            Self::Reasoning | Self::Tier => 80.,
+        }
+    }
+
+    pub(super) const fn value_width(self) -> f32 {
+        self.width() - 32.
+    }
+
+    pub(super) const fn tooltip(self) -> &'static str {
+        match self {
+            Self::Model => "Model override. Auto follows the thread's own requests.",
+            Self::Reasoning => "Reasoning effort override. Auto follows the thread's own requests.",
+            Self::Tier => "Service tier override. Auto follows the thread's own requests.",
         }
     }
 

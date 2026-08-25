@@ -7,7 +7,7 @@ fn account(id: &str) -> AccountId {
 }
 
 #[test]
-fn thread_rows_compose_active_and_attached_threads_in_activity_order() {
+fn thread_rows_compose_active_and_attached_threads_in_start_order() {
     let account = account("account");
     let streaming = ThreadId::new("streaming");
     let pending_a = ThreadId::new("pending-a");
@@ -62,6 +62,37 @@ fn thread_rows_compose_active_and_attached_threads_in_activity_order() {
     assert_eq!(rows[4].account_id.as_ref(), Some(&account));
     assert_eq!(rows[4].started_at, None);
     assert_eq!(rows[4].last_activity_at, None);
+}
+
+#[test]
+fn thread_rows_keep_their_order_when_an_older_thread_receives_new_activity() {
+    let account = account("account");
+    let older = ThreadId::new("older");
+    let newer = ThreadId::new("newer");
+    let mut runtime = RotationRuntime::default();
+    runtime
+        .connection_opened(&account, &older, UnixMillis::new(10))
+        .unwrap();
+    runtime
+        .connection_opened(&account, &newer, UnixMillis::new(20))
+        .unwrap();
+    let before = runtime
+        .thread_rows()
+        .into_iter()
+        .map(|row| row.thread_id)
+        .collect::<Vec<_>>();
+
+    runtime
+        .connection_opened(&account, &older, UnixMillis::new(30))
+        .unwrap();
+    let after = runtime
+        .thread_rows()
+        .into_iter()
+        .map(|row| row.thread_id)
+        .collect::<Vec<_>>();
+
+    assert_eq!(before, [newer, older]);
+    assert_eq!(after, before);
 }
 
 #[test]

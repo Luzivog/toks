@@ -43,8 +43,8 @@ pub(in crate::ui::rotation) const fn status_label(status: ThreadStatus) -> &'sta
     match status {
         ThreadStatus::Streaming { .. } => "Streaming",
         ThreadStatus::ReservationPending => "Starting",
-        ThreadStatus::AwaitingFollowUp => "Waiting for follow-up",
-        ThreadStatus::AttachedIdle => "Connected",
+        ThreadStatus::AwaitingFollowUp => "Waiting",
+        ThreadStatus::AttachedIdle => "Idle",
     }
 }
 

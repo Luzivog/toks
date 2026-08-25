@@ -2,7 +2,7 @@ use gpui::{div, prelude::*, px, Corner};
 use gpui_component::{
     h_flex,
     menu::{DropdownMenu, PopupMenuItem},
-    ActiveTheme, Disableable,
+    ActiveTheme, Disableable, StyledExt,
 };
 use toks_core::rotation::{ThreadId, ThreadOverrideChange, ThreadRow};
 
@@ -21,6 +21,32 @@ struct SelectorSpec {
     thread_override: Option<String>,
     observed: Option<String>,
     choices: Vec<Choice>,
+}
+
+pub(super) fn captions(cx: &gpui::App) -> gpui::Div {
+    h_flex()
+        .flex_shrink_0()
+        .gap_1()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .children(SelectorKind::ALL.map(|kind| {
+            let selector = format!("rotation-thread-caption-{}", kind.slug());
+            let label_selector = format!("{selector}-label");
+            h_flex()
+                .debug_selector(move || selector.clone())
+                .w(px(kind.width()))
+                .flex_shrink_0()
+                .justify_end()
+                .gap_1()
+                .pr(px(6.))
+                .child(
+                    div()
+                        .debug_selector(move || label_selector.clone())
+                        .text_right()
+                        .child(kind.label()),
+                )
+                .child(div().size_3p5().flex_shrink_0())
+        }))
 }
 
 pub(super) fn selectors(
@@ -106,6 +132,7 @@ fn selector(
     let handle = cx.entity().downgrade();
     let menu_thread = thread.clone();
     let current = thread_override.clone();
+    let value_selector = format!("rotation-thread-{}-{}-value", kind.slug(), thread.as_str());
     super::super::super::action_button(
         format!("rotation-thread-{}-{}", kind.slug(), thread.as_str()),
         cx,
@@ -113,28 +140,24 @@ fn selector(
     .compact()
     .w(px(kind.width()))
     .h(px(26.))
+    .justify_end()
     .overflow_hidden()
     .text_xs()
     .dropdown_caret(true)
     .disabled(app.rotation.busy.is_some())
-    .tooltip(format!("{} for the next request", kind.label()))
+    .tooltip(kind.tooltip())
     .child(
-        h_flex()
+        div()
+            .debug_selector(move || value_selector.clone())
+            .max_w(px(kind.value_width()))
             .min_w_0()
-            .gap_1()
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(kind.label()),
-            )
-            .child(
-                div()
-                    .min_w_0()
-                    .truncate()
-                    .text_color(value_color)
-                    .child(kind.display(&label.text)),
-            ),
+            .truncate()
+            .text_right()
+            .text_color(value_color)
+            .when(label.source == SelectorSource::Override, |value| {
+                value.font_medium()
+            })
+            .child(kind.display(&label.text)),
     )
     .dropdown_menu_with_anchor(Corner::TopRight, move |mut menu, _, _| {
         menu = menu.min_w(px(160.)).item(menu_item(
