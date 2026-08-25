@@ -19,6 +19,7 @@ mod limits_refresh_tests;
 mod navigation;
 #[cfg(test)]
 mod navigation_tests;
+mod overview_chart_range;
 mod page;
 mod provider_visibility;
 pub(crate) mod remote_control_operations;
@@ -26,6 +27,7 @@ mod rotation_operations;
 pub(crate) use account_operations::AccountOperations;
 pub(crate) use account_removals::{request_removal, AccountRemovals, RemovalStatus};
 use banked_reset_operations::BankedResetOperations;
+pub(crate) use overview_chart_range::OverviewChartRange;
 pub use page::Page;
 pub(crate) use rotation_operations::{RotationServiceAction, RotationUiState, SettingsAction};
 
@@ -56,6 +58,7 @@ pub struct ToksApp {
     pub(crate) banked_resets: BankedResetOperations,
     limits_refresh: limits_refresh::LimitsRefreshSignal,
     pub(crate) emails_hidden: bool,
+    pub(crate) overview_chart_range: OverviewChartRange,
     pub(crate) provider_visibility: ProviderVisibility,
     pub(crate) provider_visibility_error: Option<String>,
     pub(crate) usage_tables: UsageTablesState,
@@ -169,6 +172,7 @@ impl ToksApp {
             banked_resets: BankedResetOperations::default(),
             limits_refresh: limits_refresh::LimitsRefreshSignal::default(),
             emails_hidden: false,
+            overview_chart_range: OverviewChartRange::default(),
             provider_visibility: ProviderVisibility::default(),
             provider_visibility_error: None,
             usage_tables: UsageTablesState::new(),

@@ -41,7 +41,10 @@ mod model_data;
 mod model_rows;
 mod models;
 mod overview;
+mod overview_data;
 mod overview_metrics;
+#[cfg(test)]
+mod overview_metrics_tests;
 mod pages;
 mod plan_badge;
 #[cfg(test)]
@@ -103,9 +106,8 @@ use model_data::aggregate_model_usage;
 use model_data::{current_usage_date, period_model_usage, sort_model_usage};
 use model_rows::{model_columns_header, model_usage_row};
 use models::model_breakdown_card;
-#[cfg(test)]
-use overview::overview_usage_points;
 use overview::{usage_block, usage_legend};
+use overview_data::overview_usage_points;
 use overview_metrics::overview_metrics_card;
 use provider_filter::{visible_source, visible_sources, visible_usage};
 #[cfg(test)]
@@ -126,7 +128,7 @@ use usage_metric_row::{usage_data_row, usage_metric_row};
 use usage_points::{provider_point, source_bucket_values, usage_chart_points};
 use usage_range::{
     hourly_bucket_day, hourly_bucket_full_label, sort_usage_buckets, usage_bucket_is_current,
-    usage_bucket_label, usage_period_label, usage_range_label, visible_usage_buckets,
+    usage_bucket_label, usage_period_label, usage_range_label, visible_usage_buckets, week_start,
 };
 use usage_rows::{hourly_day_separator, usage_columns_header, usage_static_columns_header};
 use usage_table::usage_history_card;

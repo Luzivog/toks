@@ -27,7 +27,10 @@ fn overview_chart_and_current_rows_fit_a_narrow_window(cx: &mut TestAppContext) 
     let summary = harness.bounds("usage-summary-sidebar");
     let current = harness.bounds("overview-current-usage");
     let today = harness.bounds("overview-usage-today");
+    let week = harness.bounds("overview-usage-week");
     let month = harness.bounds("overview-usage-month");
+    let legend = harness.bounds("usage-legend-codex");
+    let selector = harness.bounds("overview-range-selector");
 
     assert!(card.contains(&chart.center()));
     assert!(card.contains(&current.center()));
@@ -35,9 +38,32 @@ fn overview_chart_and_current_rows_fit_a_narrow_window(cx: &mut TestAppContext) 
     assert_eq!(chart.size.height, summary.size.height);
     assert!(current.top() >= chart.bottom());
     assert!(current.contains(&today.center()));
+    assert!(current.contains(&week.center()));
     assert!(current.contains(&month.center()));
+    assert!(today.center().y < week.center().y);
+    assert!(week.center().y < month.center().y);
     assert!(today.left() >= current.left() && today.right() <= current.right());
+    assert!(week.left() >= current.left() && week.right() <= current.right());
     assert!(month.left() >= current.left() && month.right() <= current.right());
+    assert!(card.contains(&selector.center()));
+    assert!(selector.left() >= legend.right());
+}
+
+#[gpui::test]
+fn overview_range_selector_changes_only_the_overview_chart(cx: &mut TestAppContext) {
+    let mut harness = Harness::open(cx, app(Page::Overview), size(px(1600.), px(1200.)));
+    assert!(harness.has("overview-usage-title-last-30-days"));
+    assert!(harness.has("overview-usage-chart"));
+
+    harness.click("overview-range-selector");
+    harness.click("overview-range-last-day");
+
+    assert!(harness.has("overview-usage-title-last-day"));
+    assert!(harness.has("overview-last-day-usage-chart"));
+    assert!(harness.has("overview-usage-week"));
+
+    harness.click("daily");
+    assert!(harness.has("daily-usage-chart"));
 }
 
 #[gpui::test]

@@ -61,6 +61,7 @@ pub(super) fn overview_page(
             history,
             history_freshness_text(&app.history_refresh, app.now),
             layout,
+            app.overview_chart_range,
             &app.provider_visibility,
             cx,
         ));

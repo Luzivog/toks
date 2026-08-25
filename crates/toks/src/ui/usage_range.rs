@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{Datelike, Duration, NaiveDate};
 use toks_core::history::{UsageBucket, UsagePeriod, UsageSeries};
 
 use crate::{SortDirection, SortState, UsageSortColumn};
@@ -37,6 +37,10 @@ pub(super) fn hourly_bucket_full_label(key: &str) -> String {
     chrono::NaiveDateTime::parse_from_str(key, "%Y-%m-%d %H:%M")
         .map(|time| time.format("%b %-d · %H:%M").to_string())
         .unwrap_or_else(|_| key.to_string())
+}
+
+pub(super) fn week_start(date: NaiveDate) -> NaiveDate {
+    date - Duration::days(i64::from(date.weekday().num_days_from_monday()))
 }
 
 pub(super) fn visible_usage_buckets(usage: &UsageSeries, period: UsagePeriod) -> Vec<&UsageBucket> {
