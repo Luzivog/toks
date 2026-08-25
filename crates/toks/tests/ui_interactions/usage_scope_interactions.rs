@@ -56,10 +56,10 @@ fn overview_range_selector_changes_only_the_overview_chart(cx: &mut TestAppConte
     assert!(harness.has("overview-usage-chart"));
 
     harness.click("overview-range-selector");
-    harness.click("overview-range-last-day");
+    harness.click("overview-range-last-24-hours");
 
-    assert!(harness.has("overview-usage-title-last-day"));
-    assert!(harness.has("overview-last-day-usage-chart"));
+    assert!(harness.has("overview-usage-title-last-24-hours"));
+    assert!(harness.has("overview-last-24-hours-usage-chart"));
     assert!(harness.has("overview-usage-week"));
 
     harness.click("daily");

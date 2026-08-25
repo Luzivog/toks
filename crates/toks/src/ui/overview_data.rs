@@ -15,7 +15,7 @@ pub(super) fn overview_usage_points(
     visibility: &ProviderVisibility,
 ) -> Vec<ProviderPoint> {
     match range {
-        OverviewChartRange::LastDay => trailing_hourly_points(history, visibility),
+        OverviewChartRange::LastTwentyFourHours => trailing_hourly_points(history, visibility),
         OverviewChartRange::LastSevenDays => trailing_daily_points(history, 7, visibility),
         OverviewChartRange::LastThirtyDays => trailing_daily_points(history, 30, visibility),
         OverviewChartRange::AllTime => all_time_points(history, visibility),

@@ -145,12 +145,22 @@ fn overview_ranges_use_hourly_daily_and_weekly_windows() {
         ..Default::default()
     };
 
-    let day = overview_usage_points(&history, OverviewChartRange::LastDay, &visibility);
-    assert_eq!(day.len(), 24);
-    assert_eq!(day.first().unwrap().label.as_str(), "13:00");
-    assert_eq!(day.first().unwrap().codex, 1.0);
-    assert_eq!(day.last().unwrap().label.as_str(), "12:00");
-    assert_eq!(day.last().unwrap().codex, 2.0);
+    let last_twenty_four_hours = overview_usage_points(
+        &history,
+        OverviewChartRange::LastTwentyFourHours,
+        &visibility,
+    );
+    assert_eq!(last_twenty_four_hours.len(), 24);
+    assert_eq!(
+        last_twenty_four_hours.first().unwrap().label.as_str(),
+        "13:00"
+    );
+    assert_eq!(last_twenty_four_hours.first().unwrap().codex, 1.0);
+    assert_eq!(
+        last_twenty_four_hours.last().unwrap().label.as_str(),
+        "12:00"
+    );
+    assert_eq!(last_twenty_four_hours.last().unwrap().codex, 2.0);
 
     let week = overview_usage_points(&history, OverviewChartRange::LastSevenDays, &visibility);
     assert_eq!(week.len(), 7);

@@ -2,7 +2,7 @@ use super::ToksApp;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum OverviewChartRange {
-    LastDay,
+    LastTwentyFourHours,
     LastSevenDays,
     #[default]
     LastThirtyDays,
@@ -11,7 +11,7 @@ pub(crate) enum OverviewChartRange {
 
 impl OverviewChartRange {
     pub(crate) const ALL: [Self; 4] = [
-        Self::LastDay,
+        Self::LastTwentyFourHours,
         Self::LastSevenDays,
         Self::LastThirtyDays,
         Self::AllTime,
@@ -19,7 +19,7 @@ impl OverviewChartRange {
 
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::LastDay => "Last day",
+            Self::LastTwentyFourHours => "Last 24 hours",
             Self::LastSevenDays => "Last 7 days",
             Self::LastThirtyDays => "Last 30 days",
             Self::AllTime => "All time",
@@ -28,7 +28,7 @@ impl OverviewChartRange {
 
     pub(crate) const fn title(self) -> &'static str {
         match self {
-            Self::LastDay => "Usage — last day",
+            Self::LastTwentyFourHours => "Usage — last 24 hours",
             Self::LastSevenDays => "Usage — last 7 days",
             Self::LastThirtyDays => "Usage — last 30 days",
             Self::AllTime => "Usage — all time",
@@ -37,7 +37,7 @@ impl OverviewChartRange {
 
     pub(crate) const fn slug(self) -> &'static str {
         match self {
-            Self::LastDay => "last-day",
+            Self::LastTwentyFourHours => "last-24-hours",
             Self::LastSevenDays => "last-7-days",
             Self::LastThirtyDays => "last-30-days",
             Self::AllTime => "all-time",
@@ -46,7 +46,7 @@ impl OverviewChartRange {
 
     pub(crate) const fn chart_id(self) -> &'static str {
         match self {
-            Self::LastDay => "overview-last-day-usage",
+            Self::LastTwentyFourHours => "overview-last-24-hours-usage",
             Self::LastSevenDays => "overview-last-7-days-usage",
             Self::LastThirtyDays => "overview-usage",
             Self::AllTime => "overview-all-time-usage",
