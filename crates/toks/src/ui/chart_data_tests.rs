@@ -1,5 +1,7 @@
 use chrono::TimeZone;
 
+use crate::app::OverviewChartRange;
+
 use super::{
     all_time_points, all_time_summary, overview_usage_points, period_model_usage, provider_rows,
     usage_chart_maximum, usage_chart_points, visible_usage, ProviderPoint,
@@ -99,7 +101,80 @@ fn page_charts_stop_at_the_current_hour_and_day() {
         usage_chart_points(&history, UsagePeriod::Monthly, &visibility).len(),
         18
     );
-    assert_eq!(overview_usage_points(&history, &visibility).len(), 30);
+    assert_eq!(
+        overview_usage_points(&history, OverviewChartRange::LastThirtyDays, &visibility).len(),
+        30
+    );
+}
+
+#[test]
+fn overview_ranges_use_hourly_daily_and_weekly_windows() {
+    let visibility = ProviderVisibility::default();
+    let bucket = |key: &str, cost: f64| UsageBucket {
+        key: key.into(),
+        input: (cost * 10.0) as i64,
+        tokens: (cost * 10.0) as i64,
+        cost,
+        ..Default::default()
+    };
+    let usage = UsageSeries {
+        hourly: vec![
+            bucket("2026-08-17 12:00", 9.0),
+            bucket("2026-08-17 13:00", 1.0),
+            bucket("2026-08-18 12:00", 2.0),
+        ],
+        daily: vec![
+            bucket("2026-07-20", 3.0),
+            bucket("2026-08-12", 4.0),
+            bucket("2026-08-18", 5.0),
+        ],
+        ..Default::default()
+    };
+    let history = HistorySnapshot {
+        sources: vec![SourceHistory {
+            client: "codex".into(),
+            usage: usage.clone(),
+            ..Default::default()
+        }],
+        usage,
+        generated_at_ms: chrono::Local
+            .with_ymd_and_hms(2026, 8, 18, 12, 34, 0)
+            .single()
+            .unwrap()
+            .timestamp_millis(),
+        ..Default::default()
+    };
+
+    let last_twenty_four_hours = overview_usage_points(
+        &history,
+        OverviewChartRange::LastTwentyFourHours,
+        &visibility,
+    );
+    assert_eq!(last_twenty_four_hours.len(), 24);
+    assert_eq!(
+        last_twenty_four_hours.first().unwrap().label.as_str(),
+        "13:00"
+    );
+    assert_eq!(last_twenty_four_hours.first().unwrap().codex, 1.0);
+    assert_eq!(
+        last_twenty_four_hours.last().unwrap().label.as_str(),
+        "12:00"
+    );
+    assert_eq!(last_twenty_four_hours.last().unwrap().codex, 2.0);
+
+    let week = overview_usage_points(&history, OverviewChartRange::LastSevenDays, &visibility);
+    assert_eq!(week.len(), 7);
+    assert_eq!(week.first().unwrap().label.as_str(), "08-12");
+    assert_eq!(week.last().unwrap().label.as_str(), "08-18");
+
+    let month = overview_usage_points(&history, OverviewChartRange::LastThirtyDays, &visibility);
+    assert_eq!(month.len(), 30);
+    assert_eq!(month.first().unwrap().label.as_str(), "07-20");
+    assert_eq!(month.last().unwrap().label.as_str(), "08-18");
+
+    let all_time = overview_usage_points(&history, OverviewChartRange::AllTime, &visibility);
+    assert_eq!(all_time.first().unwrap().label.as_str(), "Jul 20");
+    assert_eq!(all_time.last().unwrap().label.as_str(), "Aug 17");
 }
 
 #[test]
@@ -131,12 +206,52 @@ fn overview_joins_provider_days_by_key_instead_of_position() {
         ..Default::default()
     };
 
-    let points = overview_usage_points(&history, &visibility);
+    let points = overview_usage_points(&history, OverviewChartRange::LastThirtyDays, &visibility);
     let previous = points.iter().find(|point| point.label == "08-17").unwrap();
     let current = points.iter().find(|point| point.label == "08-18").unwrap();
     assert_eq!((previous.claude, previous.codex), (0.0, 3.0));
     assert_eq!((current.claude, current.codex), (8.0, 0.0));
     assert_eq!((current.opencode, current.opencode_tokens), (2.0, 20));
+}
+
+#[test]
+fn overview_ranges_exclude_hidden_providers() {
+    let source = |client: &str, cost: f64| SourceHistory {
+        client: client.into(),
+        usage: UsageSeries {
+            hourly: vec![UsageBucket {
+                key: "2026-08-18 12:00".into(),
+                tokens: 10,
+                cost,
+                ..Default::default()
+            }],
+            daily: vec![UsageBucket {
+                key: "2026-08-18".into(),
+                tokens: 10,
+                cost,
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let history = HistorySnapshot {
+        sources: vec![source("claude", 8.0), source("codex", 3.0)],
+        generated_at_ms: chrono::Local
+            .with_ymd_and_hms(2026, 8, 18, 12, 0, 0)
+            .single()
+            .unwrap()
+            .timestamp_millis(),
+        ..Default::default()
+    };
+    let mut visibility = ProviderVisibility::default();
+    assert!(visibility.set_visible(ClientId::Claude, false));
+
+    for range in OverviewChartRange::ALL {
+        let points = overview_usage_points(&history, range, &visibility);
+        assert!(points.iter().all(|point| point.claude == 0.0));
+        assert!(points.iter().any(|point| point.codex == 3.0));
+    }
 }
 
 #[test]

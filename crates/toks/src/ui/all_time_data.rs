@@ -2,7 +2,9 @@ use chrono::{Datelike, Duration, NaiveDate};
 use toks_core::history::{HistorySnapshot, SourceHistory, UsageKey, UsagePeriod};
 use toks_core::{ClientId, ProviderVisibility};
 
-use super::{provider_point, visible_source, visible_usage, ProviderPoint, UsageSummary};
+use super::{
+    provider_point, visible_source, visible_usage, week_start, ProviderPoint, UsageSummary,
+};
 
 pub(super) fn all_time_points(
     history: &HistorySnapshot,
@@ -82,10 +84,6 @@ fn source_week_values(source: Option<&SourceHistory>, week: NaiveDate) -> (f64, 
                 tokens.saturating_add(bucket.tokens.max(0)),
             )
         })
-}
-
-fn week_start(date: NaiveDate) -> NaiveDate {
-    date - Duration::days(i64::from(date.weekday().num_days_from_monday()))
 }
 
 fn week_heading(start: NaiveDate) -> String {
