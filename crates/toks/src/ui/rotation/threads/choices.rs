@@ -1,6 +1,6 @@
 use toks_core::codex_router::account_activation::SelectableModel;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Choice {
     pub(super) value: String,
     pub(super) label: String,

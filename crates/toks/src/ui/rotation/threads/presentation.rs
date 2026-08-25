@@ -11,7 +11,7 @@ const VISIBLE_THREAD_LIMIT: usize = 100;
 pub(in crate::ui::rotation) enum SelectorSource {
     Override,
     Observed,
-    Auto,
+    Placeholder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,8 +92,8 @@ pub(in crate::ui::rotation) fn selector_label(
         }
     } else {
         SelectorLabel {
-            text: "Auto".into(),
-            source: SelectorSource::Auto,
+            text: "—".into(),
+            source: SelectorSource::Placeholder,
         }
     }
 }
