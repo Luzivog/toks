@@ -57,7 +57,7 @@ fn opencode_rollups_project_into_their_own_source() {
 }
 
 #[test]
-fn source_series_keep_only_provider_windows_consumed_by_the_ui() {
+fn source_series_keep_every_period_needed_for_provider_filtering() {
     let now = chrono::Utc
         .with_ymd_and_hms(2026, 8, 18, 12, 30, 0)
         .single()
@@ -112,13 +112,11 @@ fn source_series_keep_only_provider_windows_consumed_by_the_ui() {
 
     assert_eq!(source.total_tokens, 78);
     assert_eq!(source.usage.daily.len(), 2);
-    assert_eq!(source.usage.hourly.len(), 2);
-    assert!(source
-        .usage
-        .hourly
-        .iter()
-        .all(|bucket| bucket.key.starts_with("2026-08-18 ")));
-    assert!(source.usage.monthly.is_empty());
+    assert_eq!(source.usage.hourly.len(), 3);
+    assert_eq!(source.usage.hourly[0].key, "2025-04-10 07:00");
+    assert_eq!(source.usage.monthly.len(), 2);
+    assert_eq!(source.usage.monthly[0].key, "2025-04");
+    assert_eq!(source.usage.monthly[1].key, "2026-08");
     assert_eq!(
         source
             .minutes
@@ -191,4 +189,9 @@ fn streaming_builder_preserves_named_timezone_bucket_boundaries() {
     assert_eq!(monthly, ["2025-12", "2026-01"]);
     assert_eq!(snapshot.usage.hourly[0].key, "2025-12-31 19:00");
     assert_eq!(snapshot.usage.hourly[1].key, "2026-01-01 00:00");
+    let source = snapshot.source("codex").unwrap();
+    assert_eq!(source.usage.hourly[0].key, "2025-12-31 19:00");
+    assert_eq!(source.usage.hourly[1].key, "2026-01-01 00:00");
+    assert_eq!(source.usage.monthly[0].key, "2025-12");
+    assert_eq!(source.usage.monthly[1].key, "2026-01");
 }

@@ -1,7 +1,8 @@
 use chrono::{Datelike, Local, TimeZone, Timelike};
 use toks_core::history::{HistorySnapshot, SourceHistory, UsageBucket, UsagePeriod, UsageSeries};
+use toks_core::{ClientId, ProviderVisibility};
 
-use super::{current_usage_date, ProviderPoint};
+use super::{current_usage_date, visible_source, ProviderPoint};
 
 pub(super) fn source_bucket_values(
     source: Option<&SourceHistory>,
@@ -40,10 +41,11 @@ pub(super) fn provider_point(
 pub(super) fn usage_chart_points(
     history: &HistorySnapshot,
     period: UsagePeriod,
+    visibility: &ProviderVisibility,
 ) -> Vec<ProviderPoint> {
-    let claude = history.source("claude");
-    let codex = history.source("codex");
-    let opencode = history.source("opencode");
+    let claude = visible_source(history, ClientId::Claude, visibility);
+    let codex = visible_source(history, ClientId::Codex, visibility);
+    let opencode = visible_source(history, ClientId::OpenCode, visibility);
     let generated_minute = history.generated_at_ms.div_euclid(60_000);
 
     match period {

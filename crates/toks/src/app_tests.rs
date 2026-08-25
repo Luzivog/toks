@@ -29,6 +29,7 @@ fn page_metadata_preserves_navigation_order() {
             ("monthly", "Monthly"),
             ("all-time", "All time"),
             ("rotation", "Rotation"),
+            ("settings", "Settings"),
         ]
     );
 }

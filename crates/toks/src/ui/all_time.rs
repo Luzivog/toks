@@ -2,6 +2,7 @@ use chrono::{Local, TimeZone};
 use gpui::{div, prelude::*, App};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::HistorySnapshot;
+use toks_core::ProviderVisibility;
 
 use crate::{Page, ToksApp};
 
@@ -17,7 +18,8 @@ use super::{
     section::section_title,
     summary::usage_summary_sidebar,
     table_layout::{TableContext, TableLayout},
-    theme::{claude_accent, codex_accent, opencode_accent, page_accent},
+    theme::page_accent,
+    usage_legend, visible_sources,
 };
 
 pub(super) fn all_time_page(
@@ -49,12 +51,9 @@ pub(super) fn all_time_page(
         });
     };
     let models = aggregate_model_usage(
-        history
-            .sources
-            .iter()
-            .flat_map(|source| source.models.iter()),
+        visible_sources(history, &app.provider_visibility).flat_map(|source| source.models.iter()),
     );
-    page.child(all_time_chart(history, cx))
+    page.child(all_time_chart(history, &app.provider_visibility, cx))
         .child(model_breakdown_card(
             models,
             "All history",
@@ -98,9 +97,13 @@ fn plural<'a>(count: i64, singular: &'a str, plural: &'a str) -> &'a str {
     }
 }
 
-fn all_time_chart(history: &HistorySnapshot, cx: &App) -> gpui::Div {
-    let data = all_time_points(history);
-    let summary = all_time_summary(history);
+fn all_time_chart(
+    history: &HistorySnapshot,
+    visibility: &ProviderVisibility,
+    cx: &App,
+) -> gpui::Div {
+    let data = all_time_points(history, visibility);
+    let summary = all_time_summary(history, visibility);
     v_flex()
         .gap_3()
         .p_4()
@@ -108,14 +111,14 @@ fn all_time_chart(history: &HistorySnapshot, cx: &App) -> gpui::Div {
         .bg(cx.theme().secondary)
         .border_1()
         .border_color(cx.theme().border)
-        .child(chart_heading(cx))
+        .child(chart_heading(visibility, cx))
         .child(summary_chart_row(
-            usage_summary_sidebar(summary, "EST. API COST", cx),
-            provider_usage_chart(data, "all-time-usage", cx),
+            usage_summary_sidebar(summary, visibility, "EST. API COST", cx),
+            provider_usage_chart(data, "all-time-usage", visibility, cx),
         ))
 }
 
-fn chart_heading(cx: &App) -> gpui::Div {
+fn chart_heading(visibility: &ProviderVisibility, cx: &App) -> gpui::Div {
     h_flex()
         .justify_between()
         .items_center()
@@ -131,23 +134,7 @@ fn chart_heading(cx: &App) -> gpui::Div {
                 )
                 .child(section_title("Usage — all time by week")),
         )
-        .child(
-            h_flex()
-                .gap_3()
-                .child(legend("Codex", codex_accent(), cx))
-                .child(legend("Claude Code", claude_accent(), cx))
-                .child(legend("OpenCode", opencode_accent(), cx)),
-        )
-}
-
-fn legend(label: &'static str, color: gpui::Hsla, cx: &App) -> gpui::Div {
-    h_flex()
-        .gap_1p5()
-        .items_center()
-        .text_xs()
-        .text_color(cx.theme().muted_foreground)
-        .child(div().size_2().rounded_full().bg(color))
-        .child(label)
+        .child(usage_legend(visibility, cx))
 }
 
 fn all_time_loading(cx: &App) -> gpui::Div {

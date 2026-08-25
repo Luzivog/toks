@@ -71,6 +71,10 @@ pub(crate) fn remote_control_store() -> Result<PathBuf> {
     Ok(data_dir()?.join("remote-control.json"))
 }
 
+pub(crate) fn provider_visibility_file() -> Result<PathBuf> {
+    Ok(data_dir()?.join("provider-visibility.json"))
+}
+
 pub(crate) fn limits_snapshot_cache(
     provider: Provider,
     profile_id: &CredentialProfileId,

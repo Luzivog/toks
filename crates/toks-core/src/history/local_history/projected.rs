@@ -5,7 +5,7 @@ mod totals;
 
 use std::collections::{BTreeMap, HashMap};
 
-use chrono::Duration;
+use chrono::{Datelike, Duration};
 use toks_ingest::bucket_tz::BucketTimezone;
 use toks_ingest::pricing::PricingService;
 
@@ -25,6 +25,7 @@ struct ClientProjection {
     minutes: HashMap<i64, Totals>,
     daily: BTreeMap<UsageKey, Totals>,
     hourly: BTreeMap<UsageKey, Totals>,
+    monthly: BTreeMap<UsageKey, Totals>,
 }
 
 impl ClientProjection {
@@ -34,11 +35,10 @@ impl ClientProjection {
         timezone: &BucketTimezone,
         pricing: Option<&PricingService>,
         now_minute: i64,
-        today: chrono::NaiveDate,
     ) {
         match row.period {
             RollupPeriod::All => self.total.add(row, pricing),
-            RollupPeriod::Minute => self.add_minute(row, timezone, pricing, now_minute, today),
+            RollupPeriod::Minute => self.add_minute(row, timezone, pricing, now_minute),
         }
     }
 
@@ -48,7 +48,6 @@ impl ClientProjection {
         timezone: &BucketTimezone,
         pricing: Option<&PricingService>,
         now_minute: i64,
-        today: chrono::NaiveDate,
     ) {
         let minute = row.bucket_start_ms.div_euclid(60_000);
         if (now_minute - (MINUTES_SPAN - 1)..=now_minute).contains(&minute) {
@@ -59,13 +58,18 @@ impl ClientProjection {
             return;
         };
         self.daily.entry(day).or_default().add(row, pricing);
-        if day == UsageKey::Daily(today) {
-            if let Some(hour) = timezone
-                .hour_key(row.bucket_start_ms)
-                .and_then(|key| UsageKey::parse(UsagePeriod::Hourly, &key))
-            {
-                self.hourly.entry(hour).or_default().add(row, pricing);
-            }
+        if let Some(hour) = timezone
+            .hour_key(row.bucket_start_ms)
+            .and_then(|key| UsageKey::parse(UsagePeriod::Hourly, &key))
+        {
+            self.hourly.entry(hour).or_default().add(row, pricing);
+        }
+        if let UsageKey::Daily(date) = day {
+            let month = date.with_day(1).expect("a valid date has a first day");
+            self.monthly
+                .entry(UsageKey::Monthly(month))
+                .or_default()
+                .add(row, pricing);
         }
     }
 
@@ -107,7 +111,7 @@ impl ClientProjection {
         let usage = UsageSeries {
             daily: merge::buckets(self.daily),
             hourly: merge::buckets(self.hourly),
-            monthly: Vec::new(),
+            monthly: merge::buckets(self.monthly),
         };
         let mut models = self.total.model_usage();
         models.sort_by(|left, right| {

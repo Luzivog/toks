@@ -1,21 +1,26 @@
 use gpui::{div, prelude::*, px, relative, App, SharedString};
 use gpui_component::{chart::AreaChart, tooltip::Tooltip, ActiveTheme};
+use toks_core::{ClientId, ProviderVisibility, USAGE_PROVIDERS};
 
-use super::{
-    chart_tooltip::ProviderPoint, claude_accent, codex_accent, opencode_accent, usage_point_tooltip,
-};
+use super::{accent_for_usage_provider, chart_tooltip::ProviderPoint, usage_point_tooltip};
 
 const USAGE_AXIS_GAP: f32 = 18.0;
 const USAGE_CHART_TOP_GAP: f32 = 10.0;
 
-fn top_provider_series(point: &ProviderPoint) -> (f64, gpui::Hsla) {
-    let candidates = [
-        (point.claude_tokens.max(0) as f64, claude_accent()),
-        (point.codex_tokens.max(0) as f64, codex_accent()),
-        (point.opencode_tokens.max(0) as f64, opencode_accent()),
-    ];
-    candidates
-        .into_iter()
+fn top_provider_series(
+    point: &ProviderPoint,
+    visibility: &ProviderVisibility,
+) -> (f64, gpui::Hsla) {
+    USAGE_PROVIDERS
+        .iter()
+        .copied()
+        .filter(|provider| visibility.is_visible(*provider))
+        .map(|provider| {
+            (
+                point.provider(provider).1.max(0) as f64,
+                accent_for_usage_provider(provider),
+            )
+        })
         .max_by(|left, right| {
             left.0
                 .partial_cmp(&right.0)
@@ -52,14 +57,14 @@ pub(super) fn usage_hover_geometry(index: usize, count: usize) -> (f32, f32, f32
     (left, right - left, point_in_region)
 }
 
-pub(super) fn usage_chart_maximum(data: &[ProviderPoint]) -> f64 {
+pub(super) fn usage_chart_maximum(data: &[ProviderPoint], visibility: &ProviderVisibility) -> f64 {
     data.iter()
         .flat_map(|point| {
-            [
-                point.claude_tokens,
-                point.codex_tokens,
-                point.opencode_tokens,
-            ]
+            USAGE_PROVIDERS
+                .iter()
+                .copied()
+                .filter(|provider| visibility.is_visible(*provider))
+                .map(|provider| point.provider(provider).1)
         })
         .map(|value| value.max(0) as f64)
         .fold(0.0_f64, f64::max)
@@ -68,28 +73,33 @@ pub(super) fn usage_chart_maximum(data: &[ProviderPoint]) -> f64 {
 pub(super) fn provider_usage_chart(
     data: Vec<ProviderPoint>,
     id_prefix: &'static str,
+    visibility: &ProviderVisibility,
     cx: &App,
 ) -> gpui::Div {
-    let maximum = usage_chart_maximum(&data);
+    let maximum = usage_chart_maximum(&data, visibility);
     let point_count = data.len();
+    let tooltip_visibility = visibility.clone();
     let hover_targets: Vec<_> = data
         .iter()
         .cloned()
         .enumerate()
         .filter_map(|(index, point)| {
-            if point.claude <= 0.0
-                && point.codex <= 0.0
-                && point.opencode <= 0.0
-                && point.claude_tokens <= 0
-                && point.codex_tokens <= 0
-                && point.opencode_tokens <= 0
-            {
+            let has_visible_usage = USAGE_PROVIDERS
+                .iter()
+                .copied()
+                .filter(|provider| tooltip_visibility.is_visible(*provider))
+                .any(|provider| {
+                    let (cost, tokens) = point.provider(provider);
+                    cost > 0.0 || tokens > 0
+                });
+            if !has_visible_usage {
                 return None;
             }
             let (left, width, marker_x) = usage_hover_geometry(index, point_count);
-            let (marker_value, marker_color) = top_provider_series(&point);
+            let (marker_value, marker_color) = top_provider_series(&point, &tooltip_visibility);
             let marker_y = usage_marker_top(marker_value, maximum);
             let group: SharedString = format!("{id_prefix}-point-{index}").into();
+            let point_visibility = tooltip_visibility.clone();
             Some(
                 div()
                     .group(group.clone())
@@ -101,7 +111,8 @@ pub(super) fn provider_usage_chart(
                     .w(relative(width))
                     .tooltip(move |window, cx| {
                         let point = point.clone();
-                        Tooltip::element(move |_, cx| usage_point_tooltip(&point, cx))
+                        let visibility = point_visibility.clone();
+                        Tooltip::element(move |_, cx| usage_point_tooltip(&point, &visibility, cx))
                             .p_0()
                             .build(window, cx)
                     })
@@ -124,28 +135,30 @@ pub(super) fn provider_usage_chart(
         })
         .collect();
 
+    let mut chart = AreaChart::new(data).x(|point: &ProviderPoint| point.label.clone());
+    for provider in USAGE_PROVIDERS {
+        if !visibility.is_visible(provider) {
+            continue;
+        }
+        let color = accent_for_usage_provider(provider);
+        let opacity = if provider == ClientId::Claude {
+            0.22
+        } else {
+            0.12
+        };
+        chart = chart
+            .y(move |point: &ProviderPoint| point.provider(provider).1.max(0) as f64)
+            .stroke(color)
+            .fill(color.opacity(opacity))
+            .linear();
+    }
+
     div()
         .debug_selector(move || format!("{id_prefix}-chart"))
         .relative()
         .w_full()
         .min_w_0()
-        .child(
-            AreaChart::new(data)
-                .x(|point: &ProviderPoint| point.label.clone())
-                .y(|point: &ProviderPoint| point.claude_tokens.max(0) as f64)
-                .stroke(claude_accent())
-                .fill(claude_accent().opacity(0.22))
-                .linear()
-                .y(|point: &ProviderPoint| point.codex_tokens.max(0) as f64)
-                .stroke(codex_accent())
-                .fill(codex_accent().opacity(0.12))
-                .linear()
-                .y(|point: &ProviderPoint| point.opencode_tokens.max(0) as f64)
-                .stroke(opencode_accent())
-                .fill(opencode_accent().opacity(0.12))
-                .linear()
-                .tick_margin(7),
-        )
+        .child(chart.tick_margin(7))
         .child(
             div()
                 .absolute()

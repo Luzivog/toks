@@ -79,6 +79,14 @@ pub mod test_support {
         app.page()
     }
 
+    pub fn set_provider_visible(
+        app: &mut ToksApp,
+        provider: toks_core::ClientId,
+        visible: bool,
+    ) -> bool {
+        app.provider_visibility.set_visible(provider, visible)
+    }
+
     pub fn sidebar_open(app: &ToksApp) -> bool {
         app.sidebar_open
     }

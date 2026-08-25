@@ -1,21 +1,28 @@
 use gpui::{div, prelude::*, App, Hsla};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::{HistorySnapshot, UsagePeriod};
+use toks_core::ProviderVisibility;
 
 use super::{
-    claude_accent, codex_accent, legend_chip, opencode_accent, provider_usage_chart, section_title,
-    summary_chart_row, usage_chart_points, usage_summary_sidebar, UsageSummary,
+    provider_usage_chart, section_title, summary_chart_row, usage_chart_points, usage_legend,
+    usage_summary_sidebar, UsageSummary,
 };
 
 pub(super) fn usage_chart_card(
     history: &HistorySnapshot,
     period: UsagePeriod,
     accent: Hsla,
+    visibility: &ProviderVisibility,
     cx: &App,
 ) -> gpui::Div {
     let (title, id_prefix) = usage_chart_identity(period);
-    let data = usage_chart_points(history, period);
-    let summary = usage_summary_sidebar(UsageSummary::from_points(&data), "EST. API COST", cx);
+    let data = usage_chart_points(history, period, visibility);
+    let summary = usage_summary_sidebar(
+        UsageSummary::from_points(&data),
+        visibility,
+        "EST. API COST",
+        cx,
+    );
 
     v_flex()
         .gap_3()
@@ -35,17 +42,11 @@ pub(super) fn usage_chart_card(
                         .child(div().size_2().rounded_full().bg(accent))
                         .child(section_title(title)),
                 )
-                .child(
-                    h_flex()
-                        .gap_3()
-                        .child(legend_chip("Codex", codex_accent(), cx))
-                        .child(legend_chip("Claude Code", claude_accent(), cx))
-                        .child(legend_chip("OpenCode", opencode_accent(), cx)),
-                ),
+                .child(usage_legend(visibility, cx)),
         )
         .child(summary_chart_row(
             summary,
-            provider_usage_chart(data, id_prefix, cx),
+            provider_usage_chart(data, id_prefix, visibility, cx),
         ))
 }
 

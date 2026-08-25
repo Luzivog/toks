@@ -20,6 +20,7 @@ mod local_history;
 mod materialize;
 #[cfg(test)]
 mod rollup;
+mod selection;
 #[cfg(test)]
 mod source;
 #[cfg(test)]
@@ -31,6 +32,7 @@ pub use collect::collect;
 pub use hydration::{hydrate, HistoryHydration};
 pub use keys::{UsageKey, UsageRange};
 pub use local_history::{CatchUpRetry, HistoryStatus, HistoryView, LocalHistory};
+pub use selection::merge_source_usage;
 pub use types::{
     CostCoverage, DaySlice, HistorySnapshot, MinuteSlice, ModelRow, ModelUsage, SourceHistory,
     UsageBucket, UsagePeriod, UsageSeries,

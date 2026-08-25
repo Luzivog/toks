@@ -22,6 +22,7 @@ pub(crate) fn detail(
         Page::Overview => overview_page(app, layout, cx),
         Page::AllTime => super::all_time::all_time_page(app, layout, cx),
         Page::Rotation => super::rotation::rotation_page(app, cx),
+        Page::Settings => super::settings_page(app, cx),
         _ => usage_page(
             app,
             page.usage_period().expect("usage page period"),
@@ -60,6 +61,7 @@ pub(super) fn overview_page(
             history,
             history_freshness_text(&app.history_refresh, app.now),
             layout,
+            &app.provider_visibility,
             cx,
         ));
     } else if let Some(error) = &app.history_error {
@@ -89,15 +91,26 @@ pub(super) fn usage_page(
 
     if let Some(history) = &app.history {
         let (models, range) = match period {
-            UsagePeriod::Hourly => (period_model_usage(history, period), "Last 60 minutes"),
-            UsagePeriod::Daily => (period_model_usage(history, period), "Today"),
-            UsagePeriod::Monthly => (period_model_usage(history, period), "This month"),
+            UsagePeriod::Hourly => (
+                period_model_usage(history, period, &app.provider_visibility),
+                "Last 60 minutes",
+            ),
+            UsagePeriod::Daily => (
+                period_model_usage(history, period, &app.provider_visibility),
+                "Today",
+            ),
+            UsagePeriod::Monthly => (
+                period_model_usage(history, period, &app.provider_visibility),
+                "This month",
+            ),
         };
+        let usage = super::visible_usage(history, &app.provider_visibility);
         root = root
             .child(usage_chart_card(
                 history,
                 period,
                 page_accent(app.page(), cx),
+                &app.provider_visibility,
                 cx,
             ))
             .child(model_breakdown_card(
@@ -108,6 +121,7 @@ pub(super) fn usage_page(
             ))
             .child(usage_history_card(
                 history,
+                &usage,
                 period,
                 app.usage_tables.visible_limit(period),
                 history_freshness_text(&app.history_refresh, app.now),

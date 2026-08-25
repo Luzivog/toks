@@ -1,7 +1,7 @@
 use chrono::Datelike;
 use gpui::prelude::*;
 use gpui_component::v_flex;
-use toks_core::history::{HistorySnapshot, UsageBucket};
+use toks_core::history::{HistorySnapshot, UsageBucket, UsageSeries};
 
 use crate::UsageSortColumn;
 
@@ -9,13 +9,14 @@ use super::{current_usage_date, usage_metric_row, usage_static_columns_header, T
 
 pub(super) fn overview_metrics_card(
     history: &HistorySnapshot,
+    usage: &UsageSeries,
     table: TableContext<'_, '_, UsageSortColumn>,
 ) -> gpui::Div {
     let today = current_usage_date(history);
     let today_key = today.format("%Y-%m-%d").to_string();
     let month_key = format!("{}-{:02}", today.year(), today.month());
-    let today_bucket = bucket_or_empty(&history.usage.daily, &today_key);
-    let month_bucket = bucket_or_empty(&history.usage.monthly, &month_key);
+    let today_bucket = bucket_or_empty(&usage.daily, &today_key);
+    let month_bucket = bucket_or_empty(&usage.monthly, &month_key);
 
     v_flex()
         .debug_selector(|| "overview-current-usage".to_string())

@@ -2,8 +2,11 @@ use std::collections::HashMap;
 
 use chrono::{Local, NaiveDate, TimeZone};
 use toks_core::history::{HistorySnapshot, ModelUsage, UsageKey, UsagePeriod};
+use toks_core::ProviderVisibility;
 
 use crate::{ModelSortColumn, SortDirection, SortState};
+
+use super::visible_sources;
 
 pub(super) fn aggregate_model_usage<'a>(
     models: impl IntoIterator<Item = &'a ModelUsage>,
@@ -94,22 +97,19 @@ pub(super) fn current_usage_date(history: &HistorySnapshot) -> NaiveDate {
 pub(super) fn period_model_usage(
     history: &HistorySnapshot,
     period: UsagePeriod,
+    visibility: &ProviderVisibility,
 ) -> Vec<ModelUsage> {
     match period {
         UsagePeriod::Hourly => aggregate_model_usage(
-            history
-                .sources
-                .iter()
+            visible_sources(history, visibility)
                 .flat_map(|source| &source.minutes)
                 .flat_map(|minute| &minute.models),
         ),
         UsagePeriod::Daily => {
             let key = current_usage_date(history).format("%Y-%m-%d").to_string();
             aggregate_model_usage(
-                history
-                    .usage
-                    .daily
-                    .iter()
+                visible_sources(history, visibility)
+                    .flat_map(|source| &source.usage.daily)
                     .filter(|bucket| bucket.key == key)
                     .flat_map(|bucket| &bucket.models),
             )
@@ -117,10 +117,8 @@ pub(super) fn period_model_usage(
         UsagePeriod::Monthly => {
             let key = current_usage_date(history).format("%Y-%m").to_string();
             aggregate_model_usage(
-                history
-                    .usage
-                    .monthly
-                    .iter()
+                visible_sources(history, visibility)
+                    .flat_map(|source| &source.usage.monthly)
                     .filter(|bucket| bucket.key == key)
                     .flat_map(|bucket| &bucket.models),
             )

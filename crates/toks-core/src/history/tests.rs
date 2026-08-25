@@ -97,7 +97,8 @@ fn provider_series_merge_without_reprocessing_messages() {
         ..Default::default()
     };
 
-    let merged = merge_usage_series(&[source("claude", 20, 2.0), source("codex", 30, 3.0)]);
+    let sources = [source("claude", 20, 2.0), source("codex", 30, 3.0)];
+    let merged = merge_usage_series(&sources);
     assert_eq!(merged.daily.len(), 1);
     assert_eq!(merged.daily[0].tokens, 50);
     assert_eq!(merged.daily[0].cost, 5.0);

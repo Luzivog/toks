@@ -46,9 +46,11 @@ mod pages;
 mod plan_badge;
 #[cfg(test)]
 mod plan_badge_tests;
+mod provider_filter;
 mod quota_row;
 mod rotation;
 mod section;
+mod settings;
 mod sidebar;
 mod summary;
 mod table_column;
@@ -103,18 +105,20 @@ use model_rows::{model_columns_header, model_usage_row};
 use models::model_breakdown_card;
 #[cfg(test)]
 use overview::overview_usage_points;
-use overview::{legend_chip, usage_block};
+use overview::{usage_block, usage_legend};
 use overview_metrics::overview_metrics_card;
+use provider_filter::{visible_source, visible_sources, visible_usage};
 #[cfg(test)]
 use quota_row::split_limit_label;
 use quota_row::{quota_progress, quota_row};
 use section::{section_meta, section_title};
+use settings::settings_page;
 use summary::{usage_summary_sidebar, UsageSummary};
 use table_column::{table_cell, table_sort_header, TableColumn};
 use table_layout::{TableContext, TableLayout, PAGE_CONTENT_MAX_WIDTH};
 use theme::{
-    accent_for_model_provider, accent_for_provider, claude_accent, codex_accent, gauge_color,
-    opencode_accent,
+    accent_for_model_provider, accent_for_provider, accent_for_usage_provider, gauge_color,
+    usage_provider_label,
 };
 use usage_chart::{usage_chart_card, usage_chart_identity};
 use usage_columns::UsageColumn;

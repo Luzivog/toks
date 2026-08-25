@@ -8,16 +8,18 @@ pub enum Page {
     Monthly,
     AllTime,
     Rotation,
+    Settings,
 }
 
 impl Page {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Overview,
         Self::Hourly,
         Self::Daily,
         Self::Monthly,
         Self::AllTime,
         Self::Rotation,
+        Self::Settings,
     ];
 
     pub fn slug(&self) -> &'static str {
@@ -28,6 +30,7 @@ impl Page {
             Self::Monthly => "monthly",
             Self::AllTime => "all-time",
             Self::Rotation => "rotation",
+            Self::Settings => "settings",
         }
     }
 
@@ -39,12 +42,13 @@ impl Page {
             Self::Monthly => "Monthly",
             Self::AllTime => "All time",
             Self::Rotation => "Rotation",
+            Self::Settings => "Settings",
         }
     }
 
     pub fn usage_period(&self) -> Option<UsagePeriod> {
         match self {
-            Self::Overview | Self::AllTime | Self::Rotation => None,
+            Self::Overview | Self::AllTime | Self::Rotation | Self::Settings => None,
             Self::Hourly => Some(UsagePeriod::Hourly),
             Self::Daily => Some(UsagePeriod::Daily),
             Self::Monthly => Some(UsagePeriod::Monthly),

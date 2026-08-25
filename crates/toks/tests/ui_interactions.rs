@@ -20,6 +20,8 @@ mod remote_control_interactions;
 mod resize_edge_interactions;
 #[path = "ui_interactions/rotation_interactions.rs"]
 mod rotation_interactions;
+#[path = "ui_interactions/settings_interactions.rs"]
+mod settings_interactions;
 #[path = "ui_interactions/sidebar_interactions.rs"]
 mod sidebar_interactions;
 #[path = "ui_interactions/support.rs"]

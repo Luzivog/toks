@@ -2,32 +2,42 @@ use chrono::Duration;
 use gpui::{div, prelude::*, App, Hsla};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
 use toks_core::history::HistorySnapshot;
+use toks_core::{ClientId, ProviderVisibility, USAGE_PROVIDERS};
 
 use crate::{ToksApp, UsageSortColumn};
 
 use super::{
-    claude_accent, codex_accent, current_usage_date, opencode_accent, overview_metrics_card,
-    provider_point, provider_usage_chart, section_title, source_bucket_values, summary_chart_row,
-    usage_summary_sidebar, ProviderPoint, TableContext, TableLayout, UsageSummary,
+    accent_for_usage_provider, current_usage_date, overview_metrics_card, provider_point,
+    provider_usage_chart, section_title, source_bucket_values, summary_chart_row,
+    usage_provider_label, usage_summary_sidebar, visible_source, visible_usage, ProviderPoint,
+    TableContext, TableLayout, UsageSummary,
 };
 
 pub(super) fn usage_block(
     history: &HistorySnapshot,
     refresh_label: Option<String>,
     layout: TableLayout,
+    visibility: &ProviderVisibility,
     cx: &gpui::Context<'_, ToksApp>,
 ) -> gpui::Div {
-    last_thirty_days_card(history, refresh_label, layout, cx)
+    last_thirty_days_card(history, refresh_label, layout, visibility, cx)
 }
 
 fn last_thirty_days_card(
     history: &HistorySnapshot,
     refresh_label: Option<String>,
     layout: TableLayout,
+    visibility: &ProviderVisibility,
     cx: &gpui::Context<'_, ToksApp>,
 ) -> gpui::Div {
-    let data = overview_usage_points(history);
-    let summary = usage_summary_sidebar(UsageSummary::from_points(&data), "EST. API COST", cx);
+    let data = overview_usage_points(history, visibility);
+    let usage = visible_usage(history, visibility);
+    let summary = usage_summary_sidebar(
+        UsageSummary::from_points(&data),
+        visibility,
+        "EST. API COST",
+        cx,
+    );
     v_flex()
         .debug_selector(|| "overview-usage-card".to_string())
         .gap_3()
@@ -54,28 +64,26 @@ fn last_thirty_days_card(
                             )
                         }),
                 )
-                .child(
-                    h_flex()
-                        .gap_3()
-                        .child(legend_chip("Codex", codex_accent(), cx))
-                        .child(legend_chip("Claude Code", claude_accent(), cx))
-                        .child(legend_chip("OpenCode", opencode_accent(), cx)),
-                ),
+                .child(usage_legend(visibility, cx)),
         )
         .child(summary_chart_row(
             summary,
-            provider_usage_chart(data, "overview-usage", cx),
+            provider_usage_chart(data, "overview-usage", visibility, cx),
         ))
         .child(overview_metrics_card(
             history,
+            &usage,
             TableContext::<UsageSortColumn>::unsorted(layout, cx),
         ))
 }
 
-pub(super) fn overview_usage_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {
-    let claude = history.source("claude");
-    let codex = history.source("codex");
-    let opencode = history.source("opencode");
+pub(super) fn overview_usage_points(
+    history: &HistorySnapshot,
+    visibility: &ProviderVisibility,
+) -> Vec<ProviderPoint> {
+    let claude = visible_source(history, ClientId::Claude, visibility);
+    let codex = visible_source(history, ClientId::Codex, visibility);
+    let opencode = visible_source(history, ClientId::OpenCode, visibility);
     let today = current_usage_date(history);
     (0..30)
         .map(|offset| {
@@ -90,6 +98,23 @@ pub(super) fn overview_usage_points(history: &HistorySnapshot) -> Vec<ProviderPo
             )
         })
         .collect()
+}
+
+pub(super) fn usage_legend(visibility: &ProviderVisibility, cx: &App) -> gpui::Div {
+    let mut legend = h_flex().gap_3();
+    for provider in USAGE_PROVIDERS {
+        if visibility.is_visible(provider) {
+            legend = legend.child(
+                legend_chip(
+                    usage_provider_label(provider),
+                    accent_for_usage_provider(provider),
+                    cx,
+                )
+                .debug_selector(move || format!("usage-legend-{}", provider.as_str())),
+            );
+        }
+    }
+    legend
 }
 
 pub(super) fn legend_chip(label: &'static str, color: Hsla, cx: &App) -> gpui::Div {

@@ -47,7 +47,6 @@ impl<'a> ProjectionBuilder<'a> {
             self.timezone,
             self.pricing,
             self.now_minute,
-            self.today,
         );
     }
 

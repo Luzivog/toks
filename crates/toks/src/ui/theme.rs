@@ -1,6 +1,6 @@
 use gpui::{App, Hsla};
 use gpui_component::ActiveTheme;
-use toks_core::{limits::LimitWindow, Provider};
+use toks_core::{limits::LimitWindow, ClientId, Provider};
 
 use crate::Page;
 
@@ -16,6 +16,24 @@ pub(crate) fn opencode_accent() -> Hsla {
     gpui::rgb(0x4d_a3_ff).into()
 }
 
+pub(crate) fn usage_provider_label(provider: ClientId) -> &'static str {
+    match provider {
+        ClientId::Codex => "Codex",
+        ClientId::Claude => "Claude Code",
+        ClientId::OpenCode => "OpenCode",
+        _ => provider.display_name(),
+    }
+}
+
+pub(crate) fn accent_for_usage_provider(provider: ClientId) -> Hsla {
+    match provider {
+        ClientId::Codex => codex_accent(),
+        ClientId::Claude => claude_accent(),
+        ClientId::OpenCode => opencode_accent(),
+        _ => codex_accent(),
+    }
+}
+
 pub(crate) fn page_accent(page: Page, cx: &App) -> Hsla {
     match page {
         Page::Overview => cx.theme().muted_foreground,
@@ -24,6 +42,7 @@ pub(crate) fn page_accent(page: Page, cx: &App) -> Hsla {
         Page::Monthly => gpui::rgb(0xa7_8b_fa).into(),
         Page::AllTime => gpui::rgb(0x72_c7_a5).into(),
         Page::Rotation => gpui::rgb(0x10_a3_7f).into(),
+        Page::Settings => gpui::rgb(0x8f_9b_b3).into(),
     }
 }
 

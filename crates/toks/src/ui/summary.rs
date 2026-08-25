@@ -1,9 +1,10 @@
 use gpui::{div, prelude::*, px, App};
 use gpui_component::{h_flex, progress::Progress, v_flex, ActiveTheme, StyledExt};
+use toks_core::{ClientId, ProviderVisibility, USAGE_PROVIDERS};
 
 use super::{
-    chart_tooltip::ProviderPoint, claude_accent, codex_accent, fmt_cost_full, fmt_tokens,
-    opencode_accent,
+    accent_for_usage_provider, chart_tooltip::ProviderPoint, fmt_cost_full, fmt_tokens,
+    usage_provider_label,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -48,40 +49,47 @@ impl UsageSummary {
             opencode_tokens: opencode_tokens.max(0),
         }
     }
+
+    fn provider(&self, provider: ClientId) -> (f64, i64) {
+        match provider {
+            ClientId::Codex => (self.codex_cost, self.codex_tokens),
+            ClientId::Claude => (self.claude_cost, self.claude_tokens),
+            ClientId::OpenCode => (self.opencode_cost, self.opencode_tokens),
+            _ => (0.0, 0),
+        }
+    }
 }
 
 pub(super) fn usage_summary_sidebar(
     summary: UsageSummary,
+    visibility: &ProviderVisibility,
     eyebrow: &'static str,
     cx: &App,
 ) -> gpui::Div {
-    let UsageSummary {
-        claude_cost,
-        claude_tokens,
-        codex_cost,
-        codex_tokens,
-        opencode_cost,
-        opencode_tokens,
-    } = summary;
-    let total_cost = claude_cost + codex_cost + opencode_cost;
-    let total_tokens = claude_tokens
-        .saturating_add(codex_tokens)
-        .saturating_add(opencode_tokens);
+    let mut providers: Vec<_> = USAGE_PROVIDERS
+        .iter()
+        .copied()
+        .filter(|provider| visibility.is_visible(*provider))
+        .map(|provider| {
+            let (cost, tokens) = summary.provider(provider);
+            (
+                provider,
+                usage_provider_label(provider),
+                accent_for_usage_provider(provider),
+                cost,
+                tokens,
+            )
+        })
+        .collect();
+    providers.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    let total_cost = providers.iter().map(|provider| provider.3).sum();
+    let total_tokens = providers
+        .iter()
+        .fold(0_i64, |total, provider| total.saturating_add(provider.4));
     let cost = fmt_cost_full(total_cost);
-    let mut providers = vec![
-        ("Codex", codex_accent(), codex_cost, codex_tokens),
-        ("Claude Code", claude_accent(), claude_cost, claude_tokens),
-        (
-            "OpenCode",
-            opencode_accent(),
-            opencode_cost,
-            opencode_tokens,
-        ),
-    ];
-    providers.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut provider_bars = v_flex().gap_5();
-    for (name, color, cost, tokens) in providers {
+    for (provider, name, color, cost, tokens) in providers {
         let share = if total_cost > 0.0 {
             cost / total_cost * 100.0
         } else if total_tokens > 0 {
@@ -91,6 +99,7 @@ pub(super) fn usage_summary_sidebar(
         };
         provider_bars = provider_bars.child(
             v_flex()
+                .debug_selector(move || format!("usage-summary-provider-{}", provider.as_str()))
                 .gap_1()
                 .child(
                     h_flex()

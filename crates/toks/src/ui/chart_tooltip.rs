@@ -1,7 +1,8 @@
 use gpui::{div, prelude::*, px, App, Hsla, SharedString};
 use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
+use toks_core::{ClientId, ProviderVisibility, USAGE_PROVIDERS};
 
-use super::{claude_accent, codex_accent, fmt_cost_full, fmt_tokens, opencode_accent};
+use super::{accent_for_usage_provider, fmt_cost_full, fmt_tokens, usage_provider_label};
 
 /// One aligned point in a cross-provider usage chart.
 #[derive(Clone)]
@@ -14,6 +15,17 @@ pub(super) struct ProviderPoint {
     pub(super) codex_tokens: i64,
     pub(super) opencode: f64,
     pub(super) opencode_tokens: i64,
+}
+
+impl ProviderPoint {
+    pub(super) fn provider(&self, provider: ClientId) -> (f64, i64) {
+        match provider {
+            ClientId::Codex => (self.codex, self.codex_tokens),
+            ClientId::Claude => (self.claude, self.claude_tokens),
+            ClientId::OpenCode => (self.opencode, self.opencode_tokens),
+            _ => (0.0, 0),
+        }
+    }
 }
 
 pub(super) fn usage_tooltip_row(
@@ -62,30 +74,39 @@ pub(super) fn usage_tooltip_row(
         )
 }
 
-pub(super) fn provider_rows(point: &ProviderPoint) -> Vec<(&'static str, Hsla, i64, f64)> {
-    let mut providers = vec![
-        ("Codex", codex_accent(), point.codex_tokens, point.codex),
-        (
-            "Claude Code",
-            claude_accent(),
-            point.claude_tokens,
-            point.claude,
-        ),
-        (
-            "OpenCode",
-            opencode_accent(),
-            point.opencode_tokens,
-            point.opencode,
-        ),
-    ];
+pub(super) fn provider_rows(
+    point: &ProviderPoint,
+    visibility: &ProviderVisibility,
+) -> Vec<(&'static str, Hsla, i64, f64)> {
+    let mut providers: Vec<_> = USAGE_PROVIDERS
+        .iter()
+        .copied()
+        .filter(|provider| visibility.is_visible(*provider))
+        .map(|provider| {
+            let (cost, tokens) = point.provider(provider);
+            (
+                usage_provider_label(provider),
+                accent_for_usage_provider(provider),
+                tokens,
+                cost,
+            )
+        })
+        .collect();
     providers.retain(|&(_, _, tokens, cost)| tokens > 0 || cost > 0.0);
     providers.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
     providers
 }
 
-pub(super) fn usage_point_tooltip(point: &ProviderPoint, cx: &App) -> gpui::Div {
-    let total_tokens = point.claude_tokens + point.codex_tokens + point.opencode_tokens;
-    let total_cost = point.claude + point.codex + point.opencode;
+pub(super) fn usage_point_tooltip(
+    point: &ProviderPoint,
+    visibility: &ProviderVisibility,
+    cx: &App,
+) -> gpui::Div {
+    let providers = provider_rows(point, visibility);
+    let total_tokens = providers
+        .iter()
+        .fold(0_i64, |total, row| total.saturating_add(row.2));
+    let total_cost = providers.iter().map(|row| row.3).sum();
 
     let mut tooltip = v_flex()
         .w(px(300.))
@@ -102,7 +123,7 @@ pub(super) fn usage_point_tooltip(point: &ProviderPoint, cx: &App) -> gpui::Div 
                 .child(div().w(px(82.)).text_right().child("Tokens"))
                 .child(div().w(px(78.)).text_right().child("Cost")),
         );
-    for (label, color, tokens, cost) in provider_rows(point) {
+    for (label, color, tokens, cost) in providers {
         tooltip = tooltip.child(usage_tooltip_row(
             label,
             Some(color),

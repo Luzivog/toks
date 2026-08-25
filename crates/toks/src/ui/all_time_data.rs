@@ -1,11 +1,15 @@
 use chrono::{Datelike, Duration, NaiveDate};
 use toks_core::history::{HistorySnapshot, SourceHistory, UsageKey, UsagePeriod};
+use toks_core::{ClientId, ProviderVisibility};
 
-use super::{provider_point, ProviderPoint, UsageSummary};
+use super::{provider_point, visible_source, visible_usage, ProviderPoint, UsageSummary};
 
-pub(super) fn all_time_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {
-    let mut active = history
-        .usage
+pub(super) fn all_time_points(
+    history: &HistorySnapshot,
+    visibility: &ProviderVisibility,
+) -> Vec<ProviderPoint> {
+    let usage = visible_usage(history, visibility);
+    let mut active = usage
         .daily
         .iter()
         .filter(|bucket| bucket.tokens > 0 || bucket.cost > 0.0)
@@ -28,24 +32,29 @@ pub(super) fn all_time_points(history: &HistorySnapshot) -> Vec<ProviderPoint> {
         provider_point(
             week_heading(week),
             week.format("%b %-d").to_string(),
-            source_week_values(history.source("claude"), week),
-            source_week_values(history.source("codex"), week),
-            source_week_values(history.source("opencode"), week),
+            source_week_values(visible_source(history, ClientId::Claude, visibility), week),
+            source_week_values(visible_source(history, ClientId::Codex, visibility), week),
+            source_week_values(
+                visible_source(history, ClientId::OpenCode, visibility),
+                week,
+            ),
         )
     })
     .collect()
 }
 
-pub(super) fn all_time_summary(history: &HistorySnapshot) -> UsageSummary {
-    let totals = |client: &str| {
-        history
-            .source(client)
+pub(super) fn all_time_summary(
+    history: &HistorySnapshot,
+    visibility: &ProviderVisibility,
+) -> UsageSummary {
+    let totals = |provider| {
+        visible_source(history, provider, visibility)
             .map(|source| (source.total_cost.max(0.0), source.total_tokens.max(0)))
             .unwrap_or_default()
     };
-    let (claude_cost, claude_tokens) = totals("claude");
-    let (codex_cost, codex_tokens) = totals("codex");
-    let (opencode_cost, opencode_tokens) = totals("opencode");
+    let (claude_cost, claude_tokens) = totals(ClientId::Claude);
+    let (codex_cost, codex_tokens) = totals(ClientId::Codex);
+    let (opencode_cost, opencode_tokens) = totals(ClientId::OpenCode);
     UsageSummary::exact(
         claude_cost,
         claude_tokens,

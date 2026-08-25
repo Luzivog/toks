@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use gpui::{AppContext, Context};
-use toks_core::{HistorySnapshot, LimitSnapshot};
+use toks_core::{HistorySnapshot, LimitSnapshot, ProviderVisibility};
 
 use crate::{
     history_refresh::HistoryRefreshState, sidebar_motion::SidebarMotion, ModelTablesState,
@@ -20,6 +20,7 @@ mod navigation;
 #[cfg(test)]
 mod navigation_tests;
 mod page;
+mod provider_visibility;
 pub(crate) mod remote_control_operations;
 mod rotation_operations;
 pub(crate) use account_operations::AccountOperations;
@@ -55,6 +56,8 @@ pub struct ToksApp {
     pub(crate) banked_resets: BankedResetOperations,
     limits_refresh: limits_refresh::LimitsRefreshSignal,
     pub(crate) emails_hidden: bool,
+    pub(crate) provider_visibility: ProviderVisibility,
+    pub(crate) provider_visibility_error: Option<String>,
     pub(crate) usage_tables: UsageTablesState,
     pub(crate) model_tables: ModelTablesState,
     pub(crate) rotation: RotationUiState,
@@ -135,6 +138,7 @@ impl ToksApp {
 
         let mut app = Self::from_snapshots(None, Vec::new(), Utc::now());
         app.limits_refresh = limits_refresh;
+        app.provider_visibility = toks_core::load_provider_visibility();
         app
     }
 
@@ -165,6 +169,8 @@ impl ToksApp {
             banked_resets: BankedResetOperations::default(),
             limits_refresh: limits_refresh::LimitsRefreshSignal::default(),
             emails_hidden: false,
+            provider_visibility: ProviderVisibility::default(),
+            provider_visibility_error: None,
             usage_tables: UsageTablesState::new(),
             model_tables: ModelTablesState::new(),
             rotation: RotationUiState::default(),

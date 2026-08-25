@@ -31,6 +31,9 @@ pub(crate) fn sidebar(
                 .child("Usage"),
         );
     for page in Page::ALL {
+        if page == Page::Settings {
+            continue;
+        }
         if page == Page::Overview {
             sidebar = sidebar.child(section_label("USAGE", cx));
         } else if page == Page::Rotation {
@@ -38,7 +41,14 @@ pub(crate) fn sidebar(
         }
         sidebar = sidebar.child(sidebar_entry(app, cx, page, overlay));
     }
-    sidebar
+    sidebar.child(div().flex_1().min_h(px(16.))).child(
+        div()
+            .mx_2()
+            .py_2()
+            .border_t_1()
+            .border_color(cx.theme().sidebar_border)
+            .child(sidebar_entry(app, cx, Page::Settings, overlay).mx_0()),
+    )
 }
 
 /// Small uppercase group heading that structures the sidebar into

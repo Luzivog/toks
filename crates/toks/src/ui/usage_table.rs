@@ -1,7 +1,7 @@
 use chrono::{Local, TimeZone};
 use gpui::{div, prelude::*};
 use gpui_component::{h_flex, v_flex, ActiveTheme};
-use toks_core::history::{HistorySnapshot, UsagePeriod};
+use toks_core::history::{HistorySnapshot, UsagePeriod, UsageSeries};
 
 use crate::UsageSortColumn;
 
@@ -17,6 +17,7 @@ pub(super) fn visible_usage_row_count(total: usize, visible_limit: usize) -> usi
 
 pub(super) fn usage_history_card(
     history: &HistorySnapshot,
+    usage: &UsageSeries,
     period: UsagePeriod,
     visible_limit: usize,
     freshness: Option<String>,
@@ -38,7 +39,7 @@ pub(super) fn usage_history_card(
         UsagePeriod::Daily => current_date.format("%Y-%m-%d").to_string(),
         UsagePeriod::Monthly => current_date.format("%Y-%m").to_string(),
     };
-    let mut rows = visible_usage_buckets(&history.usage, period);
+    let mut rows = visible_usage_buckets(usage, period);
     sort_usage_buckets(&mut rows, sort);
     let row_count = rows.len();
     let visible_count = visible_usage_row_count(row_count, visible_limit);

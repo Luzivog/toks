@@ -2,8 +2,10 @@
 
 use chrono::{TimeZone, Utc};
 use gpui::{px, size, TestAppContext};
-use toks::test_support::set_page;
+use toks::test_support::{set_page, set_provider_visible};
 use toks::{Page, ToksApp};
+use toks_core::history::{HistorySnapshot, ModelUsage, SourceHistory, UsageBucket, UsageSeries};
+use toks_core::ClientId;
 
 use super::support::{usage_history, Harness};
 
@@ -123,6 +125,26 @@ fn usage_headers_place_average_cost_before_totals(cx: &mut TestAppContext) {
     assert!(total.left() < cost.left());
 }
 
+#[gpui::test]
+fn hidden_provider_is_absent_from_usage_page_sections(cx: &mut TestAppContext) {
+    let now = Utc
+        .with_ymd_and_hms(2026, 8, 18, 12, 0, 0)
+        .single()
+        .expect("valid fixture timestamp");
+    let mut app =
+        ToksApp::from_snapshots(Some(provider_history(now.timestamp_millis())), vec![], now);
+    set_page(&mut app, Page::Daily);
+    assert!(set_provider_visible(&mut app, ClientId::Claude, false));
+    let mut harness = Harness::open(cx, app, size(px(1600.), px(1200.)));
+
+    assert!(harness.has("usage-legend-codex"));
+    assert!(!harness.has("usage-legend-claude"));
+    assert!(harness.has("usage-summary-provider-codex"));
+    assert!(!harness.has("usage-summary-provider-claude"));
+    assert!(harness.has("model-row-daily-openai-codex-test"));
+    assert!(!harness.has("model-row-daily-anthropic-claude-test"));
+}
+
 fn app(page: Page) -> ToksApp {
     let now = Utc
         .with_ymd_and_hms(2026, 8, 18, 12, 0, 0)
@@ -131,4 +153,43 @@ fn app(page: Page) -> ToksApp {
     let mut app = ToksApp::from_snapshots(Some(usage_history(now.timestamp_millis())), vec![], now);
     set_page(&mut app, page);
     app
+}
+
+fn provider_history(generated_at_ms: i64) -> HistorySnapshot {
+    let source = |client: &str, provider: &str, model: &str, tokens: i64| {
+        let model = ModelUsage {
+            model: model.into(),
+            provider: provider.into(),
+            input: tokens,
+            tokens,
+            cost: tokens as f64 / 10.0,
+            ..Default::default()
+        };
+        SourceHistory {
+            client: client.into(),
+            models: vec![model.clone()],
+            total_tokens: tokens,
+            total_cost: model.cost,
+            usage: UsageSeries {
+                daily: vec![UsageBucket {
+                    key: "2026-08-18".into(),
+                    input: tokens,
+                    tokens,
+                    cost: model.cost,
+                    models: vec![model],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    };
+    HistorySnapshot {
+        sources: vec![
+            source("codex", "openai", "codex-test", 30),
+            source("claude", "anthropic", "claude-test", 80),
+        ],
+        generated_at_ms,
+        ..Default::default()
+    }
 }
