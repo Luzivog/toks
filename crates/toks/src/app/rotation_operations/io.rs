@@ -4,7 +4,7 @@ use anyhow::{Context as _, Result};
 use toks_core::{
     accounts::AccountId,
     codex_router::{
-        self, account_activation::SelectableModel, thread_titles::ThreadTitleStore,
+        self, account_activation::SelectableModel, thread_lineage::ThreadLineage,
         RouterDeploymentStatus, RouterInstallStatus,
     },
     rotation::{
@@ -14,12 +14,13 @@ use toks_core::{
     StoreUpdate,
 };
 
-use super::{RotationServiceAction, SettingsAction};
+use super::{thread_metadata::ThreadMetadataStores, RotationServiceAction, SettingsAction};
 
 pub(super) struct LoadedRotation {
     pub settings: RotationSettings,
     pub runtime: RotationRuntime,
     pub thread_titles: BTreeMap<ThreadId, String>,
+    pub thread_lineage: BTreeMap<ThreadId, ThreadLineage>,
     pub selectable_models: Vec<SelectableModel>,
     pub install: RouterInstallStatus,
     pub deployment: RouterDeploymentStatus,
@@ -51,8 +52,8 @@ pub(super) fn change_settings(
             Err(error) => StoreUpdate::Unchanged(Err(error)),
         }
     })??;
-    let title_store = ThreadTitleStore::discover();
-    load_rotation(accounts, &title_store)
+    let metadata_stores = ThreadMetadataStores::discover();
+    load_rotation(accounts, &metadata_stores)
 }
 
 fn allowed_reasoning_for_model_change(action: &SettingsAction) -> Result<Option<Vec<String>>> {
@@ -112,7 +113,7 @@ pub(super) fn apply_thread_override(
 
 pub(super) fn load_rotation(
     accounts: Option<&[AccountId]>,
-    title_store: &ThreadTitleStore,
+    metadata_stores: &ThreadMetadataStores,
 ) -> Result<LoadedRotation> {
     let settings_store = RotationSettingsStore::discover()?;
     let runtime = RotationRuntimeStore::discover()?.load()?;
@@ -123,14 +124,11 @@ pub(super) fn load_rotation(
         let changed = accounts_changed | settings.reconcile_waiting(&waiting);
         StoreUpdate::from_changed(settings.clone(), changed)
     })?;
-    let thread_ids = runtime
-        .thread_rows()
-        .into_iter()
-        .map(|row| row.thread_id)
-        .collect::<Vec<_>>();
+    let thread_metadata = metadata_stores.load(&runtime);
     Ok(LoadedRotation {
         settings,
-        thread_titles: title_store.titles(&thread_ids),
+        thread_titles: thread_metadata.titles,
+        thread_lineage: thread_metadata.lineage,
         selectable_models: codex_router::account_activation::selectable_models(),
         runtime,
         install: codex_router::status(),

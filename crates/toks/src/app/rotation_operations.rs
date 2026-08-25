@@ -1,25 +1,23 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::time::Duration;
 
 use anyhow::Result;
 use gpui::{AppContext, Context};
 use toks_core::{
     accounts::AccountId,
-    codex_router::{
-        account_activation::SelectableModel, thread_titles::ThreadTitleStore,
-        RouterDeploymentStatus, RouterInstallStatus,
-    },
-    rotation::{RotationRuntime, RotationSettings, ThreadId, ThreadOverrideChange},
+    rotation::{ThreadId, ThreadOverrideChange},
     Provider,
 };
 
-use super::remote_control_operations::RemoteControlUiState;
 use crate::ToksApp;
 
 mod io;
 #[cfg(test)]
 mod io_tests;
 mod state;
+mod thread_metadata;
 use io::{change_settings, load_rotation, run_service_action, LoadedRotation};
+pub(crate) use state::RotationUiState;
+use thread_metadata::ThreadMetadataStores;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RotationServiceAction {
@@ -36,23 +34,9 @@ pub(crate) enum SettingsAction {
     SetThreadOverride(ThreadId, ThreadOverrideChange),
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct RotationUiState {
-    pub settings: RotationSettings,
-    pub runtime: RotationRuntime,
-    pub thread_titles: BTreeMap<ThreadId, String>,
-    pub selectable_models: Vec<SelectableModel>,
-    pub install: RouterInstallStatus,
-    pub deployment: RouterDeploymentStatus,
-    pub error: Option<String>,
-    pub busy: Option<&'static str>,
-    pub remote: RemoteControlUiState,
-    generation: u64,
-}
-
 pub(super) fn spawn(cx: &mut Context<ToksApp>) {
     super::remote_control_operations::spawn(cx);
-    let title_store = ThreadTitleStore::discover();
+    let metadata_stores = ThreadMetadataStores::discover();
     cx.spawn(async move |this, cx| loop {
         let request = this
             .update(cx, |app, _| {
@@ -66,9 +50,11 @@ pub(super) fn spawn(cx: &mut Context<ToksApp>) {
             .ok()
             .flatten();
         if let Some((generation, accounts)) = request {
-            let title_store = title_store.clone();
+            let metadata_stores = metadata_stores.clone();
             let loaded = cx
-                .background_spawn(async move { load_rotation(accounts.as_deref(), &title_store) })
+                .background_spawn(
+                    async move { load_rotation(accounts.as_deref(), &metadata_stores) },
+                )
                 .await;
             if this
                 .update(cx, |app, cx| {
@@ -131,8 +117,8 @@ impl ToksApp {
             let result = cx
                 .background_spawn(async move {
                     run_service_action(action)?;
-                    let title_store = ThreadTitleStore::discover();
-                    load_rotation(accounts.as_deref(), &title_store)
+                    let metadata_stores = ThreadMetadataStores::discover();
+                    load_rotation(accounts.as_deref(), &metadata_stores)
                 })
                 .await;
             let _ = this.update(cx, |app, cx| {
@@ -190,6 +176,7 @@ impl ToksApp {
         self.rotation.settings = loaded.settings;
         self.rotation.runtime = loaded.runtime;
         self.rotation.thread_titles = loaded.thread_titles;
+        self.rotation.thread_lineage = loaded.thread_lineage;
         self.rotation.selectable_models = loaded.selectable_models;
         self.rotation.install = loaded.install;
         self.rotation.deployment = loaded.deployment;
