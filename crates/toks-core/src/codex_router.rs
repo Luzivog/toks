@@ -20,6 +20,9 @@ mod systemd;
 mod thread_source;
 #[cfg(test)]
 mod thread_source_tests;
+pub mod thread_titles;
+#[cfg(test)]
+mod thread_titles_tests;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
