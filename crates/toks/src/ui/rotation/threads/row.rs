@@ -11,20 +11,6 @@ use super::{presentation, selectors};
 
 const STATUS_WIDTH: f32 = 150.;
 
-pub(super) fn thread_captions(cx: &gpui::App) -> gpui::Div {
-    h_flex()
-        .debug_selector(|| "rotation-thread-captions".into())
-        .h(px(26.))
-        .items_center()
-        .gap_3()
-        .px_4()
-        .border_t_1()
-        .border_color(cx.theme().border)
-        .child(div().flex_1().min_w_0())
-        .child(div().w(px(STATUS_WIDTH)).flex_shrink_0())
-        .child(selectors::captions(cx))
-}
-
 pub(super) fn thread_row(
     app: &ToksApp,
     row: &ThreadRow,

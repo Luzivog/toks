@@ -45,7 +45,13 @@ fn rotation_sidebar_entry_opens_the_private_dashboard(cx: &mut TestAppContext) {
 fn active_threads_render_above_pending_threads(cx: &mut TestAppContext) {
     let mut harness = Harness::open_page(cx, Page::Rotation, VIEWPORT);
 
+    assert!(harness.has("rotation-active-threads-count"));
+    assert!(!harness.has("rotation-thread-header-captions"));
     assert!(!harness.has("rotation-thread-captions"));
+    let title = harness.bounds("rotation-active-threads-title");
+    let count = harness.bounds("rotation-active-threads-count");
+    assert_eq!(count.left() - title.right(), px(8.));
+    assert_eq!(title.center().y, count.center().y);
     assert!(harness.above(
         "rotation-active-threads-card",
         "rotation-pending-threads-card"
@@ -72,7 +78,9 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
     assert!(harness.has("rotation-thread-row-active-fixture-0"));
     assert!(harness.has("rotation-thread-row-active-fixture-1"));
     assert!(harness.has("rotation-thread-title-active-fixture-0"));
-    assert!(harness.has("rotation-thread-captions"));
+    assert!(harness.has("rotation-active-threads-count"));
+    assert!(harness.has("rotation-thread-header-captions"));
+    assert!(!harness.has("rotation-thread-captions"));
     assert!(harness.has("rotation-thread-status-dot-active-fixture-0"));
     assert!(harness.has("rotation-thread-model-active-fixture-0"));
     assert!(harness.has("rotation-thread-reasoning-active-fixture-0"));
@@ -90,6 +98,13 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
             .size,
         size(px(6.), px(6.))
     );
+
+    let title = harness.bounds("rotation-active-threads-title");
+    let count = harness.bounds("rotation-active-threads-count");
+    let caption_label = harness.bounds("rotation-thread-caption-model-label");
+    assert_eq!(count.left() - title.right(), px(8.));
+    assert_eq!(title.center().y, count.center().y);
+    assert!((count.center().y - caption_label.center().y).abs() <= px(1.));
 
     for (caption, caption_label, first, first_value, second, width) in [
         (

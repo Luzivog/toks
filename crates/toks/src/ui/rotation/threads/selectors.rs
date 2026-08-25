@@ -15,7 +15,6 @@ use super::{
 
 mod kind;
 use kind::SelectorKind;
-
 struct SelectorSpec {
     kind: SelectorKind,
     thread_override: Option<String>,
@@ -23,8 +22,9 @@ struct SelectorSpec {
     choices: Vec<Choice>,
 }
 
-pub(super) fn captions(cx: &gpui::App) -> gpui::Div {
+pub(super) fn header_captions(cx: &gpui::App) -> gpui::Div {
     h_flex()
+        .debug_selector(|| "rotation-thread-header-captions".into())
         .flex_shrink_0()
         .gap_1()
         .text_xs()

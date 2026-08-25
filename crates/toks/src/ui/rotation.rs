@@ -86,6 +86,14 @@ pub(super) fn rotation_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
 }
 
 fn card(title: &'static str, meta: String, cx: &gpui::App) -> gpui::Div {
+    card_with_header(
+        card_header_title(title),
+        card_header_annotation(meta, cx),
+        cx,
+    )
+}
+
+fn card_with_header(left: gpui::Div, right: gpui::Div, cx: &gpui::App) -> gpui::Div {
     v_flex()
         .w_full()
         .overflow_hidden()
@@ -100,14 +108,20 @@ fn card(title: &'static str, meta: String, cx: &gpui::App) -> gpui::Div {
                 .flex()
                 .items_center()
                 .justify_between()
-                .child(div().text_sm().font_semibold().child(title))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(meta),
-                ),
+                .child(left)
+                .child(right),
         )
+}
+
+fn card_header_title(title: &'static str) -> gpui::Div {
+    div().text_sm().font_semibold().child(title)
+}
+
+fn card_header_annotation(meta: String, cx: &gpui::App) -> gpui::Div {
+    div()
+        .text_xs()
+        .text_color(cx.theme().muted_foreground)
+        .child(meta)
 }
 
 fn empty_row(message: &'static str, cx: &gpui::App) -> gpui::Div {

@@ -50,8 +50,12 @@ fn active_thread_rows_are_display_capped_at_one_hundred() {
 }
 
 #[test]
-fn thread_header_reports_streaming_and_idle_counts() {
+fn empty_thread_header_annotation_reports_zero_streaming() {
     assert_eq!(header_count([]), "0 streaming");
+}
+
+#[test]
+fn thread_header_annotation_reports_streaming_and_idle_counts() {
     assert_eq!(
         header_count([
             ThreadStatus::Streaming { stream_count: 2 },
@@ -71,7 +75,7 @@ fn thread_header_reports_streaming_and_idle_counts() {
 }
 
 #[test]
-fn thread_header_reports_the_display_cap() {
+fn thread_header_annotation_reports_the_display_cap() {
     let mut statuses = vec![ThreadStatus::ReservationPending; 100];
     assert_eq!(header_count(statuses.iter().copied()), "100 streaming");
 
