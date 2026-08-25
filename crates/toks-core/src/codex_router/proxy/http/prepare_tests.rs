@@ -9,18 +9,18 @@ fn incident_observability_records_the_actual_client_fast_tier_on_a_standard_rout
     assert_eq!(forwarded, original);
 
     let tier = recorded_tier(
-        original.as_bytes(),
         &forwarded,
-        UsageLimitTierOrigin::ToksStandardFallback,
+        Some(UsageLimitTierOrigin::ToksStandardFallback),
+        false,
     );
     assert_eq!(tier.effective(), Some("priority"));
     assert_eq!(tier.origin(), UsageLimitTierOrigin::Client);
 
     let default = r#"{"type":"response.create","service_tier":"default"}"#;
     let tier = recorded_tier(
-        default.as_bytes(),
         default,
-        UsageLimitTierOrigin::ToksStandardFallback,
+        Some(UsageLimitTierOrigin::ToksStandardFallback),
+        false,
     );
     assert_eq!(tier.effective(), Some("default"));
     assert_eq!(tier.origin(), UsageLimitTierOrigin::ToksStandardFallback);

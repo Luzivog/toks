@@ -6,7 +6,7 @@ use axum::http::{Request, Response, StatusCode};
 use super::engine::RouteSelection;
 use super::headers::{resume_marker, upstream_headers};
 use super::lease::StreamLease;
-use super::protocol::ThreadIdentity;
+use super::protocol::{requested_settings, ThreadIdentity};
 use super::types::RouteCredential;
 use super::ProxyState;
 use attempt::{classify_response, Attempt, ResponseContext};
@@ -94,14 +94,16 @@ async fn send(
     resume_attempt: Option<&str>,
 ) -> Attempt {
     let mut refreshed = false;
+    let observed = requested_settings(body.text().unwrap_or_default());
     loop {
         let lease = match thread {
             Some(thread) => {
-                match StreamLease::open(
+                match StreamLease::open_observed(
                     state.engine.clone(),
                     &credential.account_id,
                     thread,
                     resume_attempt,
+                    &observed,
                 ) {
                     Ok(Some(lease)) => Some(lease),
                     Ok(None) => return Attempt::TryNext(credential.account_id),
@@ -115,6 +117,7 @@ async fn send(
             lease
                 .as_ref()
                 .map_or(super::engine::RouteTier::Original, StreamLease::tier),
+            lease.as_ref().and_then(StreamLease::request_override),
             thread,
             body,
             parts.uri.path().strip_prefix(super::CODEX_PATH) == Some("/responses"),

@@ -64,7 +64,8 @@ impl Engine {
             runtime.apply_quota_observations(&observations, at);
             runtime.heartbeat(at);
             StoreUpdate::Changed(())
-        })
+        })?;
+        self.reconcile_thread_overrides(at)
     }
 
     pub(crate) fn begin_snapshot_refresh(&self) -> Result<SnapshotRefreshEpoch> {
@@ -131,6 +132,7 @@ impl Engine {
             runtime.apply_quota_observations(&observations, at);
             runtime.heartbeat(at);
             StoreUpdate::Changed(())
-        })
+        })?;
+        self.reconcile_thread_overrides(at)
     }
 }

@@ -15,10 +15,13 @@ pub(super) use construction::EngineConfig;
 #[cfg(test)]
 mod process_safety_tests;
 mod quota;
+mod reconciliation;
+mod request_route;
 mod runtime_writer;
 mod selection;
 use crate::codex_router::thread_source::ThreadSourceStore;
 pub(crate) use quota::{AttemptedTier, ResponseDelivery, UsageLimitAction};
+pub(in crate::codex_router::proxy) use request_route::AuthorizedRoute;
 use runtime_writer::RuntimeWriter;
 pub(super) use selection::RouteSelection;
 

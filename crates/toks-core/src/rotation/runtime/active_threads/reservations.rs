@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::accounts::AccountId;
 
@@ -23,21 +23,17 @@ impl RotationRuntime {
         let active = self
             .active_threads
             .entry(thread.clone())
-            .or_insert_with(|| ActiveThread {
-                account_id: account.clone(),
-                streams: 0,
-                stream_owners: BTreeMap::new(),
-                reservations: 0,
-                awaiting_follow_up: false,
-                started_at: Some(at),
-                last_activity_at: at,
-            });
+            .or_insert_with(|| ActiveThread::new(account.clone(), at));
         active.reservations = active.reservations.saturating_add(1);
         active.last_activity_at = at;
         Ok(())
     }
 
     pub fn release_reservation(&mut self, account: &AccountId, thread: &ThreadId) -> bool {
+        let attached = self
+            .attached_threads
+            .get(thread)
+            .is_some_and(|attachment| attachment.connections() > 0);
         let Some(active) = self
             .active_threads
             .get_mut(thread)
@@ -46,7 +42,11 @@ impl RotationRuntime {
             return false;
         };
         active.reservations -= 1;
-        if active.reservations == 0 && active.stream_count() == 0 && !active.awaiting_follow_up {
+        if active.reservations == 0
+            && active.stream_count() == 0
+            && !active.awaiting_follow_up
+            && !attached
+        {
             self.active_threads.remove(thread);
             self.clear_provisional(account, thread);
         }
