@@ -52,6 +52,27 @@ temporary directories and synthetic JSON, never real credentials. Cover
 current, legacy, malformed, and unknown parser inputs through public interfaces.
 Group GPUI tests when process sharing is safe; isolate process-global mutation.
 
+## Implementation completion
+
+For each implementation request, complete the full delivery path unless the
+user sets a narrower stopping point such as local-only, no commit, no push, or
+no install:
+
+1. Run the focused checks, then the repository's final gates.
+2. Commit every task-scoped change. Keep unrelated pre-existing changes out of
+   the commit.
+3. Integrate the commit into local `main`, then push `main` to `origin`.
+4. Verify that local `main` and remote `origin/main` resolve to the same commit.
+5. Build the release binaries and run `./install.sh`.
+6. Restart Toks and each affected service. Verify that the installed and
+   running executable hashes match the release binaries, then exercise the
+   changed behavior through its user-facing path.
+
+The task is complete only when GitHub `main`, the local `main` checkout, the
+installed application, and the running application contain the requested
+change. If any delivery step is blocked, report the blocker and leave the
+completed work intact for retry.
+
 ## Commits, Pull Requests, and Security
 
 Use focused, sentence-case commits. Pull requests should explain visible
