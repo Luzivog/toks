@@ -5,6 +5,12 @@ use super::{
 use crate::ui::rotation::threads::choices::Choice;
 
 #[test]
+fn tier_values_render_as_product_labels() {
+    assert_eq!(SelectorKind::Tier.display("default"), "Default");
+    assert_eq!(SelectorKind::Tier.display("priority"), "Priority");
+}
+
+#[test]
 fn menu_without_override_checks_the_observed_value_and_has_no_clear_item() {
     let entries = entries(
         SelectorKind::Model,

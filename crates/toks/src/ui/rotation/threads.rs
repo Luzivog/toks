@@ -15,8 +15,8 @@ mod selectors;
 
 #[cfg(test)]
 pub(super) use presentation::{
-    header_count, selector_label, status_label, thread_title, visible_rows, visible_status,
-    SelectorSource, VisibleThreadStatus,
+    header_count, selector_label, service_tier_value, status_label, thread_title, visible_rows,
+    visible_status, SelectorSource, VisibleThreadStatus,
 };
 
 pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {

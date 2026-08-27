@@ -113,3 +113,8 @@ pub(in crate::ui::rotation) fn selector_label(
         }
     }
 }
+
+/// Codex omits `service_tier` for standard requests.
+pub(in crate::ui::rotation) fn service_tier_value(observed: Option<&str>) -> &str {
+    observed.unwrap_or("default")
+}

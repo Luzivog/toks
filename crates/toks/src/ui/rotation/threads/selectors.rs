@@ -6,7 +6,7 @@ use crate::ToksApp;
 
 use super::{
     choices::{self, Choice},
-    presentation::{selector_label, SelectorSource},
+    presentation::{selector_label, service_tier_value, SelectorSource},
 };
 
 mod kind;
@@ -106,7 +106,9 @@ pub(super) fn selectors(
             SelectorSpec {
                 kind: SelectorKind::Tier,
                 thread_override: tier_override,
-                observed: row.request_settings.service_tier.clone(),
+                observed: Some(
+                    service_tier_value(row.request_settings.service_tier.as_deref()).to_owned(),
+                ),
                 choices: choices::tiers(),
             },
             cx,

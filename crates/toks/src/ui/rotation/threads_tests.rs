@@ -6,8 +6,8 @@ use toks_core::{
 };
 
 use super::threads::{
-    header_count, selector_label, status_label, thread_title, visible_rows, visible_status,
-    SelectorSource, VisibleThreadStatus,
+    header_count, selector_label, service_tier_value, status_label, thread_title, visible_rows,
+    visible_status, SelectorSource, VisibleThreadStatus,
 };
 
 #[test]
@@ -48,6 +48,13 @@ fn selector_labels_prefer_overrides_then_observed_values_then_a_placeholder() {
     let placeholder = selector_label(None, None);
     assert_eq!(placeholder.text, "—");
     assert_eq!(placeholder.source, SelectorSource::Placeholder);
+}
+
+#[test]
+fn omitted_service_tier_is_default_and_explicit_priority_is_preserved() {
+    assert_eq!(service_tier_value(None), "default");
+    assert_eq!(service_tier_value(Some("default")), "default");
+    assert_eq!(service_tier_value(Some("priority")), "priority");
 }
 
 #[test]
