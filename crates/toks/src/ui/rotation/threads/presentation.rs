@@ -8,6 +8,12 @@ use toks_core::{
 const VISIBLE_THREAD_LIMIT: usize = 100;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::ui::rotation) enum VisibleThreadStatus {
+    Streaming,
+    Waiting,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::ui::rotation) enum SelectorSource {
     Override,
     Observed,
@@ -25,24 +31,34 @@ pub(in crate::ui::rotation) fn header_count(
 ) -> String {
     let mut total = 0;
     let mut streaming = 0;
-    let mut idle = 0;
-    for status in statuses {
+    let mut waiting = 0;
+    for status in statuses.into_iter().filter_map(visible_status) {
         total += 1;
         match status {
-            ThreadStatus::Streaming { .. } | ThreadStatus::ReservationPending => streaming += 1,
-            ThreadStatus::AwaitingFollowUp | ThreadStatus::AttachedIdle => idle += 1,
+            VisibleThreadStatus::Streaming => streaming += 1,
+            VisibleThreadStatus::Waiting => waiting += 1,
         }
     }
 
-    let mut label = if idle == 0 {
+    let mut label = if waiting == 0 {
         format!("{streaming} streaming")
     } else {
-        format!("{streaming} streaming · {idle} idle")
+        format!("{streaming} streaming · {waiting} waiting")
     };
     if total > VISIBLE_THREAD_LIMIT {
         label.push_str(&format!(" · showing {VISIBLE_THREAD_LIMIT}"));
     }
     label
+}
+
+pub(in crate::ui::rotation) const fn visible_status(
+    status: ThreadStatus,
+) -> Option<VisibleThreadStatus> {
+    match status {
+        ThreadStatus::Streaming { .. } => Some(VisibleThreadStatus::Streaming),
+        ThreadStatus::AwaitingFollowUp => Some(VisibleThreadStatus::Waiting),
+        ThreadStatus::ReservationPending | ThreadStatus::AttachedIdle => None,
+    }
 }
 
 pub(in crate::ui::rotation) fn visible_rows<T>(rows: &[T]) -> impl Iterator<Item = &T> {

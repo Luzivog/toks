@@ -15,11 +15,18 @@ mod selectors;
 
 #[cfg(test)]
 pub(super) use presentation::{
-    header_count, selector_label, status_label, thread_title, visible_rows, SelectorSource,
+    header_count, selector_label, status_label, thread_title, visible_rows, visible_status,
+    SelectorSource, VisibleThreadStatus,
 };
 
 pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
-    let rows = app.rotation.runtime.thread_rows();
+    let rows = app
+        .rotation
+        .runtime
+        .thread_rows()
+        .into_iter()
+        .filter(|row| presentation::visible_status(row.status).is_some())
+        .collect::<Vec<_>>();
     let header = presentation::header_count(rows.iter().map(|row| row.status));
     let title = h_flex()
         .min_w_0()
@@ -41,7 +48,7 @@ pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
     let mut panel = card_with_header(title, captions, cx)
         .debug_selector(|| "rotation-active-threads-card".into());
     if rows.is_empty() {
-        return panel.child(empty_row("No active threads.", cx));
+        return panel.child(empty_row("No threads are streaming or waiting.", cx));
     }
     let display_rows = grouping::group_rows(
         &rows,

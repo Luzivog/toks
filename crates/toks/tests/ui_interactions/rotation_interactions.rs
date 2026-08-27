@@ -5,8 +5,8 @@ use gpui::{point, px, size, Modifiers, MouseButton, TestAppContext};
 use toks::{
     test_support::{
         current_page, emails_hidden, prepare_rotation_accounts, set_page,
-        set_rotation_active_threads, set_rotation_blocked, set_rotation_thread_title,
-        set_rotation_thread_waiting,
+        set_rotation_active_threads, set_rotation_blocked, set_rotation_thread_idle,
+        set_rotation_thread_title, set_rotation_thread_waiting,
     },
     Page, ToksApp,
 };
@@ -73,12 +73,14 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
     prepare_rotation_accounts(&mut app);
     set_rotation_active_threads(&mut app, "active", 2);
     set_rotation_thread_waiting(&mut app, "active", "active-fixture-0");
+    set_rotation_thread_idle(&mut app, "active", "idle-fixture");
     set_rotation_thread_title(&mut app, "active-fixture-0", "Repair router handoff");
     set_page(&mut app, Page::Rotation);
     let mut harness = Harness::open(cx, app, VIEWPORT);
 
     assert!(harness.has("rotation-thread-row-active-fixture-0"));
     assert!(harness.has("rotation-thread-row-active-fixture-1"));
+    assert!(!harness.has("rotation-thread-row-idle-fixture"));
     assert!(harness.has("rotation-thread-title-active-fixture-0"));
     assert!(harness.has("rotation-active-threads-count"));
     assert!(harness.has("rotation-thread-header-captions"));

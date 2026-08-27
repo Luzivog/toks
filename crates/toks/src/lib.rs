@@ -149,6 +149,16 @@ pub mod test_support {
         ));
     }
 
+    pub fn set_rotation_thread_idle(app: &mut ToksApp, account: &str, thread: &str) {
+        app.rotation
+            .runtime
+            .thread_attached(
+                &toks_core::accounts::AccountId::new(account),
+                &toks_core::rotation::ThreadId::new(thread),
+            )
+            .expect("fixture thread should not conflict with another account");
+    }
+
     pub fn set_rotation_thread_title(app: &mut ToksApp, thread: &str, title: &str) {
         app.rotation
             .thread_titles

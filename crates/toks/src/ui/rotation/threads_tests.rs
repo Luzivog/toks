@@ -6,7 +6,8 @@ use toks_core::{
 };
 
 use super::threads::{
-    header_count, selector_label, status_label, thread_title, visible_rows, SelectorSource,
+    header_count, selector_label, status_label, thread_title, visible_rows, visible_status,
+    SelectorSource, VisibleThreadStatus,
 };
 
 #[test]
@@ -18,6 +19,20 @@ fn active_thread_statuses_use_terse_labels() {
     assert_eq!(status_label(ThreadStatus::ReservationPending), "Starting");
     assert_eq!(status_label(ThreadStatus::AwaitingFollowUp), "Waiting");
     assert_eq!(status_label(ThreadStatus::AttachedIdle), "Idle");
+}
+
+#[test]
+fn active_thread_list_only_includes_streaming_and_waiting_statuses() {
+    assert_eq!(
+        visible_status(ThreadStatus::Streaming { stream_count: 2 }),
+        Some(VisibleThreadStatus::Streaming)
+    );
+    assert_eq!(
+        visible_status(ThreadStatus::AwaitingFollowUp),
+        Some(VisibleThreadStatus::Waiting)
+    );
+    assert_eq!(visible_status(ThreadStatus::ReservationPending), None);
+    assert_eq!(visible_status(ThreadStatus::AttachedIdle), None);
 }
 
 #[test]
@@ -83,13 +98,13 @@ fn empty_thread_header_annotation_reports_zero_streaming() {
 }
 
 #[test]
-fn thread_header_annotation_reports_streaming_and_idle_counts() {
+fn thread_header_annotation_reports_streaming_and_waiting_counts() {
     assert_eq!(
         header_count([
             ThreadStatus::Streaming { stream_count: 2 },
             ThreadStatus::ReservationPending,
         ]),
-        "2 streaming"
+        "1 streaming"
     );
     assert_eq!(
         header_count([
@@ -98,18 +113,26 @@ fn thread_header_annotation_reports_streaming_and_idle_counts() {
             ThreadStatus::AwaitingFollowUp,
             ThreadStatus::AttachedIdle,
         ]),
-        "2 streaming · 2 idle"
+        "1 streaming · 1 waiting"
     );
 }
 
 #[test]
 fn thread_header_annotation_reports_the_display_cap() {
-    let mut statuses = vec![ThreadStatus::ReservationPending; 100];
+    let mut statuses = vec![ThreadStatus::Streaming { stream_count: 1 }; 100];
     assert_eq!(header_count(statuses.iter().copied()), "100 streaming");
 
-    statuses.push(ThreadStatus::AttachedIdle);
+    statuses.push(ThreadStatus::AwaitingFollowUp);
     assert_eq!(
         header_count(statuses),
-        "100 streaming · 1 idle · showing 100"
+        "100 streaming · 1 waiting · showing 100"
+    );
+
+    assert_eq!(
+        header_count(
+            std::iter::repeat_n(ThreadStatus::Streaming { stream_count: 1 }, 100)
+                .chain([ThreadStatus::AttachedIdle]),
+        ),
+        "100 streaming"
     );
 }
