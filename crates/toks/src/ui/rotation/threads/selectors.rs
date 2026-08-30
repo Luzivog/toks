@@ -1,6 +1,6 @@
 use gpui::{div, prelude::*, px, Corner};
 use gpui_component::{h_flex, menu::DropdownMenu, ActiveTheme, Disableable, StyledExt};
-use toks_core::rotation::{ThreadId, ThreadRow};
+use toks_core::rotation::{LiveThreadRow, ThreadId};
 
 use crate::ToksApp;
 
@@ -53,7 +53,7 @@ pub(super) fn header_captions(cx: &gpui::App) -> gpui::Div {
 
 pub(super) fn selectors(
     app: &ToksApp,
-    row: &ThreadRow,
+    row: &LiveThreadRow,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
     let thread_override = app.rotation.settings.thread_override(&row.thread_id);

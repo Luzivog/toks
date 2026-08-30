@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use anyhow::Result;
 
@@ -58,6 +59,7 @@ impl Engine {
             runtime,
             catalogue,
             connection_owner,
+            connection_inventory: Mutex::new(Default::default()),
             thread_sources,
         });
         engine.apply_rotation_settings(observed_at)?;

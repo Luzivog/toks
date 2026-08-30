@@ -325,5 +325,5 @@ async fn a_cross_account_credential_is_rejected_without_leaking_its_reservation(
     assert!(error
         .to_string()
         .contains("credential source returned account"));
-    assert_eq!(store.load().unwrap().active_threads(&account), 0);
+    assert_eq!(store.load().unwrap().in_flight_count(&account), 0);
 }

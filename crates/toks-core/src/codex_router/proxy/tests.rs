@@ -37,6 +37,7 @@ mod http_compression;
 mod http_failover;
 mod inbound;
 mod incident_observability;
+mod lifecycle_cleanup;
 mod remote_control;
 mod resume_boundary;
 mod terminal_tombstone;

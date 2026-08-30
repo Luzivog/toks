@@ -10,6 +10,9 @@ pub(super) fn health_label(app: &ToksApp) -> String {
     if !app.rotation.install.service_active {
         return "Offline".into();
     }
+    if !app.rotation.install.resume_active {
+        return "Automatic recovery is not running".into();
+    }
     match app.rotation.runtime.health() {
         RouterHealth::Failed => "Failed, systemd will restart it".into(),
         RouterHealth::Unknown => "Starting".into(),

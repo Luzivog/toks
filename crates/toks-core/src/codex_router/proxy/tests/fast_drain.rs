@@ -421,7 +421,7 @@ fn active_threads(harness: &Harness, account: &str) -> u32 {
     RotationRuntimeStore::for_data_dir(harness._directory.path())
         .load()
         .unwrap()
-        .active_threads(&AccountId::new(account))
+        .in_flight_count(&AccountId::new(account))
 }
 
 async fn connect(

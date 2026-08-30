@@ -18,11 +18,11 @@ fn active_count_excludes_retained_follow_up_threads() {
     runtime
         .connection_opened(&account, &follow_up, UnixMillis::new(1))
         .unwrap();
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
 
     assert!(runtime.connection_continues(&account, &follow_up, UnixMillis::new(2)));
     runtime.reconcile(&[account.clone(), challenger.clone()], UnixMillis::new(3));
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
 
     let conflict = runtime
         .connection_opened(&challenger, &follow_up, UnixMillis::new(4))
@@ -32,16 +32,16 @@ fn active_count_excludes_retained_follow_up_threads() {
     runtime
         .reserve_thread(&account, &reservation, UnixMillis::new(5))
         .unwrap();
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
     assert!(runtime.release_reservation(&account, &reservation));
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
 
     runtime
         .connection_opened(&account, &follow_up, UnixMillis::new(6))
         .unwrap();
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
     assert!(runtime.connection_closed(&account, &follow_up, UnixMillis::new(7)));
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn explicit_dismissal_removes_a_dormant_follow_up_and_its_affinity() {
     let dismissed = runtime.dismiss_cancelled_threads(&BTreeSet::from([thread.clone()]));
 
     assert_eq!(dismissed, BTreeSet::from([thread.clone()]));
-    assert!(runtime.thread_rows().is_empty());
+    assert!(runtime.retained_thread_ids().is_empty());
     assert!(!runtime.can_drain(&account, &thread, UnixMillis::new(4)));
     assert!(!runtime.requires_standard_tier(&account, &thread, UnixMillis::new(4)));
 }
@@ -103,11 +103,7 @@ fn explicit_dismissal_refuses_streaming_reserved_and_attached_threads() {
 
     assert!(runtime.dismiss_cancelled_threads(&cancelled).is_empty());
     assert_eq!(
-        runtime
-            .thread_rows()
-            .into_iter()
-            .map(|row| row.thread_id)
-            .collect::<BTreeSet<_>>(),
+        runtime.retained_thread_ids(),
         BTreeSet::from([streaming, reserved, attached])
     );
 }

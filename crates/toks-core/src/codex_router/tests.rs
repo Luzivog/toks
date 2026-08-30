@@ -11,6 +11,13 @@ use super::systemd::{
 use super::ROUTER_BASE_URL;
 
 #[test]
+fn direct_router_owner_generation_cannot_be_used_by_restartable_workers() {
+    assert!(super::validate_worker_generation(0).is_err());
+    assert!(super::validate_worker_generation(super::proxy::DIRECT_ROUTER_GENERATION).is_err());
+    assert!(super::validate_worker_generation(1).is_ok());
+}
+
+#[test]
 fn configuration_round_trip_restores_existing_value() {
     let root = tempdir().unwrap();
     let config = root.path().join("codex/config.toml");

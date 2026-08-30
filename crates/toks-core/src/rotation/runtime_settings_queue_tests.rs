@@ -34,11 +34,7 @@ fn active_resume_remains_logically_queued_for_a_concurrent_cancellation() {
         ResumeAuthorization::Acquired
     );
     assert_eq!(
-        runtime
-            .resuming_threads()
-            .map(|entry| entry.thread_id.clone())
-            .collect::<Vec<_>>()
-            .as_slice(),
+        runtime.queued_or_resuming_threads(),
         std::slice::from_ref(&thread)
     );
 

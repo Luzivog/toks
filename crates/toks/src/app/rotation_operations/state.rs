@@ -37,6 +37,7 @@ impl Default for RotationUiState {
                 configured: false,
                 service_installed: false,
                 service_active: false,
+                resume_active: false,
             },
             deployment: RouterDeploymentStatus::default(),
             error: None,

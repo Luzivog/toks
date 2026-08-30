@@ -1,0 +1,143 @@
+pub use crate::window::{WindowAction, WindowFrame};
+use crate::{Page, ToksApp};
+
+/// Initialize GPUI Component and Toks's theme in a headless test app.
+pub fn initialize(cx: &mut gpui::TestAppContext) {
+    cx.update(super::initialize_theme);
+}
+
+pub fn set_page(app: &mut ToksApp, page: Page) {
+    app.navigate_to(page);
+}
+
+pub fn current_page(app: &ToksApp) -> Page {
+    app.page()
+}
+
+pub fn set_provider_visible(
+    app: &mut ToksApp,
+    provider: toks_core::ClientId,
+    visible: bool,
+) -> bool {
+    app.provider_visibility.set_visible(provider, visible)
+}
+
+pub fn sidebar_open(app: &ToksApp) -> bool {
+    app.sidebar_open
+}
+
+pub fn emails_hidden(app: &ToksApp) -> bool {
+    app.emails_hidden
+}
+
+pub fn prepare_rotation_accounts(app: &mut ToksApp) {
+    let accounts: Vec<_> = app
+        .limits
+        .iter()
+        .filter(|snapshot| snapshot.provider == toks_core::Provider::Codex)
+        .map(|snapshot| snapshot.account.id.clone())
+        .collect();
+    app.rotation.settings.reconcile(&accounts);
+    app.rotation.runtime.reconcile(
+        &accounts,
+        toks_core::rotation::UnixMillis::new(app.now.timestamp_millis()),
+    );
+}
+
+pub fn set_rotation_service_active(app: &mut ToksApp) {
+    app.rotation.settings.set_enabled(true);
+    app.rotation.install = toks_core::codex_router::RouterInstallStatus {
+        configured: true,
+        service_installed: true,
+        service_active: true,
+        resume_active: true,
+    };
+}
+
+pub fn set_router_deployment(
+    app: &mut ToksApp,
+    deployment: toks_core::codex_router::RouterDeploymentStatus,
+) {
+    app.rotation.deployment = deployment;
+}
+
+pub fn set_rotation_active_threads(app: &mut ToksApp, account: &str, count: u32) {
+    let account = toks_core::accounts::AccountId::new(account);
+    let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+    for index in 0..count {
+        app.rotation
+            .runtime
+            .connection_opened(
+                &account,
+                &toks_core::rotation::ThreadId::new(format!("active-fixture-{index}")),
+                at,
+            )
+            .expect("fixture thread should not conflict with another account");
+    }
+}
+
+pub fn set_rotation_thread_waiting(app: &mut ToksApp, account: &str, thread: &str) {
+    let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+    assert!(app.rotation.runtime.connection_continues(
+        &toks_core::accounts::AccountId::new(account),
+        &toks_core::rotation::ThreadId::new(thread),
+        at,
+    ));
+}
+
+pub fn set_rotation_thread_idle(app: &mut ToksApp, account: &str, thread: &str) {
+    app.rotation
+        .runtime
+        .thread_attached(
+            &toks_core::accounts::AccountId::new(account),
+            &toks_core::rotation::ThreadId::new(thread),
+        )
+        .expect("fixture thread should not conflict with another account");
+}
+
+pub fn set_rotation_thread_title(app: &mut ToksApp, thread: &str, title: &str) {
+    app.rotation
+        .thread_titles
+        .insert(toks_core::rotation::ThreadId::new(thread), title.to_owned());
+}
+
+pub fn set_rotation_thread_pending(app: &mut ToksApp, thread: &str) {
+    let thread = toks_core::rotation::ThreadId::new(thread);
+    let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+    assert!(app.rotation.runtime.waiting(&thread, at));
+    app.rotation
+        .settings
+        .reconcile_thread_state(&app.rotation.runtime);
+}
+
+pub fn set_rotation_blocked(app: &mut ToksApp, account: &str) {
+    let account = toks_core::accounts::AccountId::new(account);
+    let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+    app.rotation.runtime.block_admission(
+        &account,
+        toks_core::rotation::BlockWindow::known(toks_core::rotation::UnixMillis::new(
+            at.get() + 86_400_000,
+        )),
+        at,
+    );
+}
+
+pub fn exclude_rotation_account(app: &mut ToksApp, account: &str) {
+    app.rotation
+        .settings
+        .set_included(&toks_core::accounts::AccountId::new(account), false);
+}
+
+pub fn set_remote_control(
+    app: &mut ToksApp,
+    status: toks_core::remote_control::RemoteConnectionStatus,
+) {
+    app.rotation.remote.snapshot = toks_core::remote_control::RemoteControlSnapshot {
+        connection: toks_core::remote_control::RemoteConnection {
+            status,
+            server_name: Some("test-computer".into()),
+        },
+        environment_id: Some("test-environment".into()),
+        devices: toks_core::remote_control::RemoteDevices::NotLoaded,
+    };
+}

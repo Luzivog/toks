@@ -39,10 +39,6 @@ pub(super) fn change_settings(
                 Ok(settings.set_included(&account, included))
             }
             SettingsAction::MoveAccount(account, index) => Ok(settings.move_to(&account, index)),
-            SettingsAction::Cancel(thread) => Ok(settings.cancel_thread(&thread)),
-            SettingsAction::MoveWaiting(thread, index) => {
-                Ok(settings.move_waiting_to(&thread, index))
-            }
             SettingsAction::SetThreadOverride(thread, change) => {
                 apply_thread_override(settings, &thread, change, allowed_reasoning.as_deref())
             }
@@ -65,10 +61,8 @@ fn allowed_reasoning_for_model_change(action: &SettingsAction) -> Result<Option<
         Some(model) => Some(model.clone()),
         None => RotationRuntimeStore::discover()?
             .load()?
-            .thread_rows()
-            .into_iter()
-            .find(|row| &row.thread_id == thread)
-            .and_then(|row| row.request_settings.model),
+            .thread_request_settings(thread)
+            .and_then(|settings| settings.model.clone()),
     };
     let catalogue = codex_router::account_activation::selectable_models();
     Ok(Some(reasoning_efforts(

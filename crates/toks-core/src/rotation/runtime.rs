@@ -24,10 +24,11 @@ mod waiting;
 
 pub use active_threads::ThreadAccountConflict;
 pub(crate) use active_threads::ThreadOwnership;
+pub(crate) use connection_owner::WorkerConnectionInventory;
 pub(crate) use connection_owner::WorkerConnectionOwner;
 use connection_owner::{AttachedThread, WorkerConnectionCount};
 pub(crate) use resume_admissions::{ResumeAuthorization, ResumeRoute, ResumeTerminal};
-pub use thread_rows::{ThreadRequestSettings, ThreadRow, ThreadStatus};
+pub use thread_rows::{LiveThreadRow, ThreadRequestSettings};
 pub use waiting::{WaitingId, WaitingThread};
 
 pub(super) const RUNTIME_VERSION: u8 = 1;
@@ -140,7 +141,9 @@ impl RotationRuntime {
         &self.events
     }
 
-    pub fn active_threads(&self, account: &AccountId) -> u32 {
+    /// Responses and reservations currently holding this account's routing capacity.
+    #[cfg(test)]
+    pub(crate) fn in_flight_count(&self, account: &AccountId) -> u32 {
         self.active_threads
             .values()
             .filter(|thread| &thread.account_id == account && thread.is_live())

@@ -10,6 +10,7 @@ fn tool_calls_continue_the_thread_until_a_later_final_response() {
         lifecycle.observe_json(completed),
         Some(ResponseLifecycleEnd::Continue)
     );
+    assert_eq!(lifecycle.observe_json(completed), None);
 
     lifecycle.reset();
     assert_eq!(
@@ -47,6 +48,27 @@ fn explicit_continuation_and_failures_are_terminal_signals() {
         lifecycle.observe_json(br#"{"type":"response.failed"}"#),
         Some(ResponseLifecycleEnd::Finish)
     );
+}
+
+#[test]
+fn known_error_events_finish_even_after_a_client_tool_call() {
+    let tool = br#"{"type":"response.output_item.done","item":{"type":"function_call"}}"#;
+    let failures: [&[u8]; 4] = [
+        br#"{"type":"error","error":{"message":"failed"}}"#,
+        br#"{"type":"turn.failed","error":{"message":"failed"}}"#,
+        br#"{"type":"stream.error","error":{"message":"failed"}}"#,
+        br#"{"type":"stream_error","error":{"message":"failed"}}"#,
+    ];
+
+    for failure in failures {
+        let mut lifecycle = ResponseLifecycle::default();
+        assert_eq!(lifecycle.observe_json(tool), None);
+        assert_eq!(
+            lifecycle.observe_json(failure),
+            Some(ResponseLifecycleEnd::Finish)
+        );
+        assert_eq!(lifecycle.observe_json(failure), None);
+    }
 }
 
 #[test]

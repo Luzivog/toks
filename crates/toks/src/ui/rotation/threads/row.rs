@@ -1,30 +1,23 @@
 use gpui::{div, prelude::*, px};
-use gpui_component::{h_flex, v_flex, ActiveTheme, Disableable, StyledExt};
-use toks_core::{
-    rotation::{ThreadRow, ThreadStatus},
-    Provider,
-};
+use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
+use toks_core::{rotation::LiveThreadRow, Provider};
 
-use crate::{app::SettingsAction, Page, ToksApp};
+use crate::ToksApp;
 
 use super::{grouping::DisplayThread, presentation, selectors};
 
 const INDENT_WIDTH: f32 = 14.;
 const MAX_VISUAL_DEPTH: usize = 3;
-const STATUS_WIDTH: f32 = 150.;
-const ACTION_WIDTH: f32 = 64.;
 
 pub(super) fn thread_row(
     app: &ToksApp,
     display: &DisplayThread<'_>,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
-    let row: &ThreadRow = display.row;
+    let row: &LiveThreadRow = display.row;
     let thread_id = row.thread_id.as_str();
     let row_selector = format!("rotation-thread-row-{thread_id}");
     let title_selector = format!("rotation-thread-title-{thread_id}");
-    let status_selector = format!("rotation-thread-status-{thread_id}");
-    let status_dot_selector = format!("rotation-thread-status-dot-{thread_id}");
     let title = presentation::thread_title(
         &app.rotation.thread_titles,
         app.rotation.thread_lineage.get(&row.thread_id),
@@ -32,24 +25,13 @@ pub(super) fn thread_row(
     );
     let show_id = title != thread_id;
     let indicator = display.indicator.as_deref();
-    let status = match row.last_activity_at {
-        Some(at) => format!(
-            "{} · {}",
-            presentation::status_label(row.status),
-            super::super::format::age(app.now, at)
-        ),
-        None => presentation::status_label(row.status).to_owned(),
-    };
-    let status_color = if matches!(row.status, ThreadStatus::Streaming { .. }) {
-        super::super::super::page_accent(Page::Rotation, cx)
-    } else {
-        cx.theme().muted_foreground
-    };
-    let account = row.account_id.as_ref().filter(|account| {
-        app.limits.iter().any(|snapshot| {
-            snapshot.provider == Provider::Codex && &snapshot.account.id == *account
+    let account = app
+        .limits
+        .iter()
+        .any(|snapshot| {
+            snapshot.provider == Provider::Codex && snapshot.account.id == row.account_id
         })
-    });
+        .then_some(&row.account_id);
     let account_surface = format!("rotation-thread-{thread_id}");
 
     h_flex()
@@ -124,56 +106,5 @@ pub(super) fn thread_row(
                     },
                 ),
         )
-        .child(
-            h_flex()
-                .debug_selector(move || status_selector.clone())
-                .w(px(STATUS_WIDTH))
-                .flex_shrink_0()
-                .min_w_0()
-                .items_center()
-                .justify_end()
-                .gap_1p5()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child(
-                    div()
-                        .debug_selector(move || status_dot_selector.clone())
-                        .size(px(6.))
-                        .flex_shrink_0()
-                        .rounded_full()
-                        .bg(status_color),
-                )
-                .child(div().min_w_0().truncate().child(status)),
-        )
-        .child(dismiss_action(app, row, cx))
         .child(selectors::selectors(app, row, cx))
-}
-
-fn dismiss_action(app: &ToksApp, row: &ThreadRow, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
-    let thread = row.thread_id.clone();
-    let pending = app.rotation.settings.cancelled_threads().contains(&thread);
-    div()
-        .w(px(ACTION_WIDTH))
-        .flex_shrink_0()
-        .flex()
-        .items_center()
-        .justify_end()
-        .when(
-            matches!(row.status, ThreadStatus::AwaitingFollowUp),
-            |slot| {
-                slot.child(
-                    super::super::super::text_action(
-                        format!("rotation-dismiss-thread-{}", thread.as_str()),
-                        "Dismiss",
-                        cx,
-                    )
-                    .compact()
-                    .disabled(app.rotation.busy.is_some() || pending)
-                    .tooltip("Remove this dormant thread from Toks without deleting it in Codex")
-                    .on_click(cx.listener(move |app, _, _, cx| {
-                        app.change_rotation_settings(SettingsAction::Cancel(thread.clone()), cx);
-                    })),
-                )
-            },
-        )
 }

@@ -24,6 +24,7 @@ mod reconciliation;
 mod resume_authorization;
 mod settings_linearization;
 mod thread_source;
+mod worker_inventory;
 
 const ATTEMPT: &str = "00000000-0000-4000-8000-000000000001";
 const WRONG_ATTEMPT: &str = "00000000-0000-4000-8000-000000000002";
@@ -332,10 +333,10 @@ async fn concurrent_cross_engine_selections_keep_one_reservation_each() {
     let account = AccountId::new("a");
     assert!(engines.first.route(&account, &thread).unwrap().is_some());
     engines.first.close(&account, &thread).unwrap();
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 1);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 1);
     assert!(engines.second.route(&account, &thread).unwrap().is_some());
     engines.second.close(&account, &thread).unwrap();
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 0);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 0);
 }
 
 #[test]
@@ -377,7 +378,7 @@ fn cold_reconciliation_preserves_only_surviving_worker_connections() {
         .unwrap();
 
     let runtime = engines.store.load().unwrap();
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
     assert!(!runtime.can_drain(&account, &dead_stream, UnixMillis::new(11)));
     assert!(runtime.can_drain(&account, &follow_up, UnixMillis::new(11)));
     assert!(runtime.can_drain(&account, &surviving_stream, UnixMillis::new(11)));
@@ -395,13 +396,13 @@ fn restarting_one_generation_cannot_inherit_or_close_its_predecessors_connection
     assert!(predecessor.route(&account, &stale).unwrap().is_some());
 
     let replacement = engines.worker(7, 702);
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 0);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 0);
     assert!(replacement.route(&account, &current).unwrap().is_some());
     predecessor.close(&account, &current).unwrap();
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 1);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 1);
 
     replacement.close(&account, &current).unwrap();
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 0);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 0);
 }
 
 #[test]
@@ -424,7 +425,7 @@ fn starting_another_engine_preserves_live_connections() {
     })
     .unwrap();
 
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 1);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 1);
 }
 
 #[test]
@@ -445,7 +446,7 @@ fn explicit_cold_start_reset_clears_only_live_process_ownership() {
 
     engines.first.reset_connections().unwrap();
 
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 0);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 0);
 }
 
 #[test]

@@ -89,8 +89,8 @@ async fn live_ownership_blocks_cross_account_execution_until_complete_release() 
     assert!(second.route(&b, &thread).unwrap().is_some());
     assert!(second.attach(&b, &thread).unwrap());
     let runtime = engines.store.load().unwrap();
-    assert_eq!(runtime.active_threads(&a), 0);
-    assert_eq!(runtime.active_threads(&b), 1);
+    assert_eq!(runtime.in_flight_count(&a), 0);
+    assert_eq!(runtime.in_flight_count(&b), 1);
 }
 
 #[test]
@@ -123,7 +123,8 @@ fn concurrent_cross_account_reservations_have_exactly_one_winner() {
     assert_eq!(outcomes.iter().filter(|result| result.is_err()).count(), 1);
     let runtime = engines.store.load().unwrap();
     assert_eq!(
-        runtime.active_threads(&AccountId::new("a")) + runtime.active_threads(&AccountId::new("b")),
+        runtime.in_flight_count(&AccountId::new("a"))
+            + runtime.in_flight_count(&AccountId::new("b")),
         1
     );
 }

@@ -5,7 +5,7 @@ use anyhow::Result;
 
 use super::engine::EngineConfig;
 use super::types::{LocalCredentials, SharedCredentials};
-use super::{Engine, RouterRuntimeHandle};
+use super::{Engine, RouterRuntimeHandle, DIRECT_ROUTER_GENERATION};
 use crate::accounts::AccountId;
 use crate::rotation::{
     ResumeAuthorization, ResumeTerminal, ThreadId, WaitingId, WaitingThread, WorkerConnectionOwner,
@@ -19,6 +19,17 @@ impl RouterRuntimeHandle {
             engine,
             credentials,
         })
+    }
+
+    pub(crate) fn discover_for_direct_router() -> Result<Self> {
+        loop {
+            let mut bytes = [0_u8; 8];
+            getrandom::fill(&mut bytes)?;
+            let instance_id = u64::from_ne_bytes(bytes);
+            if instance_id != 0 {
+                return Self::discover_for_worker(DIRECT_ROUTER_GENERATION, instance_id);
+            }
+        }
     }
 
     pub(crate) fn discover_for_worker(generation: u64, instance_id: u64) -> Result<Self> {
@@ -91,5 +102,9 @@ impl RouterRuntimeHandle {
 
     pub(crate) fn reconcile_connection_owners(&self, surviving: &BTreeMap<u64, u64>) -> Result<()> {
         self.engine.reconcile_connection_owners(surviving)
+    }
+
+    pub(crate) fn reconcile_owned_connections(&self) -> Result<()> {
+        self.engine.reconcile_owned_connections()
     }
 }

@@ -173,7 +173,7 @@ fn account_discovery_loss_preserves_follow_up_affinity_until_final_close() {
         test.store
             .load()
             .unwrap()
-            .active_threads(&test.original_account),
+            .in_flight_count(&test.original_account),
         0
     );
 }

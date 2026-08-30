@@ -1,19 +1,17 @@
 use std::collections::BTreeMap;
 
 use toks_core::{
+    accounts::AccountId,
     codex_router::thread_lineage::{ThreadLineage, ThreadLineageKind},
-    rotation::{ThreadId, ThreadRequestSettings, ThreadRow, ThreadStatus},
+    rotation::{LiveThreadRow, ThreadId, ThreadRequestSettings},
 };
 
-use super::{grouping::group_rows, presentation::visible_rows};
+use super::grouping::group_rows;
 
-fn row(id: impl Into<String>) -> ThreadRow {
-    ThreadRow {
+fn row(id: impl Into<String>) -> LiveThreadRow {
+    LiveThreadRow {
         thread_id: ThreadId::new(id),
-        account_id: None,
-        status: ThreadStatus::AttachedIdle,
-        started_at: None,
-        last_activity_at: None,
+        account_id: AccountId::new("account"),
         request_settings: ThreadRequestSettings::default(),
     }
 }
@@ -123,19 +121,17 @@ fn cycles_render_once_in_flat_original_order() {
 }
 
 #[test]
-fn display_cap_is_applied_after_grouping() {
+fn grouping_keeps_every_live_thread() {
     let mut rows = vec![row("child")];
     rows.extend((1..=99).map(|index| row(format!("root-{index:02}"))));
     rows.push(row("parent"));
     let lineage = BTreeMap::from([(ThreadId::new("child"), subagent(Some("parent")))]);
 
     let display = group_rows(&rows, &lineage, &BTreeMap::new());
-    let visible = visible_rows(&display).collect::<Vec<_>>();
 
     assert_eq!(display.len(), 101);
-    assert_eq!(visible.len(), 100);
-    assert_eq!(visible.last().unwrap().row.thread_id.as_str(), "parent");
-    assert!(!visible
+    assert_eq!(display[99].row.thread_id.as_str(), "parent");
+    assert!(display
         .iter()
         .any(|thread| thread.row.thread_id.as_str() == "child"));
 }

@@ -154,6 +154,10 @@ pub(super) fn is_active() -> bool {
     is_unit_active(UNIT_NAME)
 }
 
+pub(super) fn is_resume_active() -> bool {
+    is_unit_active(RESUME_NAME)
+}
+
 pub(super) fn is_ready() -> bool {
     let address = SocketAddr::from(([127, 0, 0, 1], ROUTER_PORT));
     health_check(address).is_ok()

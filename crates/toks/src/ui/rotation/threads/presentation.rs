@@ -2,16 +2,8 @@ use std::collections::BTreeMap;
 
 use toks_core::{
     codex_router::thread_lineage::{ThreadLineage, ThreadLineageKind},
-    rotation::{ThreadId, ThreadStatus},
+    rotation::ThreadId,
 };
-
-const VISIBLE_THREAD_LIMIT: usize = 100;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::ui::rotation) enum VisibleThreadStatus {
-    Streaming,
-    Waiting,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::ui::rotation) enum SelectorSource {
@@ -24,45 +16,6 @@ pub(in crate::ui::rotation) enum SelectorSource {
 pub(in crate::ui::rotation) struct SelectorLabel {
     pub(in crate::ui::rotation) text: String,
     pub(in crate::ui::rotation) source: SelectorSource,
-}
-
-pub(in crate::ui::rotation) fn header_count(
-    statuses: impl IntoIterator<Item = ThreadStatus>,
-) -> String {
-    let mut total = 0;
-    let mut streaming = 0;
-    let mut waiting = 0;
-    for status in statuses.into_iter().filter_map(visible_status) {
-        total += 1;
-        match status {
-            VisibleThreadStatus::Streaming => streaming += 1,
-            VisibleThreadStatus::Waiting => waiting += 1,
-        }
-    }
-
-    let mut label = if waiting == 0 {
-        format!("{streaming} streaming")
-    } else {
-        format!("{streaming} streaming · {waiting} waiting")
-    };
-    if total > VISIBLE_THREAD_LIMIT {
-        label.push_str(&format!(" · showing {VISIBLE_THREAD_LIMIT}"));
-    }
-    label
-}
-
-pub(in crate::ui::rotation) const fn visible_status(
-    status: ThreadStatus,
-) -> Option<VisibleThreadStatus> {
-    match status {
-        ThreadStatus::Streaming { .. } => Some(VisibleThreadStatus::Streaming),
-        ThreadStatus::AwaitingFollowUp => Some(VisibleThreadStatus::Waiting),
-        ThreadStatus::ReservationPending | ThreadStatus::AttachedIdle => None,
-    }
-}
-
-pub(in crate::ui::rotation) fn visible_rows<T>(rows: &[T]) -> impl Iterator<Item = &T> {
-    rows.iter().take(VISIBLE_THREAD_LIMIT)
 }
 
 pub(in crate::ui::rotation) fn thread_title(
@@ -81,15 +34,6 @@ pub(in crate::ui::rotation) fn thread_title(
             }
         })
         .unwrap_or_else(|| thread.as_str().to_owned())
-}
-
-pub(in crate::ui::rotation) const fn status_label(status: ThreadStatus) -> &'static str {
-    match status {
-        ThreadStatus::Streaming { .. } => "Streaming",
-        ThreadStatus::ReservationPending => "Starting",
-        ThreadStatus::AwaitingFollowUp => "Waiting",
-        ThreadStatus::AttachedIdle => "Idle",
-    }
 }
 
 pub(in crate::ui::rotation) fn selector_label(

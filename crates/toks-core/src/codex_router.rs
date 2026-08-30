@@ -16,6 +16,8 @@ mod lifecycle;
 mod lifecycle_tests;
 pub mod proxy;
 mod resume;
+#[cfg(test)]
+mod status_tests;
 mod systemd;
 pub mod thread_lineage;
 #[cfg(test)]
@@ -46,13 +48,31 @@ pub struct RouterInstallStatus {
     pub configured: bool,
     pub service_installed: bool,
     pub service_active: bool,
+    pub resume_active: bool,
 }
 
 pub fn status() -> RouterInstallStatus {
+    status_from_observations(
+        codex_config::is_configured().unwrap_or(false),
+        systemd::is_installed(),
+        systemd::is_active(),
+        systemd::is_ready(),
+        systemd::is_resume_active(),
+    )
+}
+
+fn status_from_observations(
+    configured: bool,
+    service_installed: bool,
+    router_active: bool,
+    router_ready: bool,
+    resume_active: bool,
+) -> RouterInstallStatus {
     RouterInstallStatus {
-        configured: codex_config::is_configured().unwrap_or(false),
-        service_installed: systemd::is_installed(),
-        service_active: systemd::is_active() && systemd::is_ready(),
+        configured,
+        service_installed,
+        service_active: router_active && router_ready,
+        resume_active,
     }
 }
 
@@ -104,8 +124,9 @@ pub fn launch_router_resume_task(encoded: &str) -> Result<()> {
 }
 
 pub async fn run_router() -> Result<()> {
-    let runtime = proxy::RouterRuntimeHandle::discover()?;
-    proxy::serve(runtime).await
+    let listener = proxy::bind_listener().await?;
+    let runtime = proxy::RouterRuntimeHandle::discover_for_direct_router()?;
+    proxy::serve(listener, runtime).await
 }
 
 /// Runs the restartable coordinator. Transport workers outlive this process.
@@ -127,14 +148,23 @@ pub async fn run_resume_task(attempt: &str, thread: &str, cwd: PathBuf) -> Resul
 
 /// Runs one independently managed transport-worker generation.
 pub async fn run_router_worker(generation: u64) -> Result<()> {
-    anyhow::ensure!(generation != 0, "router generation must be nonzero");
+    validate_worker_generation(generation)?;
     host::run_worker(host::GenerationId::from_raw(generation)).await
 }
 
 /// Replaces this process with a worker using its persisted generation contract.
 pub fn launch_router_worker(generation: u64, contract: &Path) -> Result<()> {
-    anyhow::ensure!(generation != 0, "router generation must be nonzero");
+    validate_worker_generation(generation)?;
     systemd::launch_generation(contract, generation)
+}
+
+fn validate_worker_generation(generation: u64) -> Result<()> {
+    anyhow::ensure!(generation != 0, "router generation must be nonzero");
+    anyhow::ensure!(
+        generation != proxy::DIRECT_ROUTER_GENERATION,
+        "router generation is reserved for direct mode"
+    );
+    Ok(())
 }
 
 #[cfg(test)]

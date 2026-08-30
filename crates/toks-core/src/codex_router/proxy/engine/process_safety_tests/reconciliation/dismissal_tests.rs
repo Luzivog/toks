@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use crate::codex_router::proxy::catalogue::Catalogue;
 use crate::codex_router::proxy::engine::{Engine, EngineConfig};
@@ -65,8 +65,8 @@ fn settings_application_dismisses_a_dormant_follow_up_and_prunes_its_settings() 
     let _restarted = test.restart();
 
     let runtime = test.store.load().unwrap();
-    assert_eq!(runtime.active_threads(&test.original_account), 1);
-    assert_eq!(runtime.thread_rows()[0].thread_id, survivor);
+    assert_eq!(runtime.in_flight_count(&test.original_account), 1);
+    assert_eq!(runtime.retained_thread_ids(), BTreeSet::from([survivor]));
     let settings = test.settings.load().unwrap();
     assert!(!settings.cancelled_threads().contains(&dismissed));
     assert!(settings.thread_override(&dismissed).is_none());
@@ -91,7 +91,7 @@ fn settings_application_defers_a_live_thread_then_prunes_after_it_is_gone() {
         test.store
             .load()
             .unwrap()
-            .active_threads(&test.original_account),
+            .in_flight_count(&test.original_account),
         1
     );
     let settings = test.settings.load().unwrap();

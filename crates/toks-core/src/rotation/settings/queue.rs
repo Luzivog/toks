@@ -27,31 +27,13 @@ impl RotationSettings {
         true
     }
 
-    pub fn move_waiting_to(&mut self, thread: &ThreadId, index: usize) -> bool {
-        let Some(from) = self
-            .waiting_priority
-            .iter()
-            .position(|queued| queued == thread)
-        else {
-            return false;
-        };
-        let destination = index.min(self.waiting_priority.len().saturating_sub(1));
-        if from == destination {
-            return false;
-        }
-        let thread = self.waiting_priority.remove(from);
-        self.waiting_priority.insert(destination, thread);
-        true
-    }
-
     pub fn reconcile_thread_state(&mut self, runtime: &RotationRuntime) -> bool {
         let waiting = runtime.queued_or_resuming_threads();
-        let active = runtime
-            .thread_rows()
+        let retained = runtime
+            .retained_thread_ids()
             .into_iter()
-            .map(|row| row.thread_id)
             .collect::<Vec<_>>();
-        self.reconcile_threads(&waiting, &active)
+        self.reconcile_threads(&waiting, &retained)
     }
 
     pub(crate) fn reconcile_threads(&mut self, waiting: &[ThreadId], active: &[ThreadId]) -> bool {

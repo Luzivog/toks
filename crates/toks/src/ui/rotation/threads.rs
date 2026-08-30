@@ -14,20 +14,10 @@ mod row;
 mod selectors;
 
 #[cfg(test)]
-pub(super) use presentation::{
-    header_count, selector_label, service_tier_value, status_label, thread_title, visible_rows,
-    visible_status, SelectorSource, VisibleThreadStatus,
-};
+pub(super) use presentation::{selector_label, service_tier_value, thread_title, SelectorSource};
 
 pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
-    let rows = app
-        .rotation
-        .runtime
-        .thread_rows()
-        .into_iter()
-        .filter(|row| presentation::visible_status(row.status).is_some())
-        .collect::<Vec<_>>();
-    let header = presentation::header_count(rows.iter().map(|row| row.status));
+    let rows = app.rotation.runtime.live_thread_rows();
     let title = h_flex()
         .min_w_0()
         .items_center()
@@ -37,7 +27,7 @@ pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
                 .debug_selector(|| "rotation-active-threads-title".into()),
         )
         .child(
-            card_header_annotation(header, cx)
+            card_header_annotation(rows.len().to_string(), cx)
                 .debug_selector(|| "rotation-active-threads-count".into()),
         );
     let captions = if rows.is_empty() {
@@ -48,14 +38,14 @@ pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
     let mut panel = card_with_header(title, captions, cx)
         .debug_selector(|| "rotation-active-threads-card".into());
     if rows.is_empty() {
-        return panel.child(empty_row("No threads are streaming or waiting.", cx));
+        return panel.child(empty_row("No active threads.", cx));
     }
     let display_rows = grouping::group_rows(
         &rows,
         &app.rotation.thread_lineage,
         &app.rotation.thread_titles,
     );
-    for thread in presentation::visible_rows(&display_rows) {
+    for thread in &display_rows {
         panel = panel.child(row::thread_row(app, thread, cx));
     }
     panel

@@ -2,38 +2,10 @@ use std::collections::BTreeMap;
 
 use toks_core::{
     codex_router::thread_lineage::{ThreadLineage, ThreadLineageKind},
-    rotation::{ThreadId, ThreadStatus},
+    rotation::ThreadId,
 };
 
-use super::threads::{
-    header_count, selector_label, service_tier_value, status_label, thread_title, visible_rows,
-    visible_status, SelectorSource, VisibleThreadStatus,
-};
-
-#[test]
-fn active_thread_statuses_use_terse_labels() {
-    assert_eq!(
-        status_label(ThreadStatus::Streaming { stream_count: 2 }),
-        "Streaming"
-    );
-    assert_eq!(status_label(ThreadStatus::ReservationPending), "Starting");
-    assert_eq!(status_label(ThreadStatus::AwaitingFollowUp), "Waiting");
-    assert_eq!(status_label(ThreadStatus::AttachedIdle), "Idle");
-}
-
-#[test]
-fn active_thread_list_only_includes_streaming_and_waiting_statuses() {
-    assert_eq!(
-        visible_status(ThreadStatus::Streaming { stream_count: 2 }),
-        Some(VisibleThreadStatus::Streaming)
-    );
-    assert_eq!(
-        visible_status(ThreadStatus::AwaitingFollowUp),
-        Some(VisibleThreadStatus::Waiting)
-    );
-    assert_eq!(visible_status(ThreadStatus::ReservationPending), None);
-    assert_eq!(visible_status(ThreadStatus::AttachedIdle), None);
-}
+use super::threads::{selector_label, service_tier_value, thread_title, SelectorSource};
 
 #[test]
 fn selector_labels_prefer_overrides_then_observed_values_then_a_placeholder() {
@@ -89,57 +61,5 @@ fn untitled_subagents_use_their_agent_nickname() {
     assert_eq!(
         thread_title(&BTreeMap::new(), Some(&user), &thread),
         "thread-42"
-    );
-}
-
-#[test]
-fn active_thread_rows_are_display_capped_at_one_hundred() {
-    let rows = (0..101).collect::<Vec<_>>();
-    assert_eq!(visible_rows(&rows).count(), 100);
-    assert_eq!(visible_rows(&rows[..99]).count(), 99);
-}
-
-#[test]
-fn empty_thread_header_annotation_reports_zero_streaming() {
-    assert_eq!(header_count([]), "0 streaming");
-}
-
-#[test]
-fn thread_header_annotation_reports_streaming_and_waiting_counts() {
-    assert_eq!(
-        header_count([
-            ThreadStatus::Streaming { stream_count: 2 },
-            ThreadStatus::ReservationPending,
-        ]),
-        "1 streaming"
-    );
-    assert_eq!(
-        header_count([
-            ThreadStatus::Streaming { stream_count: 1 },
-            ThreadStatus::ReservationPending,
-            ThreadStatus::AwaitingFollowUp,
-            ThreadStatus::AttachedIdle,
-        ]),
-        "1 streaming · 1 waiting"
-    );
-}
-
-#[test]
-fn thread_header_annotation_reports_the_display_cap() {
-    let mut statuses = vec![ThreadStatus::Streaming { stream_count: 1 }; 100];
-    assert_eq!(header_count(statuses.iter().copied()), "100 streaming");
-
-    statuses.push(ThreadStatus::AwaitingFollowUp);
-    assert_eq!(
-        header_count(statuses),
-        "100 streaming · 1 waiting · showing 100"
-    );
-
-    assert_eq!(
-        header_count(
-            std::iter::repeat_n(ThreadStatus::Streaming { stream_count: 1 }, 100)
-                .chain([ThreadStatus::AttachedIdle]),
-        ),
-        "100 streaming"
     );
 }

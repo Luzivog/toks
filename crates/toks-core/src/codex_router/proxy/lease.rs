@@ -54,7 +54,7 @@ impl StreamLease {
         request_settings: Option<&ThreadRequestSettings>,
     ) -> anyhow::Result<Option<Self>> {
         let Some(route) =
-            engine.route_request_authorized(account, thread, resume_attempt, request_settings)?
+            engine.open_tracked_stream(account, thread, resume_attempt, request_settings)?
         else {
             return Ok(None);
         };
@@ -87,7 +87,7 @@ impl ThreadAttachment {
         thread: &ThreadId,
         resume_attempt: Option<&str>,
     ) -> anyhow::Result<Option<Self>> {
-        if !engine.attach_authorized(account, thread, resume_attempt)? {
+        if !engine.open_tracked_attachment(account, thread, resume_attempt)? {
             return Ok(None);
         }
         Ok(Some(Self {
@@ -104,16 +104,35 @@ impl ThreadAttachment {
 
 impl Drop for StreamLease {
     fn drop(&mut self) {
-        if self.continues {
-            let _ = self.engine.continue_response(&self.account, &self.thread);
+        let (operation, result) = if self.continues {
+            (
+                "record response continuation",
+                self.engine
+                    .continue_tracked_stream(&self.account, &self.thread),
+            )
         } else {
-            let _ = self.engine.close(&self.account, &self.thread);
-        }
+            (
+                "record response completion",
+                self.engine
+                    .close_tracked_stream(&self.account, &self.thread),
+            )
+        };
+        report_cleanup_error(operation, result);
     }
 }
 
 impl Drop for ThreadAttachment {
     fn drop(&mut self) {
-        let _ = self.engine.detach(&self.account, &self.thread);
+        report_cleanup_error(
+            "record thread detachment",
+            self.engine
+                .detach_tracked_attachment(&self.account, &self.thread),
+        );
+    }
+}
+
+fn report_cleanup_error(operation: &str, result: anyhow::Result<()>) {
+    if let Err(error) = result {
+        eprintln!("toks router failed to {operation}: {error:#}");
     }
 }

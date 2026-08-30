@@ -15,7 +15,6 @@ mod status;
 mod threads;
 #[cfg(test)]
 mod threads_tests;
-mod waiting;
 
 pub(super) fn rotation_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
     let has_emails = app
@@ -54,8 +53,7 @@ pub(super) fn rotation_page(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> g
         )
         .child(status::service_card(app, cx))
         .child(accounts::accounts_card(app, cx))
-        .child(threads::threads_card(app, cx))
-        .child(waiting::waiting_card(app, cx));
+        .child(threads::threads_card(app, cx));
 
     if let Some(error) = &app.rotation.error {
         page = page.child(

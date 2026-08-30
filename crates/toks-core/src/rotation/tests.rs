@@ -171,7 +171,7 @@ fn rejected_credential_quarantine_survives_discovery_omission_and_restart_withou
 }
 
 #[test]
-fn waiting_queue_controls_are_settings_owned_and_idempotent() {
+fn waiting_queue_cancellation_is_settings_owned_and_idempotent() {
     let first = ThreadId::new("first");
     let second = ThreadId::new("second");
     let third = ThreadId::new("third");
@@ -182,17 +182,16 @@ fn waiting_queue_controls_are_settings_owned_and_idempotent() {
         settings.waiting_priority(),
         &[first.clone(), second.clone(), third.clone()]
     );
-    assert!(settings.move_waiting_to(&third, 0));
     assert!(settings.cancel_thread(&second));
     assert!(!settings.cancel_thread(&second));
     assert!(settings.cancelled_threads().contains(&second));
-    assert_eq!(settings.waiting_priority(), &[third.clone(), first.clone()]);
+    assert_eq!(settings.waiting_priority(), &[first.clone(), third.clone()]);
 
     assert!(settings.restore_waiting(&second));
     assert!(!settings.restore_waiting(&second));
     assert_eq!(
         settings.waiting_priority(),
-        &[third.clone(), first.clone(), second.clone()]
+        &[first.clone(), third.clone(), second.clone()]
     );
     assert!(settings.reconcile_threads(&[second.clone(), third.clone()], &[]));
     assert_eq!(settings.waiting_priority(), &[third, second]);
@@ -229,7 +228,7 @@ fn runtime_tracks_threads_waiting_and_metadata_events_idempotently() {
 
     assert_eq!(runtime.health(), RouterHealth::Healthy);
     assert_eq!(runtime.heartbeat_at(), Some(UnixMillis::new(1)));
-    assert_eq!(runtime.active_threads(&a), 1);
+    assert_eq!(runtime.in_flight_count(&a), 1);
     assert!(runtime.connection_closed(&a, &thread, UnixMillis::new(8)));
     assert!(!runtime.connection_closed(&a, &thread, UnixMillis::new(9)));
     assert!(runtime.waiting_threads().is_empty());
@@ -245,7 +244,7 @@ fn runtime_tracks_threads_waiting_and_metadata_events_idempotently() {
 }
 
 #[test]
-fn live_count_is_unique_per_thread_and_ignores_follow_up_retention() {
+fn in_flight_count_is_unique_per_thread_and_ignores_follow_up_retention() {
     let account = account("a");
     let first = ThreadId::new("thread-1");
     let second = ThreadId::new("thread-2");
@@ -260,27 +259,27 @@ fn live_count_is_unique_per_thread_and_ignores_follow_up_retention() {
     runtime
         .connection_opened(&account, &second, UnixMillis::new(3))
         .unwrap();
-    assert_eq!(runtime.active_threads(&account), 2);
+    assert_eq!(runtime.in_flight_count(&account), 2);
 
     assert!(runtime.connection_closed(&account, &first, UnixMillis::new(4)));
     assert!(runtime.connection_continues(&account, &first, UnixMillis::new(5)));
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
 
     runtime
         .connection_opened(&account, &first, UnixMillis::new(6))
         .unwrap();
     assert!(runtime.connection_closed(&account, &first, UnixMillis::new(7)));
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
 
     runtime.thread_attached(&account, &second).unwrap();
     assert!(runtime.connection_continues(&account, &second, UnixMillis::new(8)));
     assert!(runtime.thread_detached(&account, &second));
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
     runtime
         .connection_opened(&account, &second, UnixMillis::new(9))
         .unwrap();
     assert!(runtime.connection_closed(&account, &second, UnixMillis::new(10)));
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
 }
 
 #[test]

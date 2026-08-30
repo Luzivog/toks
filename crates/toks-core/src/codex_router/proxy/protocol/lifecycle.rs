@@ -52,7 +52,14 @@ impl ResponseLifecycle {
                     ResponseLifecycleEnd::Finish
                 })
             }
-            Some("response.failed" | "response.incomplete") => {
+            Some(
+                "error"
+                | "turn.failed"
+                | "response.failed"
+                | "response.incomplete"
+                | "stream.error"
+                | "stream_error",
+            ) => {
                 self.ended = true;
                 Some(ResponseLifecycleEnd::Finish)
             }

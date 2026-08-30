@@ -6,7 +6,7 @@ use toks::{
     test_support::{
         current_page, emails_hidden, prepare_rotation_accounts, set_page,
         set_rotation_active_threads, set_rotation_blocked, set_rotation_thread_idle,
-        set_rotation_thread_title, set_rotation_thread_waiting,
+        set_rotation_thread_pending, set_rotation_thread_title, set_rotation_thread_waiting,
     },
     Page, ToksApp,
 };
@@ -43,8 +43,15 @@ fn rotation_sidebar_entry_opens_the_private_dashboard(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn active_threads_render_above_pending_threads(cx: &mut TestAppContext) {
-    let mut harness = Harness::open_page(cx, Page::Rotation, VIEWPORT);
+fn rotation_does_not_render_pending_threads_or_queue_controls(cx: &mut TestAppContext) {
+    let now = Utc
+        .with_ymd_and_hms(2026, 8, 22, 19, 0, 0)
+        .single()
+        .expect("valid fixture timestamp");
+    let mut app = ToksApp::from_snapshots(None, Vec::new(), now);
+    set_rotation_thread_pending(&mut app, "queued-fixture");
+    set_page(&mut app, Page::Rotation);
+    let mut harness = Harness::open(cx, app, VIEWPORT);
 
     assert!(harness.has("rotation-active-threads-count"));
     assert!(!harness.has("rotation-thread-header-captions"));
@@ -53,14 +60,14 @@ fn active_threads_render_above_pending_threads(cx: &mut TestAppContext) {
     let count = harness.bounds("rotation-active-threads-count");
     assert_eq!(count.left() - title.right(), px(8.));
     assert_eq!(title.center().y, count.center().y);
-    assert!(harness.above(
-        "rotation-active-threads-card",
-        "rotation-pending-threads-card"
-    ));
+    assert!(!harness.has("rotation-pending-threads-card"));
+    assert!(!harness.has("rotation-thread-up-queued-fixture"));
+    assert!(!harness.has("rotation-thread-down-queued-fixture"));
+    assert!(!harness.has("rotation-cancel-thread-queued-fixture"));
 }
 
 #[gpui::test]
-fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut TestAppContext) {
+fn active_threads_render_binary_presence_and_aligned_request_selectors(cx: &mut TestAppContext) {
     let now = Utc
         .with_ymd_and_hms(2026, 8, 22, 19, 0, 0)
         .single()
@@ -71,8 +78,10 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
         now,
     );
     prepare_rotation_accounts(&mut app);
-    set_rotation_active_threads(&mut app, "active", 2);
+    set_rotation_active_threads(&mut app, "active", 3);
+    set_rotation_thread_idle(&mut app, "active", "active-fixture-0");
     set_rotation_thread_waiting(&mut app, "active", "active-fixture-0");
+    set_rotation_thread_waiting(&mut app, "active", "active-fixture-2");
     set_rotation_thread_idle(&mut app, "active", "idle-fixture");
     set_rotation_thread_title(&mut app, "active-fixture-0", "Repair router handoff");
     set_page(&mut app, Page::Rotation);
@@ -80,35 +89,19 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
 
     assert!(harness.has("rotation-thread-row-active-fixture-0"));
     assert!(harness.has("rotation-thread-row-active-fixture-1"));
+    assert!(!harness.has("rotation-thread-row-active-fixture-2"));
     assert!(!harness.has("rotation-thread-row-idle-fixture"));
     assert!(harness.has("rotation-thread-title-active-fixture-0"));
     assert!(harness.has("rotation-active-threads-count"));
     assert!(harness.has("rotation-thread-header-captions"));
     assert!(!harness.has("rotation-thread-captions"));
-    assert!(harness.has("rotation-thread-status-dot-active-fixture-0"));
     assert!(harness.has("rotation-thread-model-active-fixture-0"));
     assert!(harness.has("rotation-thread-reasoning-active-fixture-0"));
     assert!(harness.has("rotation-thread-tier-active-fixture-0"));
-    assert!(harness.has("rotation-dismiss-thread-active-fixture-0"));
+    assert!(!harness.has("rotation-thread-status-active-fixture-0"));
+    assert!(!harness.has("rotation-thread-status-dot-active-fixture-0"));
+    assert!(!harness.has("rotation-dismiss-thread-active-fixture-0"));
     assert!(!harness.has("rotation-dismiss-thread-active-fixture-1"));
-    assert_eq!(
-        harness
-            .bounds("rotation-thread-status-active-fixture-0")
-            .size
-            .width,
-        px(150.)
-    );
-    assert_eq!(
-        harness
-            .bounds("rotation-thread-status-dot-active-fixture-0")
-            .size,
-        size(px(6.), px(6.))
-    );
-    let status = harness.bounds("rotation-thread-status-active-fixture-0");
-    let dismiss = harness.bounds("rotation-dismiss-thread-active-fixture-0");
-    let model = harness.bounds("rotation-thread-model-active-fixture-0");
-    assert!(status.right() <= dismiss.left());
-    assert!(dismiss.right() <= model.left());
 
     let title = harness.bounds("rotation-active-threads-title");
     let count = harness.bounds("rotation-active-threads-count");
@@ -155,6 +148,25 @@ fn active_threads_render_titles_status_and_aligned_request_selectors(cx: &mut Te
         assert_eq!(first.size.width, px(width));
         assert!((caption_label.right() - first_value.right()).abs() <= px(1.));
     }
+}
+
+#[gpui::test]
+fn active_threads_do_not_silently_omit_rows(cx: &mut TestAppContext) {
+    let now = Utc
+        .with_ymd_and_hms(2026, 8, 22, 19, 0, 0)
+        .single()
+        .expect("valid fixture timestamp");
+    let mut app = ToksApp::from_snapshots(
+        None,
+        vec![rotation_limit_snapshot(now, "active", 42.0)],
+        now,
+    );
+    prepare_rotation_accounts(&mut app);
+    set_rotation_active_threads(&mut app, "active", 101);
+    set_page(&mut app, Page::Rotation);
+    let mut harness = Harness::open(cx, app, VIEWPORT);
+
+    assert!(harness.has("rotation-thread-row-active-fixture-99"));
 }
 
 #[gpui::test]

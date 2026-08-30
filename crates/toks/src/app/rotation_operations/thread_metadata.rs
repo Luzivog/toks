@@ -29,7 +29,7 @@ impl ThreadMetadataStores {
 
     pub(super) fn load(&self, runtime: &RotationRuntime) -> ThreadMetadata {
         let visible_ids = runtime
-            .thread_rows()
+            .live_thread_rows()
             .into_iter()
             .map(|row| row.thread_id)
             .collect::<Vec<_>>();

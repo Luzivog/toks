@@ -25,8 +25,10 @@ pub(super) fn service_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gp
     let health = health_label(app);
     let selected = selected_account_identity(app, "rotation-selected", cx);
     let busy = app.rotation.busy.is_some();
-    let status_color = if install.configured && install.service_active {
+    let status_color = if install.configured && install.service_active && install.resume_active {
         gpui::rgb(0x10_a3_7f).into()
+    } else if install.configured && install.service_active {
+        cx.theme().warning
     } else if install.configured {
         cx.theme().danger
     } else if install.service_installed {

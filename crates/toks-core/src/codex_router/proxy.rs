@@ -18,6 +18,7 @@ mod websocket;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use axum::http::Uri;
@@ -35,6 +36,9 @@ const CODEX_PATH: &str = "/backend-api/codex";
 const CHATGPT_HTTP: &str = "https://chatgpt.com";
 const CHATGPT_WS: &str = "wss://chatgpt.com";
 pub(crate) const HEALTH_BODY: &str = "toks-router\n";
+/// Reserved owner generation for the supported single-process router mode.
+/// Restartable systemd workers must never use this generation.
+pub(crate) const DIRECT_ROUTER_GENERATION: u64 = u64::MAX;
 
 #[derive(Clone)]
 pub struct RouterRuntimeHandle {
@@ -90,17 +94,33 @@ impl Upstream {
     }
 }
 
-pub async fn serve(runtime: RouterRuntimeHandle) -> Result<()> {
+pub(crate) async fn bind_listener() -> Result<tokio::net::TcpListener> {
+    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, super::ROUTER_PORT));
+    tokio::net::TcpListener::bind(address)
+        .await
+        .context("binding the Toks router loopback socket")
+}
+
+pub async fn serve(listener: tokio::net::TcpListener, runtime: RouterRuntimeHandle) -> Result<()> {
     let state = ProxyState::new(&runtime);
     let app = app(state);
-    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, super::ROUTER_PORT));
-    let listener = tokio::net::TcpListener::bind(address)
-        .await
-        .context("binding the Toks router loopback socket")?;
-    tokio::spawn(heartbeat(runtime));
+    tokio::spawn(heartbeat(runtime.clone()));
+    tokio::spawn(reconcile_owned_connections(runtime));
     axum::serve(listener, app)
         .await
         .context("serving Codex traffic")
+}
+
+pub(crate) async fn reconcile_owned_connections(runtime: RouterRuntimeHandle) {
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    interval.tick().await;
+    loop {
+        interval.tick().await;
+        if let Err(error) = runtime.reconcile_owned_connections() {
+            eprintln!("router worker failed to reconcile live connections: {error:#}");
+        }
+    }
 }
 
 fn path_and_query(uri: &Uri) -> &str {

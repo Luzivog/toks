@@ -15,10 +15,13 @@ pub(crate) use quota::QuotaObservation;
 pub use quota::{account_quota_drain, AccountQuotaDrain};
 pub(crate) use runtime::ThreadOwnership;
 pub use runtime::{
-    AccountAvailability, AccountRuntime, RotationRuntime, RouterHealth, ThreadAccountConflict,
-    ThreadRequestSettings, ThreadRow, ThreadStatus, WaitingId, WaitingThread,
+    AccountAvailability, AccountRuntime, LiveThreadRow, RotationRuntime, RouterHealth,
+    ThreadAccountConflict, ThreadRequestSettings, WaitingId, WaitingThread,
 };
-pub(crate) use runtime::{ResumeAuthorization, ResumeRoute, ResumeTerminal, WorkerConnectionOwner};
+pub(crate) use runtime::{
+    ResumeAuthorization, ResumeRoute, ResumeTerminal, WorkerConnectionInventory,
+    WorkerConnectionOwner,
+};
 pub use settings::{
     InvalidThreadOverrideValue, RotationSettings, ThreadOverride, ThreadOverrideChange,
 };
@@ -43,5 +46,7 @@ mod runtime_resume_validation_tests;
 mod runtime_settings_queue_tests;
 #[cfg(test)]
 mod runtime_unknown_reset_tests;
+#[cfg(test)]
+mod runtime_worker_inventory_tests;
 #[cfg(test)]
 mod tests;

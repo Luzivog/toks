@@ -53,12 +53,9 @@ impl ActiveThread {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn is_live(&self) -> bool {
         self.stream_count() > 0 || self.reservations > 0
-    }
-
-    pub(super) fn reservations(&self) -> u32 {
-        self.reservations
     }
 
     pub(super) fn awaiting_follow_up(&self) -> bool {

@@ -5,7 +5,7 @@ use super::fixtures::one_percent_snapshot;
 use super::*;
 use crate::rotation::{
     RotationRuntimeStore, RotationSettingsStore, ThreadId, ThreadOverrideChange,
-    ThreadRequestSettings, ThreadStatus,
+    ThreadRequestSettings,
 };
 use crate::StoreUpdate;
 
@@ -23,11 +23,9 @@ async fn http_override_rewrites_all_fields_and_records_the_client_request() {
             let observed = runtime_store
                 .load()
                 .unwrap()
-                .thread_rows()
-                .into_iter()
-                .find(|row| row.thread_id.as_str() == "http-override")
+                .thread_request_settings(&ThreadId::new("http-override"))
                 .unwrap()
-                .request_settings;
+                .clone();
             *captured.lock().unwrap() = Some((forwarded, observed));
             StatusCode::OK
         }
@@ -148,11 +146,9 @@ async fn websocket_overrides_apply_to_each_turn_without_reconnecting() {
                     let observed = runtime_store
                         .load()
                         .unwrap()
-                        .thread_rows()
-                        .into_iter()
-                        .find(|row| row.thread_id.as_str() == "ws-override")
+                        .thread_request_settings(&ThreadId::new("ws-override"))
                         .unwrap()
-                        .request_settings;
+                        .clone();
                     captured.lock().unwrap().push((forwarded.clone(), observed));
                     socket
                         .send(Message::Text(json!({"seen":forwarded}).to_string().into()))
@@ -234,21 +230,12 @@ async fn websocket_overrides_apply_to_each_turn_without_reconnecting() {
 
     let idle = RotationRuntimeStore::for_data_dir(harness._directory.path())
         .load()
-        .unwrap()
-        .thread_rows()
-        .into_iter()
-        .find(|row| row.thread_id == thread)
         .unwrap();
-    assert_eq!(idle.status, ThreadStatus::AttachedIdle);
-    assert_eq!(idle.request_settings.model.as_deref(), Some("gpt-5.6-sol"));
-    assert_eq!(
-        idle.request_settings.reasoning_effort.as_deref(),
-        Some("xhigh")
-    );
-    assert_eq!(
-        idle.request_settings.service_tier.as_deref(),
-        Some("default")
-    );
+    assert!(idle.live_thread_rows().is_empty());
+    let idle_settings = idle.thread_request_settings(&thread).unwrap();
+    assert_eq!(idle_settings.model.as_deref(), Some("gpt-5.6-sol"));
+    assert_eq!(idle_settings.reasoning_effort.as_deref(), Some("xhigh"));
+    assert_eq!(idle_settings.service_tier.as_deref(), Some("default"));
 
     let captured = captured.lock().unwrap();
     assert_eq!(captured.len(), 3);

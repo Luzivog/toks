@@ -117,11 +117,7 @@ impl RotationSettings {
         runtime: &RotationRuntime,
         now: UnixMillis,
     ) -> bool {
-        let mut present = runtime
-            .thread_rows()
-            .into_iter()
-            .map(|row| row.thread_id)
-            .collect::<BTreeSet<_>>();
+        let mut present = runtime.retained_thread_ids();
         present.extend(runtime.queued_or_resuming_threads());
         let cutoff = now.get().saturating_sub(OVERRIDE_RETENTION_MILLIS);
         let recent = runtime.events().iter().filter_map(|event| {

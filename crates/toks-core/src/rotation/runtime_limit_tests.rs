@@ -255,7 +255,7 @@ fn router_restart_preserves_a_task_awaiting_follow_up() {
         UnixMillis::new(31),
     );
 
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
     assert!(runtime.can_drain(&account, &thread, UnixMillis::new(32)));
 }
 
@@ -299,9 +299,9 @@ fn releasing_a_reservation_cannot_delete_a_worker_owned_live_stream() {
         .unwrap();
 
     assert!(runtime.release_reservation(&account, &thread));
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
     assert!(runtime.connection_closed_by(owner, &account, &thread, UnixMillis::new(12)));
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
 }
 
 #[test]
@@ -349,8 +349,8 @@ fn a_live_thread_cannot_be_reassigned_to_another_account() {
         .connection_opened_by(second, &b, &thread, UnixMillis::new(7))
         .unwrap();
     runtime.thread_attached_by(second, &b, &thread).unwrap();
-    assert_eq!(runtime.active_threads(&a), 0);
-    assert_eq!(runtime.active_threads(&b), 1);
+    assert_eq!(runtime.in_flight_count(&a), 0);
+    assert_eq!(runtime.in_flight_count(&b), 1);
 }
 
 #[test]
@@ -370,7 +370,7 @@ fn websocket_detach_cannot_erase_an_overlapping_http_stream() {
         UnixMillis::new(11),
     );
 
-    assert_eq!(runtime.active_threads(&account), 1);
+    assert_eq!(runtime.in_flight_count(&account), 1);
     assert!(runtime.can_drain(&account, &thread, UnixMillis::new(12)));
 }
 
@@ -394,7 +394,7 @@ fn an_abandoned_selection_reservation_expires() {
         UnixMillis::new(5 * 60 * 1_000 + 1),
     );
 
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
     assert!(!runtime.can_drain(&account, &thread, UnixMillis::new(5 * 60 * 1_000 + 1)));
 }
 
@@ -425,7 +425,7 @@ fn legacy_connection_fields_load_and_clear_without_losing_follow_up_state() {
     let mut runtime: RotationRuntime = serde_json::from_value(value).unwrap();
 
     assert!(runtime.reconcile_connection_owners(&Default::default()));
-    assert_eq!(runtime.active_threads(&account), 0);
+    assert_eq!(runtime.in_flight_count(&account), 0);
     runtime.apply_quota_observations(
         &draining(&account, Some(UnixMillis::new(100))),
         UnixMillis::new(20),

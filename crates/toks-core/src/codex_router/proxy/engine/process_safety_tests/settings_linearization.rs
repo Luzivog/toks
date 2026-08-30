@@ -104,5 +104,5 @@ fn committed_exclusion_wins_before_route_opens_a_connection() {
     holding.join().unwrap();
     assert_eq!(route.join().unwrap(), None);
     done_rx.recv().unwrap();
-    assert_eq!(engines.store.load().unwrap().active_threads(&account), 0);
+    assert_eq!(engines.store.load().unwrap().in_flight_count(&account), 0);
 }

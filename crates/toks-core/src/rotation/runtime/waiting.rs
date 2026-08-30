@@ -74,14 +74,6 @@ impl WaitingThread {
 }
 
 impl super::RotationRuntime {
-    /// Attempts currently running in Toks' background resume process. While an
-    /// entry is present, that process owns Codex's per-thread writer lock.
-    pub fn resuming_threads(&self) -> impl Iterator<Item = &WaitingThread> {
-        self.resume_admissions
-            .values()
-            .filter_map(|admission| admission.active_binding().map(|_| &admission.waiting))
-    }
-
     /// Threads that still belong to the automatic-resume queue, including an
     /// attempt temporarily removed from `waiting_threads` while it runs.
     pub fn queued_or_resuming_threads(&self) -> Vec<ThreadId> {

@@ -48,7 +48,12 @@ pub(crate) async fn run(generation: GenerationId) -> Result<()> {
     let authorizer: PeerAuthorizer = Arc::new(move |peer| {
         super::coordinator_identity::authorize(peer, artifact_root.clone()).boxed()
     });
-    run_with_instance(generation, instance, paths.control, service, authorizer).await
+    let reconciliation = tokio::spawn(crate::codex_router::proxy::reconcile_owned_connections(
+        runtime,
+    ));
+    let result = run_with_instance(generation, instance, paths.control, service, authorizer).await;
+    reconciliation.abort();
+    result
 }
 
 struct WorkerState {

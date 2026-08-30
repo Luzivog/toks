@@ -1,17 +1,19 @@
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 use super::catalogue::Catalogue;
 use super::types::SharedCredentials;
 use crate::accounts::AccountId;
 use crate::rotation::{
     ResumeAuthorization, ResumeTerminal, RotationRuntime, RotationSettingsStore, ThreadId,
-    UnixMillis, WaitingId, WaitingThread, WorkerConnectionOwner,
+    UnixMillis, WaitingId, WaitingThread, WorkerConnectionInventory, WorkerConnectionOwner,
 };
 use crate::storage::StoreUpdate;
 use anyhow::Result;
 
 mod construction;
 pub(super) use construction::EngineConfig;
+mod owned_connections;
 #[cfg(test)]
 mod process_safety_tests;
 mod quota;
@@ -38,6 +40,7 @@ pub(super) struct Engine {
     runtime: RuntimeWriter,
     catalogue: Catalogue,
     connection_owner: Option<WorkerConnectionOwner>,
+    connection_inventory: Mutex<WorkerConnectionInventory>,
     thread_sources: ThreadSourceStore,
 }
 
