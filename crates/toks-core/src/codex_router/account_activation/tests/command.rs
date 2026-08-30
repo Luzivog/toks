@@ -74,6 +74,15 @@ fn manual_command_uses_the_router_capability_without_an_account_header() {
     assert!(args
         .iter()
         .any(|arg| arg == "model_providers.toks_activation.supports_websockets=false"));
+    let exec = args.iter().position(|arg| arg == "exec").unwrap();
+    let provider = args
+        .iter()
+        .position(|arg| arg == "model_provider=\"toks_activation\"")
+        .unwrap();
+    assert!(
+        exec < provider,
+        "exec-scoped config overrides must follow the subcommand"
+    );
     let environment = command
         .get_envs()
         .map(|(name, value)| {

@@ -91,6 +91,7 @@ fn manual_command(
         .envs(environment)
         .args(["--signal=TERM", "--kill-after=1s", "178s"])
         .arg(executable)
+        .args(["exec", "--ignore-user-config", "--ignore-rules"])
         .args(["-c", "model_provider=\"toks_activation\""])
         .args([
             "-c",
@@ -117,7 +118,6 @@ fn manual_command(
             "-c",
             "model_providers.toks_activation.env_http_headers={\"x-toks-activation-attempt\"=\"TOKS_ACTIVATION_ATTEMPT\"}",
         ])
-        .args(["exec", "--ignore-user-config", "--ignore-rules"])
         .arg("--skip-git-repo-check")
         .args(["-s", "read-only", "-C"])
         .arg(home)
