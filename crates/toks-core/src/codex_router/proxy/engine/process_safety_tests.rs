@@ -25,6 +25,7 @@ mod quota_snapshot_tests;
 mod reconciliation;
 mod resume_authorization;
 mod settings_linearization;
+mod task_activity;
 mod thread_source;
 mod worker_inventory;
 
@@ -92,6 +93,7 @@ impl Engines {
                 catalogue: Catalogue::at(None),
                 connection_owner: None,
                 thread_sources: ThreadSourceStore::discover(),
+                task_activity_store: None,
             })
             .expect("engine")
         };
@@ -120,6 +122,9 @@ impl Engines {
                     .expect("worker identity is nonzero"),
             ),
             thread_sources: ThreadSourceStore::discover(),
+            task_activity_store: Some(crate::rotation::TaskActivityStore::for_data_dir(
+                self._directory.path(),
+            )),
         })
         .expect("worker engine")
     }
@@ -424,6 +429,7 @@ fn starting_another_engine_preserves_live_connections() {
         catalogue: Catalogue::at(None),
         connection_owner: None,
         thread_sources: ThreadSourceStore::discover(),
+        task_activity_store: None,
     })
     .unwrap();
 

@@ -7,6 +7,7 @@ use super::thread_identity::ThreadIdentity;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::codex_router::proxy) enum ClientRequestFrame {
     ResponseCreate(ThreadIdentity),
+    ResponseCancel,
     Other,
     Denied,
 }
@@ -21,10 +22,10 @@ impl ClientRequestFrame {
         if fields.duplicate_type {
             return Self::Denied;
         }
-        if fields.kind.as_deref() == Some("response.create") {
-            Self::ResponseCreate(fields.identity)
-        } else {
-            Self::Other
+        match fields.kind.as_deref() {
+            Some("response.create") => Self::ResponseCreate(fields.identity),
+            Some("response.cancel") => Self::ResponseCancel,
+            _ => Self::Other,
         }
     }
 }

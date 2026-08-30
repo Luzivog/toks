@@ -36,15 +36,15 @@ pub(super) fn account_status(
     id: &AccountId,
     state: AccountState,
     meter: Option<gpui::Div>,
-    active: u32,
+    active: Option<u32>,
     cx: &gpui::App,
 ) -> gpui::Div {
     let status_selector = format!("rotation-account-status-{id}");
     let tooltip_selector = format!("rotation-account-status-tooltip-{id}");
-    let status_label = if active > 0 {
-        format!("{} · {active} active", state.label)
-    } else {
-        state.label
+    let status_label = match active {
+        Some(active) if active > 0 => format!("{} · {active} active", state.label),
+        Some(_) => state.label,
+        None => state.label,
     };
     let status_text = div()
         .id(SharedString::from(status_selector.clone()))

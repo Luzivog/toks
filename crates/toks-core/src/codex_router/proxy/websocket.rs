@@ -117,7 +117,7 @@ async fn unavailable(
                         .await;
                     return;
                 }
-                ClientRequestFrame::Other => {}
+                ClientRequestFrame::ResponseCancel | ClientRequestFrame::Other => {}
             },
             Message::Ping(payload) => {
                 let _ = socket.send(Message::Pong(payload)).await;

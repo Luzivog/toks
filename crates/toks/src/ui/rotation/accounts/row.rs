@@ -24,7 +24,7 @@ pub(super) fn account_row(
     let included = !app.rotation.settings.excluded().contains(&id);
     let busy = app.rotation.busy.is_some();
     let state = account_state(app, snapshot, &id, cx);
-    let active = app.rotation.runtime.live_thread_count(&id);
+    let active = app.rotation.active_task_count(&id);
     let switch_account = id.clone();
     let handle = cx.entity().downgrade();
     let meter = weekly_meter(snapshot, cx);

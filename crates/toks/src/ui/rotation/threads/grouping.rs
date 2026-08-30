@@ -2,18 +2,18 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use toks_core::{
     codex_router::thread_lineage::{ThreadLineage, ThreadLineageKind},
-    rotation::{LiveThreadRow, ThreadId},
+    rotation::{ActiveTaskRow, ThreadId},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DisplayThread<'a> {
-    pub row: &'a LiveThreadRow,
+    pub row: &'a ActiveTaskRow,
     pub depth: usize,
     pub indicator: Option<String>,
 }
 
 pub(super) fn group_rows<'a>(
-    rows: &'a [LiveThreadRow],
+    rows: &'a [ActiveTaskRow],
     lineage: &BTreeMap<ThreadId, ThreadLineage>,
     titles: &BTreeMap<ThreadId, String>,
 ) -> Vec<DisplayThread<'a>> {
@@ -62,7 +62,7 @@ pub(super) fn group_rows<'a>(
 }
 
 fn parent_index(
-    row: &LiveThreadRow,
+    row: &ActiveTaskRow,
     lineage: &BTreeMap<ThreadId, ThreadLineage>,
     visible: &BTreeMap<ThreadId, usize>,
 ) -> Option<usize> {
@@ -105,7 +105,7 @@ fn cycle_members(parents: &[Option<usize>]) -> HashSet<usize> {
 }
 
 fn root_indicator(
-    row: &LiveThreadRow,
+    row: &ActiveTaskRow,
     lineage: &BTreeMap<ThreadId, ThreadLineage>,
     titles: &BTreeMap<ThreadId, String>,
     visible: &BTreeMap<ThreadId, usize>,
@@ -140,7 +140,7 @@ fn short_id(thread: &ThreadId) -> String {
 fn append_tree<'a>(
     index: usize,
     depth: usize,
-    rows: &'a [LiveThreadRow],
+    rows: &'a [ActiveTaskRow],
     children: &[Vec<usize>],
     indicator: Option<String>,
     display: &mut Vec<DisplayThread<'a>>,

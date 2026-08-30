@@ -177,11 +177,11 @@ impl WorkerConnectionOwner {
         })
     }
 
-    pub(super) fn generation(self) -> u64 {
+    pub(crate) fn generation(self) -> u64 {
         self.generation
     }
 
-    pub(super) fn instance_id(self) -> u64 {
+    pub(crate) fn instance_id(self) -> u64 {
         self.instance_id
     }
 }

@@ -31,12 +31,19 @@ pub(super) fn body(
     lifecycle: ResponseLifecycle,
     usage: UsageContext,
 ) -> Body {
+    let request_activity = lease.as_ref().and_then(|_| {
+        usage
+            .thread
+            .clone()
+            .map(|thread| RequestActivity::open(usage.engine.clone(), thread))
+    });
     let state = StreamState {
         initial,
         rest,
         lease,
         lifecycle,
         usage,
+        request_activity,
     };
     Body::from_stream(futures_util::stream::unfold(state, next_chunk))
 }
@@ -47,6 +54,34 @@ struct StreamState {
     lease: Option<StreamLease>,
     lifecycle: ResponseLifecycle,
     usage: UsageContext,
+    request_activity: Option<RequestActivity>,
+}
+
+struct RequestActivity {
+    engine: Arc<Engine>,
+    thread: ThreadId,
+}
+
+impl RequestActivity {
+    fn open(engine: Arc<Engine>, thread: ThreadId) -> Self {
+        engine.open_task_activity_scope(&thread);
+        Self { engine, thread }
+    }
+}
+
+impl Drop for RequestActivity {
+    fn drop(&mut self) {
+        self.engine.close_task_activity_scope(&self.thread);
+    }
+}
+
+impl Drop for StreamState {
+    fn drop(&mut self) {
+        // A continued lease must publish its pending follow-up before the HTTP
+        // request scope closes and decides whether any real work remains.
+        self.lease.take();
+        self.request_activity.take();
+    }
 }
 
 async fn next_chunk(mut state: StreamState) -> Option<(Result<Bytes, io::Error>, StreamState)> {

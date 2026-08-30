@@ -38,6 +38,7 @@ mod handoff_connection;
 mod hard_quota_handoff;
 mod http_compression;
 mod http_failover;
+mod http_task_activity;
 mod inbound;
 mod incident_observability;
 mod lifecycle_cleanup;
@@ -195,6 +196,8 @@ impl Harness {
             catalogue: super::catalogue::Catalogue::at(Some(catalogue_path)),
             connection_owner,
             thread_sources: ThreadSourceStore::discover(),
+            task_activity_store: connection_owner
+                .map(|_| crate::rotation::TaskActivityStore::for_data_dir(directory.path())),
         })
         .unwrap();
         Self {

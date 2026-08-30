@@ -88,12 +88,14 @@ fn failed_continuation_publication_restores_attached_follow_up_presence() {
     worker.reconcile_owned_connections().unwrap();
     let runtime = engines.store.load().unwrap();
     assert_eq!(runtime.in_flight_count(&account), 0);
-    assert_eq!(runtime.live_thread_rows()[0].thread_id, thread);
+    let encoded = serde_json::to_value(&runtime).unwrap();
+    assert!(encoded["attachedThreads"].get(thread.as_str()).is_some());
 
     drop(attachment);
     worker.reconcile_owned_connections().unwrap();
     let mut runtime = engines.store.load().unwrap();
-    assert!(runtime.live_thread_rows().is_empty());
+    let encoded = serde_json::to_value(&runtime).unwrap();
+    assert!(encoded["attachedThreads"].get(thread.as_str()).is_none());
     let challenger = AccountId::new("b");
     let conflict = runtime
         .connection_opened(&challenger, &thread, UnixMillis::new(50))

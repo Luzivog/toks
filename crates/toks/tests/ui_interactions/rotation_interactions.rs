@@ -5,7 +5,8 @@ use gpui::{point, px, size, Modifiers, MouseButton, TestAppContext};
 use toks::{
     test_support::{
         current_page, emails_hidden, prepare_rotation_accounts, set_page,
-        set_rotation_active_threads, set_rotation_blocked, set_rotation_thread_idle,
+        set_rotation_active_threads, set_rotation_activity_unavailable, set_rotation_blocked,
+        set_rotation_stale_transport_threads, set_rotation_thread_idle,
         set_rotation_thread_pending, set_rotation_thread_title, set_rotation_thread_waiting,
     },
     Page, ToksApp,
@@ -50,6 +51,7 @@ fn rotation_does_not_render_pending_threads_or_queue_controls(cx: &mut TestAppCo
         .expect("valid fixture timestamp");
     let mut app = ToksApp::from_snapshots(None, Vec::new(), now);
     set_rotation_thread_pending(&mut app, "queued-fixture");
+    set_rotation_active_threads(&mut app, "unused", 0);
     set_page(&mut app, Page::Rotation);
     let mut harness = Harness::open(cx, app, VIEWPORT);
 
@@ -89,7 +91,7 @@ fn active_threads_render_binary_presence_and_aligned_request_selectors(cx: &mut 
 
     assert!(harness.has("rotation-thread-row-active-fixture-0"));
     assert!(harness.has("rotation-thread-row-active-fixture-1"));
-    assert!(!harness.has("rotation-thread-row-active-fixture-2"));
+    assert!(harness.has("rotation-thread-row-active-fixture-2"));
     assert!(!harness.has("rotation-thread-row-idle-fixture"));
     assert!(harness.has("rotation-thread-title-active-fixture-0"));
     assert!(harness.has("rotation-active-threads-count"));
@@ -148,6 +150,59 @@ fn active_threads_render_binary_presence_and_aligned_request_selectors(cx: &mut 
         assert_eq!(first.size.width, px(width));
         assert!((caption_label.right() - first_value.right()).abs() <= px(1.));
     }
+}
+
+#[gpui::test]
+fn active_threads_ignore_twenty_five_stale_transport_claims(cx: &mut TestAppContext) {
+    let now = Utc
+        .with_ymd_and_hms(2026, 8, 22, 19, 0, 0)
+        .single()
+        .expect("valid fixture timestamp");
+    let mut app = ToksApp::from_snapshots(
+        None,
+        vec![rotation_limit_snapshot(now, "active", 42.0)],
+        now,
+    );
+    prepare_rotation_accounts(&mut app);
+    set_rotation_active_threads(&mut app, "active", 1);
+    set_rotation_stale_transport_threads(&mut app, "active", 24);
+    set_page(&mut app, Page::Rotation);
+    let mut harness = Harness::open(cx, app, VIEWPORT);
+
+    assert!(harness.has("rotation-active-threads-count-1"));
+    assert!(harness.has("rotation-thread-row-active-fixture-0"));
+    assert!(!harness.has("rotation-thread-row-stale-transport-fixture-0"));
+    assert!(!harness.has("rotation-thread-row-stale-transport-fixture-23"));
+}
+
+#[gpui::test]
+fn unavailable_activity_does_not_render_a_numeric_count(cx: &mut TestAppContext) {
+    let mut app = ToksApp::from_snapshots(None, Vec::new(), Utc::now());
+    set_page(&mut app, Page::Rotation);
+    let mut harness = Harness::open(cx, app, VIEWPORT);
+
+    assert!(harness.has("rotation-active-threads-unavailable"));
+    assert!(!harness.has("rotation-active-threads-count"));
+}
+
+#[gpui::test]
+fn unavailable_refresh_clears_previously_visible_activity(cx: &mut TestAppContext) {
+    let mut app = ToksApp::from_snapshots(None, Vec::new(), Utc::now());
+    set_rotation_active_threads(&mut app, "active", 1);
+    set_page(&mut app, Page::Rotation);
+    let mut harness = Harness::open(cx, app, VIEWPORT);
+    assert!(harness.has("rotation-active-threads-count-1"));
+    assert!(harness.has("rotation-thread-row-active-fixture-0"));
+
+    harness.app.update(harness.cx, |app, cx| {
+        set_rotation_activity_unavailable(app);
+        cx.notify();
+    });
+    harness.cx.run_until_parked();
+
+    assert!(harness.has("rotation-active-threads-unavailable"));
+    assert!(!harness.has("rotation-active-threads-count"));
+    assert!(!harness.has("rotation-thread-row-active-fixture-0"));
 }
 
 #[gpui::test]

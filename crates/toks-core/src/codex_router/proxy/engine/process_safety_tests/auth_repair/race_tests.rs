@@ -33,6 +33,7 @@ async fn a_newer_unauthorized_response_wins_over_an_inflight_repair_proof() {
         catalogue: Catalogue::at(None),
         connection_owner: None,
         thread_sources: ThreadSourceStore::discover(),
+        task_activity_store: None,
     })
     .unwrap();
     engine

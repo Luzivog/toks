@@ -1,8 +1,11 @@
+use std::collections::BTreeMap;
+
 use crate::accounts::AccountId;
-use crate::codex_router::proxy::lease::{StreamLease, ThreadAttachment};
+use crate::codex_router::proxy::lease::{StreamLease, TerminalOwnership, ThreadAttachment};
 use crate::codex_router::proxy::protocol::websocket_usage_block;
 use crate::rotation::{
-    AccountAvailability, RotationEventKind, ThreadId, UnixMillis, UsageLimitPhase, UsageLimitTier,
+    AccountAvailability, RotationEventKind, TaskActivityStore, ThreadId, UnixMillis,
+    UsageLimitPhase, UsageLimitTier,
 };
 
 use super::Engines;
@@ -14,12 +17,16 @@ fn committed_hard_handoff_survives_guard_loss_and_reconciliation() {
     let exhausted = AccountId::new("a");
     let replacement = AccountId::new("b");
     let thread = ThreadId::new("atomic-hard-handoff");
-    let stream = StreamLease::open(worker.clone(), &exhausted, &thread, None)
-        .unwrap()
+    let activity = TaskActivityStore::for_data_dir(engines._directory.path());
+    activity
+        .reconcile_expected_workers(&BTreeMap::from([(7, 701)]))
         .unwrap();
-    let attachment = ThreadAttachment::open(worker.clone(), &exhausted, &thread, None)
-        .unwrap()
-        .unwrap();
+    let mut stream = StreamLease::open(worker.clone(), &exhausted, &thread, None).unwrap();
+    let mut attachment = ThreadAttachment::open(worker.clone(), &exhausted, &thread, None).unwrap();
+    assert_eq!(
+        activity.load().unwrap().active_task_rows().unwrap().len(),
+        1
+    );
     let reset = UnixMillis::new(i64::MAX - 1);
     let block = websocket_usage_block(&format!(
         r#"{{"type":"error","error":{{"type":"usage_limit_reached","resets_at":{}}}}}"#,
@@ -27,10 +34,9 @@ fn committed_hard_handoff_survives_guard_loss_and_reconciliation() {
     ))
     .unwrap();
 
-    worker
+    TerminalOwnership::take(&mut stream, &mut attachment)
+        .unwrap()
         .commit_delivered_hard_limit(
-            &exhausted,
-            &thread,
             block.resets_at,
             block.incident(
                 Some(thread.clone()),
@@ -40,6 +46,12 @@ fn committed_hard_handoff_survives_guard_loss_and_reconciliation() {
             ),
         )
         .unwrap();
+    assert!(activity
+        .load()
+        .unwrap()
+        .active_task_rows()
+        .unwrap()
+        .is_empty());
 
     let committed = engines.store.load().unwrap();
     assert_eq!(committed.in_flight_count(&exhausted), 0);
@@ -49,9 +61,6 @@ fn committed_hard_handoff_survives_guard_loss_and_reconciliation() {
     ));
     assert_eq!(committed.waiting_threads().len(), 1);
     assert_eq!(committed.waiting_threads()[0].thread_id, thread);
-    std::mem::forget(stream);
-    std::mem::forget(attachment);
-
     let restarted = engines.worker(7, 702);
     restarted.reconcile_owned_connections().unwrap();
     restarted.waiting(&thread).unwrap();

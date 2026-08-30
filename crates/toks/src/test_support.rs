@@ -64,16 +64,47 @@ pub fn set_router_deployment(
 pub fn set_rotation_active_threads(app: &mut ToksApp, account: &str, count: u32) {
     let account = toks_core::accounts::AccountId::new(account);
     let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
+    let mut rows = app
+        .rotation
+        .active_task_rows()
+        .unwrap_or_default()
+        .iter()
+        .filter(|row| row.account_id != account)
+        .cloned()
+        .collect::<Vec<_>>();
+    for index in 0..count {
+        let thread = toks_core::rotation::ThreadId::new(format!("active-fixture-{index}"));
+        rows.push(toks_core::rotation::ActiveTaskRow {
+            thread_id: thread.clone(),
+            account_id: account.clone(),
+            started_at: at,
+            request_settings: toks_core::rotation::ThreadRequestSettings::default(),
+        });
+        app.rotation
+            .runtime
+            .connection_opened(&account, &thread, at)
+            .expect("fixture thread should not conflict with another account");
+    }
+    app.rotation.set_active_task_rows(rows);
+}
+
+pub fn set_rotation_stale_transport_threads(app: &mut ToksApp, account: &str, count: u32) {
+    let account = toks_core::accounts::AccountId::new(account);
+    let at = toks_core::rotation::UnixMillis::new(app.now.timestamp_millis());
     for index in 0..count {
         app.rotation
             .runtime
             .connection_opened(
                 &account,
-                &toks_core::rotation::ThreadId::new(format!("active-fixture-{index}")),
+                &toks_core::rotation::ThreadId::new(format!("stale-transport-fixture-{index}")),
                 at,
             )
             .expect("fixture thread should not conflict with another account");
     }
+}
+
+pub fn set_rotation_activity_unavailable(app: &mut ToksApp) {
+    app.rotation.set_activity_unavailable();
 }
 
 pub fn set_rotation_thread_waiting(app: &mut ToksApp, account: &str, thread: &str) {

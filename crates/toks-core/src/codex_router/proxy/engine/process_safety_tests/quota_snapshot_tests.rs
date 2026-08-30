@@ -71,6 +71,7 @@ impl QuotaFixture {
             catalogue: Catalogue::at(None),
             connection_owner: None,
             thread_sources: ThreadSourceStore::discover(),
+            task_activity_store: None,
         })
         .unwrap()
     }

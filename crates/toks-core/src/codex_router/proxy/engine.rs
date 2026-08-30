@@ -22,12 +22,15 @@ mod reconciliation;
 mod request_route;
 mod runtime_writer;
 mod selection;
+mod task_activity;
+#[cfg(test)]
+mod task_activity_tests;
 use crate::codex_router::thread_source::ThreadSourceStore;
 pub(crate) use quota::{AttemptedTier, ResponseDelivery, SnapshotApplication, UsageLimitAction};
 pub(in crate::codex_router::proxy) use request_route::AuthorizedRoute;
 use runtime_writer::RuntimeWriter;
 pub(super) use selection::RouteSelection;
-
+use task_activity::TaskActivityPublisher;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RouteTier {
     Original,
@@ -42,10 +45,10 @@ pub(super) struct Engine {
     catalogue: Catalogue,
     connection_owner: Option<WorkerConnectionOwner>,
     connection_inventory: Mutex<WorkerConnectionInventory>,
+    task_activity: TaskActivityPublisher,
     thread_sources: ThreadSourceStore,
     activation: crate::codex_router::account_activation::Store,
 }
-
 impl Engine {
     pub fn close(&self, account: &AccountId, thread: &ThreadId) -> Result<()> {
         self.mutate(|runtime| match self.connection_owner {

@@ -38,6 +38,9 @@ impl Engine {
             debug_assert!(stream_closed);
             debug_assert!(attachment_closed);
         }
+        drop(inventory);
+        self.task_activity.cancelled(thread);
+        self.task_activity.attachment_closed(thread);
         Ok(())
     }
 }

@@ -14,6 +14,8 @@ mod io;
 #[cfg(test)]
 mod io_tests;
 mod state;
+#[cfg(test)]
+mod state_tests;
 mod thread_metadata;
 use io::{change_settings, load_rotation, run_service_action, LoadedRotation};
 pub(crate) use state::RotationUiState;
@@ -173,6 +175,7 @@ impl ToksApp {
     fn apply_loaded_rotation(&mut self, loaded: LoadedRotation) {
         self.rotation.settings = loaded.settings;
         self.rotation.runtime = loaded.runtime;
+        self.rotation.activity = loaded.activity;
         self.rotation.thread_titles = loaded.thread_titles;
         self.rotation.thread_lineage = loaded.thread_lineage;
         self.rotation.selectable_models = loaded.selectable_models;

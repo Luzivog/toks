@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 use super::host::{DeploymentState, GenerationStatus};
-use crate::rotation::RotationRuntime;
+use crate::rotation::{TaskActivity, UnixMillis};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouterGenerationRole {
@@ -18,7 +18,7 @@ pub struct RouterGenerationSummary {
     pub generation: u64,
     pub build: String,
     pub role: RouterGenerationRole,
-    pub task_count: u32,
+    pub task_count: Option<u32>,
     pub oldest_task_at: Option<crate::rotation::UnixMillis>,
 }
 
@@ -28,11 +28,22 @@ pub struct RouterDeploymentStatus {
     pub update_waiting: bool,
 }
 
-pub(super) fn load(runtime: &RotationRuntime) -> Result<RouterDeploymentStatus> {
-    load_at(&super::systemd::deployment_state_path()?, runtime)
+pub(super) fn load(
+    activity: &TaskActivity,
+    observed_at: UnixMillis,
+) -> Result<RouterDeploymentStatus> {
+    load_at(
+        &super::systemd::deployment_state_path()?,
+        activity,
+        observed_at,
+    )
 }
 
-fn load_at(path: &Path, runtime: &RotationRuntime) -> Result<RouterDeploymentStatus> {
+fn load_at(
+    path: &Path,
+    activity: &TaskActivity,
+    observed_at: UnixMillis,
+) -> Result<RouterDeploymentStatus> {
     let state = match fs::read(path) {
         Ok(bytes) => serde_json::from_slice::<DeploymentState>(&bytes)
             .context("parsing router deployment state")?,
@@ -44,11 +55,15 @@ fn load_at(path: &Path, runtime: &RotationRuntime) -> Result<RouterDeploymentSta
     state
         .validate()
         .context("validating router deployment state")?;
-    Ok(project(&state, runtime))
+    Ok(project(&state, activity, observed_at))
 }
 
-fn project(state: &DeploymentState, runtime: &RotationRuntime) -> RouterDeploymentStatus {
-    let workloads = runtime.generation_workloads();
+fn project(
+    state: &DeploymentState,
+    activity: &TaskActivity,
+    observed_at: UnixMillis,
+) -> RouterDeploymentStatus {
+    let workloads = activity.generation_activity_at(observed_at).ok();
     let snapshot = state.snapshot();
     let update_waiting = snapshot.generations.iter().any(|generation| {
         matches!(
@@ -67,15 +82,15 @@ fn project(state: &DeploymentState, runtime: &RotationRuntime) -> RouterDeployme
                 GenerationStatus::Retired | GenerationStatus::Failed => return None,
             };
             let workload = workloads
-                .get(&generation.id.get())
-                .copied()
-                .unwrap_or_default();
+                .as_ref()
+                .and_then(|workloads| workloads.get(&generation.id.get()))
+                .copied();
             Some(RouterGenerationSummary {
                 generation: generation.id.get(),
                 build: generation.build.as_str().to_owned(),
                 role,
-                task_count: workload.task_count,
-                oldest_task_at: workload.oldest_task_at,
+                task_count: workload.map(|workload| workload.task_count),
+                oldest_task_at: workload.and_then(|workload| workload.oldest_task_at),
             })
         })
         .collect::<Vec<_>>();

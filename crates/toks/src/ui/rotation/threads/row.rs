@@ -1,6 +1,6 @@
 use gpui::{div, prelude::*, px};
 use gpui_component::{h_flex, v_flex, ActiveTheme, StyledExt};
-use toks_core::{rotation::LiveThreadRow, Provider};
+use toks_core::{rotation::ActiveTaskRow, Provider};
 
 use crate::ToksApp;
 
@@ -14,7 +14,7 @@ pub(super) fn thread_row(
     display: &DisplayThread<'_>,
     cx: &mut gpui::Context<ToksApp>,
 ) -> gpui::Div {
-    let row: &LiveThreadRow = display.row;
+    let row: &ActiveTaskRow = display.row;
     let thread_id = row.thread_id.as_str();
     let row_selector = format!("rotation-thread-row-{thread_id}");
     let title_selector = format!("rotation-thread-title-{thread_id}");

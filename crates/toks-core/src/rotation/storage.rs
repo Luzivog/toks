@@ -156,7 +156,7 @@ impl RotationRuntimeStore {
     }
 }
 
-fn read_json<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Option<T>> {
+pub(super) fn read_json<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Option<T>> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -167,7 +167,7 @@ fn read_json<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Option<T>>
         .map(Some)
 }
 
-fn write_json(path: &Path, value: &impl Serialize, label: &str) -> Result<()> {
+pub(super) fn write_json(path: &Path, value: &impl Serialize, label: &str) -> Result<()> {
     let parent = path
         .parent()
         .with_context(|| format!("{label} path has no parent"))?;
@@ -177,7 +177,7 @@ fn write_json(path: &Path, value: &impl Serialize, label: &str) -> Result<()> {
     crate::storage::write_private_atomic(path, &bytes, label)
 }
 
-fn lock_document(path: &Path, label: &str) -> Result<PrivateFileLock> {
+pub(super) fn lock_document(path: &Path, label: &str) -> Result<PrivateFileLock> {
     let parent = path
         .parent()
         .with_context(|| format!("{label} path has no parent"))?;

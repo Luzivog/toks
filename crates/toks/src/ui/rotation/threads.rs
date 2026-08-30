@@ -17,31 +17,41 @@ mod selectors;
 pub(super) use presentation::{selector_label, service_tier_value, thread_title, SelectorSource};
 
 pub(super) fn threads_card(app: &ToksApp, cx: &mut gpui::Context<ToksApp>) -> gpui::Div {
-    let rows = app.rotation.runtime.live_thread_rows();
-    let title = h_flex()
-        .min_w_0()
-        .items_center()
-        .gap_2()
-        .child(
-            card_header_title("Active threads")
-                .debug_selector(|| "rotation-active-threads-title".into()),
-        )
-        .child(
-            card_header_annotation(rows.len().to_string(), cx)
-                .debug_selector(|| "rotation-active-threads-count".into()),
+    let rows = app.rotation.active_task_rows();
+    let mut title = h_flex().min_w_0().items_center().gap_2().child(
+        card_header_title("Active threads")
+            .debug_selector(|| "rotation-active-threads-title".into()),
+    );
+    if let Some(rows) = rows {
+        let count = rows.len();
+        let count_selector = format!("rotation-active-threads-count-{count}");
+        title = title.child(
+            div()
+                .debug_selector(|| "rotation-active-threads-count".into())
+                .child(
+                    card_header_annotation(count.to_string(), cx)
+                        .debug_selector(move || count_selector.clone()),
+                ),
         );
-    let captions = if rows.is_empty() {
+    }
+    let captions = if rows.is_none_or(|rows| rows.is_empty()) {
         div()
     } else {
         selectors::header_captions(cx)
     };
     let mut panel = card_with_header(title, captions, cx)
         .debug_selector(|| "rotation-active-threads-card".into());
+    let Some(rows) = rows else {
+        return panel.child(
+            empty_row("Activity unavailable.", cx)
+                .debug_selector(|| "rotation-active-threads-unavailable".into()),
+        );
+    };
     if rows.is_empty() {
         return panel.child(empty_row("No active threads.", cx));
     }
     let display_rows = grouping::group_rows(
-        &rows,
+        rows,
         &app.rotation.thread_lineage,
         &app.rotation.thread_titles,
     );

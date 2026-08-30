@@ -23,6 +23,7 @@ mod events;
 #[cfg(test)]
 mod exact_once_tests;
 mod lifecycle;
+mod owner_reconciliation;
 mod pending;
 #[cfg(test)]
 mod pending_retry_tests;
@@ -61,6 +62,7 @@ pub(crate) async fn run(runtime: RouterRuntimeHandle) -> Result<()> {
     let mut terminate = termination_signal()?;
     let mut reconcile = tokio::time::interval(std::time::Duration::from_millis(250));
     let mut reconciled_instances = None;
+    let mut reconciled_activity_instances = None;
     let mut admitting = true;
     reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
@@ -94,7 +96,12 @@ pub(crate) async fn run(runtime: RouterRuntimeHandle) -> Result<()> {
                 coordinator.advance().await?;
             }
         }
-        reconcile_connection_owners(&coordinator, &runtime, &mut reconciled_instances)?;
+        owner_reconciliation::connections(&coordinator, &runtime, &mut reconciled_instances)?;
+        owner_reconciliation::task_activity(
+            &coordinator,
+            &runtime,
+            &mut reconciled_activity_instances,
+        );
     }
 }
 
@@ -111,22 +118,6 @@ fn report_admission_change(coordinator: &Coordinator, accepts_clients: bool, adm
         Some(reason) if !accepts_clients => eprintln!("router stopped admitting clients: {reason}"),
         _ => eprintln!("router is admitting clients"),
     }
-}
-
-fn reconcile_connection_owners(
-    coordinator: &Coordinator,
-    runtime: &RouterRuntimeHandle,
-    previous: &mut Option<std::collections::BTreeMap<u64, u64>>,
-) -> Result<()> {
-    let Some(current) = coordinator.reconcilable_worker_instances() else {
-        return Ok(());
-    };
-    if previous.as_ref() == Some(&current) {
-        return Ok(());
-    }
-    runtime.reconcile_connection_owners(&current)?;
-    *previous = Some(current);
-    Ok(())
 }
 
 fn shutdown_complete(

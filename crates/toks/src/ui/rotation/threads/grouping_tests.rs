@@ -3,15 +3,16 @@ use std::collections::BTreeMap;
 use toks_core::{
     accounts::AccountId,
     codex_router::thread_lineage::{ThreadLineage, ThreadLineageKind},
-    rotation::{LiveThreadRow, ThreadId, ThreadRequestSettings},
+    rotation::{ActiveTaskRow, ThreadId, ThreadRequestSettings, UnixMillis},
 };
 
 use super::grouping::group_rows;
 
-fn row(id: impl Into<String>) -> LiveThreadRow {
-    LiveThreadRow {
+fn row(id: impl Into<String>) -> ActiveTaskRow {
+    ActiveTaskRow {
         thread_id: ThreadId::new(id),
         account_id: AccountId::new("account"),
+        started_at: UnixMillis::new(0),
         request_settings: ThreadRequestSettings::default(),
     }
 }
@@ -121,7 +122,7 @@ fn cycles_render_once_in_flat_original_order() {
 }
 
 #[test]
-fn grouping_keeps_every_live_thread() {
+fn grouping_keeps_every_active_task() {
     let mut rows = vec![row("child")];
     rows.extend((1..=99).map(|index| row(format!("root-{index:02}"))));
     rows.push(row("parent"));

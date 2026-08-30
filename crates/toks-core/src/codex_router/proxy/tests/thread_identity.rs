@@ -32,6 +32,14 @@ fn duplicate_type_keys_are_denied_by_the_same_parser_that_extracts_identity() {
     }
 }
 
+#[test]
+fn response_cancel_is_a_terminal_client_frame() {
+    assert_eq!(
+        ClientRequestFrame::from_payload(br#"{"type":"response.cancel"}"#),
+        ClientRequestFrame::ResponseCancel
+    );
+}
+
 #[tokio::test]
 async fn websocket_duplicate_type_never_reaches_upstream_model_traffic() {
     for payload in [

@@ -5,7 +5,7 @@ use toks_core::{
         account_activation::SelectableModel, thread_lineage::ThreadLineage, RouterDeploymentStatus,
         RouterInstallStatus,
     },
-    rotation::{RotationRuntime, RotationSettings, ThreadId},
+    rotation::{ActiveTaskRow, RotationRuntime, RotationSettings, TaskActivity, ThreadId},
 };
 
 use super::super::remote_control_operations::RemoteControlUiState;
@@ -22,7 +22,63 @@ pub(crate) struct RotationUiState {
     pub error: Option<String>,
     pub busy: Option<&'static str>,
     pub remote: RemoteControlUiState,
+    pub(super) activity: ActiveTaskProjection,
     pub(super) generation: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) enum ActiveTaskProjection {
+    Available(Vec<ActiveTaskRow>),
+    #[default]
+    Unavailable,
+}
+
+impl ActiveTaskProjection {
+    pub(super) fn from_activity_at(
+        activity: &TaskActivity,
+        observed_at: toks_core::rotation::UnixMillis,
+    ) -> Self {
+        match activity.active_task_rows_at(observed_at) {
+            Ok(rows) => Self::Available(rows),
+            Err(_) => Self::Unavailable,
+        }
+    }
+
+    pub(super) fn rows(&self) -> Option<&[ActiveTaskRow]> {
+        match self {
+            Self::Available(rows) => Some(rows),
+            Self::Unavailable => None,
+        }
+    }
+}
+
+impl RotationUiState {
+    pub(crate) fn active_task_rows(&self) -> Option<&[ActiveTaskRow]> {
+        self.activity.rows()
+    }
+
+    pub(crate) fn active_task_count(
+        &self,
+        account: &toks_core::accounts::AccountId,
+    ) -> Option<u32> {
+        self.active_task_rows().map(|rows| {
+            rows.iter()
+                .filter(|row| &row.account_id == account)
+                .count()
+                .try_into()
+                .unwrap_or(u32::MAX)
+        })
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(crate) fn set_active_task_rows(&mut self, rows: Vec<ActiveTaskRow>) {
+        self.activity = ActiveTaskProjection::Available(rows);
+    }
+
+    #[cfg(feature = "test-support")]
+    pub(crate) fn set_activity_unavailable(&mut self) {
+        self.activity = ActiveTaskProjection::Unavailable;
+    }
 }
 
 impl Default for RotationUiState {
@@ -43,6 +99,7 @@ impl Default for RotationUiState {
             error: None,
             busy: None,
             remote: Default::default(),
+            activity: ActiveTaskProjection::Unavailable,
             generation: 0,
         }
     }

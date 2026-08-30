@@ -9,16 +9,20 @@ use toks_core::{
     },
     rotation::{
         InvalidThreadOverrideValue, RotationRuntime, RotationRuntimeStore, RotationSettings,
-        RotationSettingsStore, ThreadId, ThreadOverrideChange,
+        RotationSettingsStore, TaskActivityStore, ThreadId, ThreadOverrideChange,
     },
     StoreUpdate,
 };
 
-use super::{thread_metadata::ThreadMetadataStores, RotationServiceAction, SettingsAction};
+use super::{
+    state::ActiveTaskProjection, thread_metadata::ThreadMetadataStores, RotationServiceAction,
+    SettingsAction,
+};
 
 pub(super) struct LoadedRotation {
     pub settings: RotationSettings,
     pub runtime: RotationRuntime,
+    pub activity: ActiveTaskProjection,
     pub thread_titles: BTreeMap<ThreadId, String>,
     pub thread_lineage: BTreeMap<ThreadId, ThreadLineage>,
     pub selectable_models: Vec<SelectableModel>,
@@ -111,15 +115,23 @@ pub(super) fn load_rotation(
 ) -> Result<LoadedRotation> {
     let settings_store = RotationSettingsStore::discover()?;
     let runtime = RotationRuntimeStore::discover()?.load()?;
-    let deployment = codex_router::deployment_status(&runtime)?;
+    // A failed activity read must replace old rows with Unavailable. Returning
+    // the error here would leave the last successful count frozen on screen.
+    let task_activity = TaskActivityStore::discover()
+        .and_then(|store| store.load())
+        .unwrap_or_default();
+    let activity_observed_at = toks_core::rotation::UnixMillis::now();
+    let activity = ActiveTaskProjection::from_activity_at(&task_activity, activity_observed_at);
+    let deployment = codex_router::deployment_status(&task_activity, activity_observed_at)?;
     let settings = settings_store.update(|settings| {
         let accounts_changed = accounts.is_some_and(|accounts| settings.reconcile(accounts));
         let changed = accounts_changed | settings.reconcile_thread_state(&runtime);
         StoreUpdate::from_changed(settings.clone(), changed)
     })?;
-    let thread_metadata = metadata_stores.load(&runtime);
+    let thread_metadata = metadata_stores.load(activity.rows().unwrap_or_default());
     Ok(LoadedRotation {
         settings,
+        activity,
         thread_titles: thread_metadata.titles,
         thread_lineage: thread_metadata.lineage,
         selectable_models: codex_router::account_activation::selectable_models(),

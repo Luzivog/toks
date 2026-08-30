@@ -129,3 +129,11 @@ pub(crate) fn rotation_runtime() -> Result<PathBuf> {
 pub(crate) fn rotation_runtime_at(data: &Path) -> PathBuf {
     data.join("rotation/runtime.json")
 }
+
+pub(crate) fn rotation_task_activity() -> Result<PathBuf> {
+    Ok(rotation_task_activity_at(&data_dir()?))
+}
+
+pub(crate) fn rotation_task_activity_at(data: &Path) -> PathBuf {
+    data.join("rotation/activity.json")
+}

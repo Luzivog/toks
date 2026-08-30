@@ -104,6 +104,10 @@ impl RouterRuntimeHandle {
         self.engine.reconcile_connection_owners(surviving)
     }
 
+    pub(crate) fn reconcile_task_activity_owners(&self, surviving: &BTreeMap<u64, u64>) -> bool {
+        self.engine.reconcile_task_activity_owners(surviving)
+    }
+
     pub(crate) fn reconcile_owned_connections(&self) -> Result<()> {
         self.engine.reconcile_owned_connections()
     }

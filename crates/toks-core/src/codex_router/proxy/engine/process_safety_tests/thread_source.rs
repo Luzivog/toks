@@ -42,6 +42,7 @@ fn only_known_root_or_unknown_threads_enter_the_external_resume_queue() {
         thread_sources: crate::codex_router::thread_source::ThreadSourceStore::for_database(
             database,
         ),
+        task_activity_store: None,
     })
     .unwrap();
 

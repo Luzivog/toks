@@ -84,7 +84,7 @@ fn worker_inventory_restores_missing_presence_without_erasing_affinity_metadata(
         .reconcile_worker_connection_inventory(worker, &inventory, UnixMillis::new(3))
         .unwrap());
     assert_eq!(runtime.in_flight_count(&account), 1);
-    assert_eq!(runtime.live_thread_rows()[0].thread_id, restored);
+    assert!(runtime.retained_thread_ids().contains(&restored));
     assert_eq!(
         runtime.thread_request_settings(&affinity).unwrap().model,
         Some("gpt-test".into())

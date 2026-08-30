@@ -14,19 +14,24 @@ impl Engine {
         resume_attempt: Option<&str>,
         request_settings: Option<&ThreadRequestSettings>,
     ) -> Result<Option<AuthorizedRoute>> {
-        let Some(_) = self.connection_owner else {
-            return self.route_request_authorized(
+        let route = if self.connection_owner.is_none() {
+            self.route_request_authorized(account, thread, resume_attempt, request_settings)?
+        } else {
+            let mut inventory = self.inventory();
+            let route =
+                self.route_request_authorized(account, thread, resume_attempt, request_settings)?;
+            if route.is_some() {
+                inventory.stream_opened(account, thread);
+            }
+            route
+        };
+        if route.is_some() {
+            self.task_activity.started(
                 account,
                 thread,
-                resume_attempt,
-                request_settings,
+                request_settings.cloned().unwrap_or_default(),
+                UnixMillis::now(),
             );
-        };
-        let mut inventory = self.inventory();
-        let route =
-            self.route_request_authorized(account, thread, resume_attempt, request_settings)?;
-        if route.is_some() {
-            inventory.stream_opened(account, thread);
         }
         Ok(route)
     }
@@ -53,13 +58,18 @@ impl Engine {
         thread: &ThreadId,
         resume_attempt: Option<&str>,
     ) -> Result<bool> {
-        let Some(_) = self.connection_owner else {
-            return self.attach_authorized(account, thread, resume_attempt);
+        let attached = if self.connection_owner.is_none() {
+            self.attach_authorized(account, thread, resume_attempt)?
+        } else {
+            let mut inventory = self.inventory();
+            let attached = self.attach_authorized(account, thread, resume_attempt)?;
+            if attached {
+                inventory.attachment_opened(account, thread);
+            }
+            attached
         };
-        let mut inventory = self.inventory();
-        let attached = self.attach_authorized(account, thread, resume_attempt)?;
         if attached {
-            inventory.attachment_opened(account, thread);
+            self.task_activity.attachment_opened(thread);
         }
         Ok(attached)
     }
@@ -69,13 +79,14 @@ impl Engine {
         account: &AccountId,
         thread: &ThreadId,
     ) -> Result<()> {
-        let Some(_) = self.connection_owner else {
-            return self.detach(account, thread);
-        };
-        let mut inventory = self.inventory();
-        let attachment_closed = inventory.attachment_closed(account, thread);
-        debug_assert!(attachment_closed);
-        self.detach(account, thread)
+        if self.connection_owner.is_some() {
+            let mut inventory = self.inventory();
+            let attachment_closed = inventory.attachment_closed(account, thread);
+            debug_assert!(attachment_closed);
+        }
+        let result = self.detach(account, thread);
+        self.task_activity.attachment_closed(thread);
+        result
     }
 
     pub(crate) fn reconcile_owned_connections(&self) -> Result<()> {
@@ -92,10 +103,17 @@ impl Engine {
                 Ok(changed) => StoreUpdate::from_changed(Ok(()), changed),
                 Err(error) => StoreUpdate::Unchanged(Err(error)),
             }
-        })?;
-        reconciled?;
-        inventory.continuations_published();
-        Ok(())
+        });
+        let result = match reconciled {
+            Ok(result) => result.map_err(Into::into),
+            Err(error) => Err(error),
+        };
+        if result.is_ok() {
+            inventory.continuations_published();
+        }
+        drop(inventory);
+        self.task_activity.publish_current();
+        result
     }
 
     fn finish_tracked_stream(
@@ -104,27 +122,34 @@ impl Engine {
         thread: &ThreadId,
         continues: bool,
     ) -> Result<()> {
-        let Some(_) = self.connection_owner else {
-            return if continues {
+        let result = if self.connection_owner.is_none() {
+            if continues {
                 self.continue_response(account, thread)
             } else {
                 self.close(account, thread)
-            };
-        };
-        let mut inventory = self.inventory();
-        if continues {
-            let stream_continues = inventory.stream_continues(account, thread);
-            debug_assert!(stream_continues);
-            let published = self.continue_response(account, thread);
-            if published.is_ok() {
-                inventory.continuation_published(account, thread);
             }
-            published
         } else {
-            let stream_closed = inventory.stream_closed(account, thread);
-            debug_assert!(stream_closed);
-            self.close(account, thread)
+            let mut inventory = self.inventory();
+            if continues {
+                let stream_continues = inventory.stream_continues(account, thread);
+                debug_assert!(stream_continues);
+                let published = self.continue_response(account, thread);
+                if published.is_ok() {
+                    inventory.continuation_published(account, thread);
+                }
+                published
+            } else {
+                let stream_closed = inventory.stream_closed(account, thread);
+                debug_assert!(stream_closed);
+                self.close(account, thread)
+            }
+        };
+        if continues {
+            self.task_activity.continues(thread);
+        } else {
+            self.task_activity.finished(thread);
         }
+        result
     }
 
     pub(super) fn inventory(

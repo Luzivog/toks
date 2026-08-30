@@ -5,7 +5,7 @@ use toks_core::{
         thread_lineage::{ThreadLineage, ThreadLineageKind, ThreadLineageStore},
         thread_titles::ThreadTitleStore,
     },
-    rotation::{RotationRuntime, ThreadId},
+    rotation::{ActiveTaskRow, ThreadId},
 };
 
 #[derive(Clone)]
@@ -27,11 +27,10 @@ impl ThreadMetadataStores {
         }
     }
 
-    pub(super) fn load(&self, runtime: &RotationRuntime) -> ThreadMetadata {
-        let visible_ids = runtime
-            .live_thread_rows()
-            .into_iter()
-            .map(|row| row.thread_id)
+    pub(super) fn load(&self, rows: &[ActiveTaskRow]) -> ThreadMetadata {
+        let visible_ids = rows
+            .iter()
+            .map(|row| row.thread_id.clone())
             .collect::<Vec<_>>();
         let lineage = self.lineage.lineages(&visible_ids);
         let mut title_ids = visible_ids.into_iter().collect::<BTreeSet<_>>();

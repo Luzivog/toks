@@ -83,6 +83,11 @@ pub(super) async fn handle(
                     .await
                     .ok();
             }
+            ClientRequestFrame::ResponseCancel => {
+                if let Some(thread) = &turn.thread {
+                    engine.cancel_task(thread);
+                }
+            }
             ClientRequestFrame::Other => {}
         }
     }

@@ -144,7 +144,10 @@ fn role_color(service_active: bool, cx: &gpui::App) -> gpui::Hsla {
 }
 
 fn workload_label(app: &ToksApp, generation: &RouterGenerationSummary) -> String {
-    let tasks = match generation.task_count {
+    let Some(task_count) = generation.task_count else {
+        return "Activity unavailable".into();
+    };
+    let tasks = match task_count {
         0 => return "0 tasks".into(),
         1 => "1 task".into(),
         count => format!("{count} tasks"),

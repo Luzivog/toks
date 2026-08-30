@@ -17,9 +17,9 @@ mod hard_quota_handoff;
 mod mutations;
 mod reconcile;
 mod resume_admissions;
-mod thread_rows;
+mod thread_request_settings;
 #[cfg(test)]
-mod thread_rows_tests;
+mod thread_request_settings_tests;
 mod validation;
 mod waiting;
 
@@ -30,7 +30,7 @@ pub(crate) use connection_owner::WorkerConnectionOwner;
 use connection_owner::{AttachedThread, WorkerConnectionCount};
 pub(crate) use hard_quota_handoff::DeliveredHardLimitHandoff;
 pub(crate) use resume_admissions::{ResumeAuthorization, ResumeRoute, ResumeTerminal};
-pub use thread_rows::{LiveThreadRow, ThreadRequestSettings};
+pub use thread_request_settings::ThreadRequestSettings;
 pub use waiting::{WaitingId, WaitingThread};
 
 pub(super) const RUNTIME_VERSION: u8 = 1;

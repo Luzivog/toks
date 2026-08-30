@@ -77,9 +77,10 @@ fn status_from_observations(
 }
 
 pub fn deployment_status(
-    runtime: &crate::rotation::RotationRuntime,
+    activity: &crate::rotation::TaskActivity,
+    observed_at: crate::rotation::UnixMillis,
 ) -> Result<RouterDeploymentStatus> {
-    deployment_status::load(runtime)
+    deployment_status::load(activity, observed_at)
 }
 
 pub(crate) fn acknowledge_banked_reset(

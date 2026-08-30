@@ -9,14 +9,15 @@ mod quota_tests;
 mod runtime;
 mod settings;
 mod storage;
+mod task_activity;
 mod types;
 
 pub(crate) use quota::QuotaObservation;
 pub use quota::{account_quota_drain, AccountQuotaDrain};
 pub(crate) use runtime::ThreadOwnership;
 pub use runtime::{
-    AccountAvailability, AccountRuntime, LiveThreadRow, RotationRuntime, RouterHealth,
-    ThreadAccountConflict, ThreadRequestSettings, WaitingId, WaitingThread,
+    AccountAvailability, AccountRuntime, RotationRuntime, RouterHealth, ThreadAccountConflict,
+    ThreadRequestSettings, WaitingId, WaitingThread,
 };
 pub(crate) use runtime::{
     DeliveredHardLimitHandoff, ResumeAuthorization, ResumeRoute, ResumeTerminal,
@@ -26,6 +27,10 @@ pub use settings::{
     InvalidThreadOverrideValue, RotationSettings, ThreadOverride, ThreadOverrideChange,
 };
 pub use storage::{RotationPaths, RotationRuntimeStore, RotationSettingsStore};
+pub use task_activity::{
+    ActiveTask, ActiveTaskRow, GenerationTaskActivity, TaskActivity, TaskActivityConflict,
+    TaskActivityStore, TaskActivityUnavailable, TASK_ACTIVITY_FRESHNESS_MILLIS,
+};
 pub use types::{
     BlockWindow, RotationEvent, RotationEventKind, ThreadId, UnixMillis, UsageLimitClassification,
     UsageLimitEvidence, UsageLimitIncident, UsageLimitPhase, UsageLimitTier, UsageLimitTierOrigin,

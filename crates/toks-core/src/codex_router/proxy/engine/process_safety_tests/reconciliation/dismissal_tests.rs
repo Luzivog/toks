@@ -22,6 +22,7 @@ impl Reconciliation {
             catalogue: Catalogue::at(None),
             connection_owner: Some(WorkerConnectionOwner::new(2, 201).unwrap()),
             thread_sources: ThreadSourceStore::discover(),
+            task_activity_store: None,
         })
         .unwrap()
     }

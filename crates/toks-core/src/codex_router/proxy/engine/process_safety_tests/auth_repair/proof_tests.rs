@@ -43,6 +43,7 @@ async fn permanent_unauthorized_state_survives_restart_until_credentials_are_pro
             catalogue: Catalogue::at(None),
             connection_owner: None,
             thread_sources: ThreadSourceStore::discover(),
+            task_activity_store: None,
         })
         .unwrap()
     };
@@ -130,6 +131,7 @@ async fn snapshot_repair_requires_a_changed_exact_credential_and_unchanged_failu
         catalogue: Catalogue::at(None),
         connection_owner: None,
         thread_sources: ThreadSourceStore::discover(),
+        task_activity_store: None,
     })
     .unwrap();
     engine
@@ -315,6 +317,7 @@ async fn a_cross_account_credential_is_rejected_without_leaking_its_reservation(
         catalogue: Catalogue::at(None),
         connection_owner: None,
         thread_sources: ThreadSourceStore::discover(),
+        task_activity_store: None,
     })
     .unwrap();
 

@@ -14,7 +14,6 @@ mod ownership;
 mod reconciliation;
 mod reservations;
 mod worker_reconciliation;
-mod workloads;
 
 pub use account_claim::ThreadAccountConflict;
 pub(crate) use account_claim::ThreadOwnership;
@@ -32,8 +31,6 @@ pub(super) struct ActiveThread {
     #[serde(default)]
     reservations: u32,
     awaiting_follow_up: bool,
-    #[serde(default)]
-    pub(super) started_at: Option<UnixMillis>,
     pub(super) last_activity_at: UnixMillis,
     #[serde(default, skip_serializing_if = "ThreadRequestSettings::is_empty")]
     pub(super) request_settings: ThreadRequestSettings,
@@ -47,7 +44,6 @@ impl ActiveThread {
             stream_owners: BTreeMap::new(),
             reservations: 0,
             awaiting_follow_up: false,
-            started_at: Some(at),
             last_activity_at: at,
             request_settings: ThreadRequestSettings::default(),
         }
@@ -56,10 +52,6 @@ impl ActiveThread {
     #[cfg(test)]
     pub(super) fn is_live(&self) -> bool {
         self.stream_count() > 0 || self.reservations > 0
-    }
-
-    pub(super) fn awaiting_follow_up(&self) -> bool {
-        self.awaiting_follow_up
     }
 }
 

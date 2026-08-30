@@ -3,14 +3,17 @@ use tempfile::tempdir;
 use super::*;
 use crate::accounts::AccountId;
 use crate::codex_router::host::{BuildId, DeployPlan, DeploymentEvent, GenerationId};
-use crate::rotation::{ThreadId, UnixMillis, WorkerConnectionOwner};
+use crate::rotation::{
+    ActiveTask, TaskActivity, ThreadId, ThreadRequestSettings, UnixMillis, WorkerConnectionOwner,
+};
 
 #[test]
 fn missing_pre_generation_state_stays_quiet() {
     let directory = tempdir().unwrap();
     let status = load_at(
         &directory.path().join("router-host.json"),
-        &RotationRuntime::default(),
+        &TaskActivity::default(),
+        UnixMillis::new(0),
     )
     .unwrap();
 
@@ -32,42 +35,31 @@ fn projection_reports_builds_and_unique_live_tasks_per_generation() {
         .reconcile(DeploymentEvent::TargetAccepting { target: new })
         .unwrap();
 
-    let account = AccountId::new("account");
-    let mut runtime = RotationRuntime::default();
-    runtime
-        .connection_opened_by(
+    let mut activity = TaskActivity::default();
+    activity
+        .replace_worker_at(
             WorkerConnectionOwner::new(old.get(), 101).unwrap(),
-            &account,
-            &ThreadId::new("oldest"),
-            UnixMillis::new(10),
+            1,
+            tasks(&[("oldest", 10), ("newer", 20)]),
+            UnixMillis::now(),
         )
         .unwrap();
-    runtime
-        .connection_opened_by(
-            WorkerConnectionOwner::new(old.get(), 101).unwrap(),
-            &account,
-            &ThreadId::new("oldest"),
-            UnixMillis::new(11),
-        )
-        .unwrap();
-    runtime
-        .connection_opened_by(
-            WorkerConnectionOwner::new(old.get(), 101).unwrap(),
-            &account,
-            &ThreadId::new("newer"),
-            UnixMillis::new(20),
-        )
-        .unwrap();
-    runtime
-        .connection_opened_by(
+    activity
+        .replace_worker_at(
             WorkerConnectionOwner::new(new.get(), 202).unwrap(),
-            &account,
-            &ThreadId::new("current"),
-            UnixMillis::new(30),
+            1,
+            tasks(&[("current", 30)]),
+            UnixMillis::now(),
         )
+        .unwrap();
+    activity
+        .reconcile_expected_workers(&std::collections::BTreeMap::from([
+            (old.get(), 101),
+            (new.get(), 202),
+        ]))
         .unwrap();
 
-    let status = project(&state, &runtime);
+    let status = project(&state, &activity, UnixMillis::now());
     assert!(status.update_waiting);
     assert_eq!(
         status.generations,
@@ -76,14 +68,14 @@ fn projection_reports_builds_and_unique_live_tasks_per_generation() {
                 generation: new.get(),
                 build: "new-build".into(),
                 role: RouterGenerationRole::Active,
-                task_count: 1,
+                task_count: Some(1),
                 oldest_task_at: Some(UnixMillis::new(30)),
             },
             RouterGenerationSummary {
                 generation: old.get(),
                 build: "old-build".into(),
                 role: RouterGenerationRole::Draining,
-                task_count: 2,
+                task_count: Some(2),
                 oldest_task_at: Some(UnixMillis::new(10)),
             },
         ]
@@ -98,11 +90,38 @@ fn persisted_state_is_the_read_model_authority() {
     let pending = stage(&mut state, "candidate");
     std::fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
 
-    let status = load_at(&path, &RotationRuntime::default()).unwrap();
+    let status = load_at(&path, &TaskActivity::default(), UnixMillis::new(0)).unwrap();
     assert!(status.update_waiting);
     assert_eq!(status.generations.len(), 1);
     assert_eq!(status.generations[0].generation, pending.get());
     assert_eq!(status.generations[0].role, RouterGenerationRole::Pending);
+}
+
+#[test]
+fn unavailable_activity_never_falls_back_to_transport_counts() {
+    let mut state = DeploymentState::default();
+    let active = activate(&mut state, "active");
+    let status = project(&state, &TaskActivity::default(), UnixMillis::new(0));
+
+    assert_eq!(status.generations[0].generation, active.get());
+    assert_eq!(status.generations[0].task_count, None);
+    assert_eq!(status.generations[0].oldest_task_at, None);
+}
+
+fn tasks(entries: &[(&str, i64)]) -> std::collections::BTreeMap<ThreadId, ActiveTask> {
+    entries
+        .iter()
+        .map(|(thread, started_at)| {
+            (
+                ThreadId::new(*thread),
+                ActiveTask {
+                    account_id: AccountId::new("account"),
+                    request_settings: ThreadRequestSettings::default(),
+                    started_at: UnixMillis::new(*started_at),
+                },
+            )
+        })
+        .collect()
 }
 
 fn stage(state: &mut DeploymentState, build: &str) -> GenerationId {

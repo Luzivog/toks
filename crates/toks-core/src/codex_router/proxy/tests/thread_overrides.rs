@@ -231,7 +231,7 @@ async fn websocket_overrides_apply_to_each_turn_without_reconnecting() {
     let idle = RotationRuntimeStore::for_data_dir(harness._directory.path())
         .load()
         .unwrap();
-    assert!(idle.live_thread_rows().is_empty());
+    assert_eq!(idle.in_flight_count(&AccountId::new("a")), 0);
     let idle_settings = idle.thread_request_settings(&thread).unwrap();
     assert_eq!(idle_settings.model.as_deref(), Some("gpt-5.6-sol"));
     assert_eq!(idle_settings.reasoning_effort.as_deref(), Some("xhigh"));
