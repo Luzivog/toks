@@ -17,6 +17,7 @@ const NOW: i64 = 1_800_000_000_000;
 const WEEK: i64 = 7 * 24 * 60 * 60 * 1_000;
 
 mod command;
+mod manual_routing;
 
 #[test]
 fn only_unused_proved_weekly_accounts_are_claimed() {

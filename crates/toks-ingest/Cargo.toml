@@ -9,6 +9,9 @@ homepage.workspace = true
 description = "Toks local session parsing, incremental scanning, and pricing"
 publish = false
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib"]
 

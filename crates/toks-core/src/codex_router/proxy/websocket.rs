@@ -6,7 +6,7 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{header, HeaderMap, Response, StatusCode, Uri};
 use futures_util::StreamExt;
 
-use super::headers::{response_headers, resume_marker};
+use super::headers::{activation_marker, response_headers, resume_marker};
 use super::protocol::{ClientRequestFrame, ThreadIdentity, ALL_UNAVAILABLE_FRAME};
 use super::{engine::RouteSelection, ProxyState};
 
@@ -16,6 +16,9 @@ pub(super) async fn forward(
     uri: Uri,
     headers: HeaderMap,
 ) -> Response<Body> {
+    if activation_marker(&headers).is_present() {
+        return empty(StatusCode::BAD_REQUEST);
+    }
     let identity = ThreadIdentity::from_headers(&headers);
     if identity == ThreadIdentity::Denied {
         return empty(StatusCode::BAD_REQUEST);

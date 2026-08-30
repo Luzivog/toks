@@ -73,7 +73,8 @@ impl Engine {
             return self.detach(account, thread);
         };
         let mut inventory = self.inventory();
-        debug_assert!(inventory.attachment_closed(account, thread));
+        let attachment_closed = inventory.attachment_closed(account, thread);
+        debug_assert!(attachment_closed);
         self.detach(account, thread)
     }
 
@@ -112,19 +113,23 @@ impl Engine {
         };
         let mut inventory = self.inventory();
         if continues {
-            debug_assert!(inventory.stream_continues(account, thread));
+            let stream_continues = inventory.stream_continues(account, thread);
+            debug_assert!(stream_continues);
             let published = self.continue_response(account, thread);
             if published.is_ok() {
                 inventory.continuation_published(account, thread);
             }
             published
         } else {
-            debug_assert!(inventory.stream_closed(account, thread));
+            let stream_closed = inventory.stream_closed(account, thread);
+            debug_assert!(stream_closed);
             self.close(account, thread)
         }
     }
 
-    fn inventory(&self) -> std::sync::MutexGuard<'_, crate::rotation::WorkerConnectionInventory> {
+    pub(super) fn inventory(
+        &self,
+    ) -> std::sync::MutexGuard<'_, crate::rotation::WorkerConnectionInventory> {
         self.connection_inventory
             .lock()
             .expect("router connection inventory poisoned")

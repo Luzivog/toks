@@ -105,9 +105,7 @@ impl Coordinator {
             pending: Pending::new()?,
             workers: Workers::new(disconnected_workers),
             active,
-            worker_command: Arc::new(|action, generations| {
-                Box::pin(super::worker_unit::run(action, generations))
-            }),
+            worker_command: default_worker_command(),
             #[cfg(not(test))]
             worker_inventory: Arc::new(|| Box::pin(super::worker_unit::inventory())),
             #[cfg(test)]
@@ -179,4 +177,14 @@ impl Coordinator {
         self.pending.mark_preparing(wire_generation, id);
         Ok(())
     }
+}
+
+#[cfg(not(test))]
+fn default_worker_command() -> WorkerCommand {
+    Arc::new(|action, generations| Box::pin(super::worker_unit::run(action, generations)))
+}
+
+#[cfg(test)]
+fn default_worker_command() -> WorkerCommand {
+    Arc::new(|_, _| Box::pin(async { Ok(()) }))
 }

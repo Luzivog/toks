@@ -26,6 +26,7 @@ pub(super) fn manual(
         phase: JobPhase::Pending {
             not_before_ms: now_ms,
         },
+        manual_route: None,
     });
     ManualRequest::Queued
 }
@@ -34,13 +35,11 @@ pub(super) fn reconcile_account(document: &mut Document, account: &AccountId, no
     let Some(state) = document.accounts.get_mut(account) else {
         return;
     };
-    for job in [&mut state.automatic, &mut state.manual]
-        .into_iter()
-        .flatten()
-    {
+    if let Some(job) = state.automatic.as_mut() {
         job::reconcile_owner(job, now_ms);
         job::reconcile_timeout(job, now_ms);
     }
+    job::reconcile_manual(account, state, now_ms);
 }
 
 pub(super) fn set_automatic(document: &mut Document, account: &AccountId, enabled: bool) {
@@ -70,5 +69,6 @@ pub(super) fn status(document: &Document, account: &AccountId) -> AccountActivat
         manual: state
             .and_then(|state| state.manual.as_ref())
             .map_or(ManualTestStatus::Ready, job::manual_status),
+        manual_receipt: state.and_then(|state| state.manual_receipt.clone()),
     }
 }

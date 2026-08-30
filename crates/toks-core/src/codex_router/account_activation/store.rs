@@ -7,17 +7,23 @@ use super::model::{Document, DOCUMENT_VERSION};
 use crate::storage::{LockMode, PrivateFileLock, StoreUpdate};
 
 #[derive(Clone, Debug)]
-pub(super) struct Store {
+pub(in crate::codex_router) struct Store {
     path: PathBuf,
 }
 
 impl Store {
-    pub(super) fn discover() -> Result<Self> {
+    pub(in crate::codex_router) fn discover() -> Result<Self> {
         Ok(Self::at(crate::paths::account_activation_store()?))
     }
 
-    pub(super) fn at(path: PathBuf) -> Self {
+    pub(in crate::codex_router) fn at(path: PathBuf) -> Self {
         Self { path }
+    }
+
+    pub(in crate::codex_router) fn for_runtime(
+        runtime: &crate::rotation::RotationRuntimeStore,
+    ) -> Self {
+        Self::at(runtime.path().with_file_name("account-activation.json"))
     }
 
     pub(super) fn load(&self) -> Result<Document> {

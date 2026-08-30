@@ -4,7 +4,9 @@ use crate::accounts::AccountId;
 
 use super::authority::Authority;
 use super::job;
-use super::model::{AccountState, Document, FailureReason, Job, JobKind, JobPhase, Launch};
+use super::model::{
+    AccountState, Document, FailureReason, Job, JobKind, JobPhase, Launch, LaunchKind,
+};
 
 mod outcome;
 pub(super) use outcome::{fail_pending_manual, finish};
@@ -23,7 +25,7 @@ pub(super) fn observe(
         let disabled = document.disabled.contains(account);
         let state = document.accounts.entry(account.clone()).or_default();
         adopt_fixed_reset(state, authority, now_ms);
-        reconcile_active(state, now_ms);
+        reconcile_active(account, state, now_ms);
         if !disabled && !state.manual.as_ref().is_some_and(job::active) {
             ensure_automatic(state, authority, now_ms);
         }
@@ -49,14 +51,12 @@ fn adopt_fixed_reset(state: &mut AccountState, authority: &Authority, now_ms: i6
     }
 }
 
-fn reconcile_active(state: &mut AccountState, now_ms: i64) {
-    for job in [&mut state.automatic, &mut state.manual]
-        .into_iter()
-        .flatten()
-    {
+fn reconcile_active(account: &AccountId, state: &mut AccountState, now_ms: i64) {
+    if let Some(job) = state.automatic.as_mut() {
         job::reconcile_owner(job, now_ms);
         job::reconcile_timeout(job, now_ms);
     }
+    job::reconcile_manual(account, state, now_ms);
 }
 
 fn ensure_automatic(state: &mut AccountState, authority: &Authority, now_ms: i64) {
@@ -81,6 +81,7 @@ fn ensure_automatic(state: &mut AccountState, authority: &Authority, now_ms: i64
             phase: JobPhase::Pending {
                 not_before_ms: now_ms,
             },
+            manual_route: None,
         });
     }
 }
@@ -141,6 +142,10 @@ fn launch(
         id: job.id.clone(),
         account: account.clone(),
         profile_id: authority.profile_id.clone(),
+        kind: match &job.kind {
+            JobKind::Automatic { .. } => LaunchKind::Automatic,
+            JobKind::Manual => LaunchKind::Manual,
+        },
     });
 }
 

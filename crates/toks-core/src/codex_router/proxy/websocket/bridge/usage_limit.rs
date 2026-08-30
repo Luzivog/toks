@@ -6,6 +6,7 @@ use crate::accounts::AccountId;
 use crate::rotation::{UsageLimitPhase, UsageLimitTierOrigin};
 
 use super::{message::to_client, Turn};
+use crate::codex_router::proxy::lease::TerminalOwnership;
 use crate::codex_router::proxy::protocol::{UsageBlock, RETRY_FRAME};
 use crate::codex_router::proxy::websocket::connect::UpstreamSocket;
 use crate::codex_router::proxy::{
@@ -33,6 +34,24 @@ pub(super) async fn handle(
     } else {
         ResponseDelivery::NothingDelivered
     };
+    if tier == AttemptedTier::Other && delivery == ResponseDelivery::Delivered {
+        if let Some(ownership) = TerminalOwnership::take(&mut turn.lease, &mut turn.attachment) {
+            turn.active = false;
+            if let Err(error) = ownership.commit_delivered_hard_limit(
+                block.resets_at,
+                block.incident(
+                    turn.thread.clone(),
+                    turn.model.as_deref(),
+                    turn.request_tier.clone(),
+                    UsageLimitPhase::WebSocketFrame,
+                ),
+            ) {
+                eprintln!("toks router failed to commit delivered hard quota handoff: {error:#}");
+            }
+            let _ = client.send(to_client(message)).await;
+            return None;
+        }
+    }
     let action = match engine.request_usage_limited(
         account,
         turn.thread.as_ref(),

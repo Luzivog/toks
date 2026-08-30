@@ -43,6 +43,8 @@ impl Engine {
             connection_owner,
             thread_sources,
         } = config;
+        let activation =
+            crate::codex_router::account_activation::Store::for_runtime(&runtime_store);
         let runtime = RuntimeWriter::new(runtime_store)?;
         let observed_at = UnixMillis::now();
         runtime.update(|state| {
@@ -61,6 +63,7 @@ impl Engine {
             connection_owner,
             connection_inventory: Mutex::new(Default::default()),
             thread_sources,
+            activation,
         });
         engine.apply_rotation_settings(observed_at)?;
         Ok(engine)

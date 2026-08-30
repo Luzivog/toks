@@ -5,7 +5,7 @@ use gpui_component::menu::PopupMenuItem;
 use toks_core::{
     accounts::AccountId,
     codex_router::account_activation::{
-        AccountActivationStatus, AutomaticTestStatus, ManualTestStatus,
+        AccountActivationStatus, AutomaticTestStatus, ManualTestOutcome, ManualTestStatus,
     },
 };
 
@@ -42,11 +42,33 @@ pub(super) fn items(
             on_toggle(automatic_account.clone(), !automatic_enabled, window, cx);
         });
     let mut items = vec![test];
+    if let Some(receipt) = receipt_label(&status) {
+        items.push(PopupMenuItem::new(receipt).disabled(true));
+    }
     if status.automatic == AutomaticTestStatus::NeedsAttention {
         items.push(PopupMenuItem::new("Automatic test needs attention").disabled(true));
     }
     items.push(automatic);
     items
+}
+
+pub(super) fn receipt_label(status: &AccountActivationStatus) -> Option<String> {
+    let receipt = status.manual_receipt.as_ref()?;
+    let task = receipt
+        .thread_id
+        .as_ref()
+        .map(|thread| thread.as_str().chars().take(8).collect::<String>());
+    let exact = receipt.observed_account.as_ref() == Some(&receipt.requested_account);
+    let summary = match (receipt.outcome, exact) {
+        (ManualTestOutcome::Succeeded, true) => "Last test succeeded on this account",
+        (ManualTestOutcome::Succeeded, false) => "Last test could not verify its account",
+        (ManualTestOutcome::Failed, true) => "Last test failed on this account",
+        (ManualTestOutcome::Failed, false) => "Last test failed before routing",
+    };
+    Some(task.map_or_else(
+        || summary.to_owned(),
+        |task| format!("{summary} · task {task}"),
+    ))
 }
 
 pub(super) fn test_action(status: &AccountActivationStatus) -> (&'static str, bool) {

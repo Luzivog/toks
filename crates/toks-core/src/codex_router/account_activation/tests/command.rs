@@ -49,6 +49,52 @@ fn command_is_exact_account_isolated_read_only_and_four_letter_prompt() {
 }
 
 #[test]
+fn manual_command_uses_the_router_capability_without_an_account_header() {
+    let model = ModelChoice {
+        slug: Some("best-model".into()),
+        reasoning: "low".into(),
+    };
+    let command = crate::codex_router::account_activation::command::manual_command_for_test(
+        std::path::Path::new("/opt/codex"),
+        std::path::Path::new("/home/person"),
+        std::path::Path::new("/home/person/.codex"),
+        "00000000-0000-4000-8000-000000000051",
+        &model,
+    );
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert!(args
+        .iter()
+        .any(|arg| arg == "model_provider=\"toks_activation\""));
+    assert!(args.iter().any(|arg| {
+        arg == "model_providers.toks_activation.env_http_headers={\"x-toks-activation-attempt\"=\"TOKS_ACTIVATION_ATTEMPT\"}"
+    }));
+    assert!(args
+        .iter()
+        .any(|arg| arg == "model_providers.toks_activation.supports_websockets=false"));
+    let environment = command
+        .get_envs()
+        .map(|(name, value)| {
+            (
+                name.to_string_lossy().into_owned(),
+                value.map(|value| value.to_string_lossy().into_owned()),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(
+        environment["TOKS_ACTIVATION_ATTEMPT"].as_deref(),
+        Some("00000000-0000-4000-8000-000000000051")
+    );
+    assert_eq!(
+        environment["CODEX_HOME"].as_deref(),
+        Some("/home/person/.codex")
+    );
+    assert!(!args.iter().any(|arg| arg.contains("chatgpt-account-id")));
+}
+
+#[test]
 fn catalogue_chooses_primary_visible_model_and_lowest_effort() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("models_cache.json");

@@ -19,8 +19,8 @@ pub use runtime::{
     ThreadAccountConflict, ThreadRequestSettings, WaitingId, WaitingThread,
 };
 pub(crate) use runtime::{
-    ResumeAuthorization, ResumeRoute, ResumeTerminal, WorkerConnectionInventory,
-    WorkerConnectionOwner,
+    DeliveredHardLimitHandoff, ResumeAuthorization, ResumeRoute, ResumeTerminal,
+    WorkerConnectionInventory, WorkerConnectionOwner,
 };
 pub use settings::{
     InvalidThreadOverrideValue, RotationSettings, ThreadOverride, ThreadOverrideChange,

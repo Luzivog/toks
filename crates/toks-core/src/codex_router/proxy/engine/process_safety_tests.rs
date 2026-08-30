@@ -16,8 +16,10 @@ use crate::codex_router::proxy::types::{
     CredentialFailure, CredentialSource, RouteCredential, SharedCredentials,
 };
 
+mod activation_authorization;
 mod auth_repair;
 mod cross_account;
+mod hard_quota_handoff;
 mod quota_reset_tests;
 mod quota_snapshot_tests;
 mod reconciliation;

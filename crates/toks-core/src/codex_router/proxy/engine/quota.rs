@@ -155,7 +155,7 @@ impl Engine {
     }
 }
 
-fn block_window(account: &AccountId, reset: Option<UnixMillis>) -> BlockWindow {
+pub(super) fn block_window(account: &AccountId, reset: Option<UnixMillis>) -> BlockWindow {
     let at = UnixMillis::now();
     reset
         .filter(|until| *until > at)

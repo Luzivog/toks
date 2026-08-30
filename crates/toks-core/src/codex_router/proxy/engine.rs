@@ -13,6 +13,7 @@ use anyhow::Result;
 
 mod construction;
 pub(super) use construction::EngineConfig;
+mod hard_quota_handoff;
 mod owned_connections;
 #[cfg(test)]
 mod process_safety_tests;
@@ -42,6 +43,7 @@ pub(super) struct Engine {
     connection_owner: Option<WorkerConnectionOwner>,
     connection_inventory: Mutex<WorkerConnectionInventory>,
     thread_sources: ThreadSourceStore,
+    activation: crate::codex_router::account_activation::Store,
 }
 
 impl Engine {

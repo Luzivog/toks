@@ -10,6 +10,7 @@ use super::Engine;
 use crate::codex_router::proxy::headers::ResumeMarker;
 use crate::codex_router::proxy::types::{CredentialFailure, RouteCredential};
 
+mod activation;
 mod claims;
 mod policy;
 mod quarantine;

@@ -5,6 +5,7 @@ use tokio::process::Command;
 
 use crate::codex_router::host::GenerationId;
 
+#[cfg(not(test))]
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,6 +15,7 @@ pub(in crate::codex_router::host::process) enum Liveness {
     Unknown,
 }
 
+#[cfg(not(test))]
 pub(super) async fn run(action: &str, generations: Vec<GenerationId>) -> Result<()> {
     if generations.is_empty() {
         return Ok(());
@@ -81,6 +83,7 @@ fn parse_inventory_line(line: &str) -> Result<(GenerationId, Liveness)> {
     Ok((GenerationId::from_raw(generation), liveness))
 }
 
+#[cfg(not(test))]
 fn unit_name(generation: &GenerationId) -> String {
     format!("toks-router-worker@{}.service", generation.get())
 }

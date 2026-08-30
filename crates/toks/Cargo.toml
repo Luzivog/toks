@@ -8,6 +8,9 @@ homepage.workspace = true
 description = "A local-first Linux desktop app for understanding AI coding usage and plan limits"
 publish = false
 
+[lints]
+workspace = true
+
 [features]
 test-support = ["gpui/test-support"]
 

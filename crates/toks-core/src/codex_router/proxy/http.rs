@@ -13,6 +13,7 @@ use attempt::{classify_response, Attempt, ResponseContext};
 use request_body::CodexHttpBody;
 use response::{plain, usage_unavailable};
 
+mod activation;
 mod attempt;
 mod prepare;
 #[cfg(test)]
@@ -39,6 +40,9 @@ pub(super) async fn forward(state: ProxyState, request: Request<Body>) -> Respon
         return plain(StatusCode::BAD_REQUEST, "Conflicting Codex thread identity");
     }
     let thread = identity.into_thread();
+    if let Some(response) = activation::forward(&state, &parts, &body, thread.as_ref()).await {
+        return response;
+    }
     let marker = resume_marker(&parts.headers);
     let resume_attempt = marker.attempt().map(str::to_owned);
     if thread.is_none() && marker.is_present() {

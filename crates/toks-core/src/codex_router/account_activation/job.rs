@@ -1,7 +1,9 @@
 use super::model::{
-    FailureReason, Job, JobKind, JobPhase, PROVISIONAL_WEEK_MS, RETRY_DELAYS_MS, TASK_TIMEOUT_MS,
+    AccountState, FailureReason, Job, JobKind, JobPhase, ManualRoute, PROVISIONAL_WEEK_MS,
+    RETRY_DELAYS_MS, TASK_TIMEOUT_MS,
 };
-use super::{AutomaticTestStatus, ManualTestStatus};
+use super::{AutomaticTestStatus, ManualTestOutcome, ManualTestReceipt, ManualTestStatus};
+use crate::accounts::AccountId;
 
 pub(super) fn active(job: &Job) -> bool {
     matches!(
@@ -29,6 +31,38 @@ pub(super) fn reconcile_owner(job: &mut Job, now_ms: i64) {
     if requires_owner && job.owner.is_none_or(|owner| !owner.is_alive()) {
         needs_attention(job, FailureReason::Interrupted, now_ms);
     }
+}
+
+pub(super) fn reconcile_manual(account: &AccountId, state: &mut AccountState, now_ms: i64) {
+    let running_state = state.manual.as_ref().and_then(|job| match job.phase {
+        JobPhase::Running { started_at_ms, .. } => Some((started_at_ms, job.manual_route.clone())),
+        _ => None,
+    });
+    let Some(job) = state.manual.as_mut() else {
+        return;
+    };
+    reconcile_owner(job, now_ms);
+    reconcile_timeout(job, now_ms);
+    let Some((started_at_ms, route)) = running_state.filter(|_| !running(job)) else {
+        return;
+    };
+    state.manual_receipt = Some(ManualTestReceipt {
+        requested_account: account.clone(),
+        observed_account: match &route {
+            Some(ManualRoute::Routed {
+                observed_account, ..
+            }) => Some(observed_account.clone()),
+            _ => None,
+        },
+        thread_id: route.as_ref().map(|route| route.thread_id().clone()),
+        started_at_ms,
+        routed_at_ms: match &route {
+            Some(ManualRoute::Routed { routed_at_ms, .. }) => Some(*routed_at_ms),
+            _ => None,
+        },
+        completed_at_ms: now_ms,
+        outcome: ManualTestOutcome::Failed,
+    });
 }
 
 pub(super) fn finish(

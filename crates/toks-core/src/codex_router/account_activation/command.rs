@@ -6,7 +6,7 @@ use crate::accounts::CodexAuthSnapshot;
 use crate::limits::Provider;
 
 use super::catalogue::ModelChoice;
-use super::model::{FailureReason, Launch, TASK_TIMEOUT_MS};
+use super::model::{FailureReason, Launch, LaunchKind, TASK_TIMEOUT_MS};
 
 const PROMPT: &str = "test";
 
@@ -16,7 +16,16 @@ pub(super) async fn run(launch: &Launch) -> Result<(), FailureReason> {
     let home = toks_ingest::paths::home_dir().ok_or(FailureReason::ProfileUnavailable)?;
     let executable =
         crate::codex_router::codex_binary::discover().map_err(|_| FailureReason::SpawnFailed)?;
-    let command = command(&executable, &home, &config, &model);
+    let command = match launch.kind {
+        LaunchKind::Automatic => command(&executable, &home, &config, &model),
+        LaunchKind::Manual => manual_command(
+            &executable,
+            &home,
+            &normal_codex_home(&home),
+            &launch.id,
+            &model,
+        ),
+    };
     run_bounded(command).await
 }
 
@@ -63,6 +72,76 @@ fn command(executable: &Path, home: &Path, config: &Path, model: &ModelChoice) -
     command
 }
 
+fn manual_command(
+    executable: &Path,
+    home: &Path,
+    codex_home: &Path,
+    attempt: &str,
+    model: &ModelChoice,
+) -> Command {
+    let mut environment = crate::codex_router::systemd::allowed_environment();
+    environment.insert(
+        "CODEX_HOME".into(),
+        codex_home.to_string_lossy().into_owned(),
+    );
+    environment.insert("TOKS_ACTIVATION_ATTEMPT".into(), attempt.into());
+    let mut command = Command::new("timeout");
+    command
+        .env_clear()
+        .envs(environment)
+        .args(["--signal=TERM", "--kill-after=1s", "178s"])
+        .arg(executable)
+        .args(["-c", "model_provider=\"toks_activation\""])
+        .args([
+            "-c",
+            "model_providers.toks_activation.name=\"Toks account test\"",
+        ])
+        .args([
+            "-c",
+            "model_providers.toks_activation.base_url=\"http://127.0.0.1:47837/backend-api/codex\"",
+        ])
+        .args(["-c", "model_providers.toks_activation.wire_api=\"responses\""])
+        .args([
+            "-c",
+            "model_providers.toks_activation.requires_openai_auth=true",
+        ])
+        .args([
+            "-c",
+            "model_providers.toks_activation.supports_websockets=false",
+        ])
+        .args([
+            "-c",
+            "model_providers.toks_activation.supports_standalone_web_search=true",
+        ])
+        .args([
+            "-c",
+            "model_providers.toks_activation.env_http_headers={\"x-toks-activation-attempt\"=\"TOKS_ACTIVATION_ATTEMPT\"}",
+        ])
+        .args(["exec", "--ignore-user-config", "--ignore-rules"])
+        .arg("--skip-git-repo-check")
+        .args(["-s", "read-only", "-C"])
+        .arg(home)
+        .args(["-c", "approval_policy=\"never\""])
+        .args(["-c", "service_tier=\"default\""])
+        .arg("-c")
+        .arg(format!("model_reasoning_effort=\"{}\"", model.reasoning))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(slug) = &model.slug {
+        command.arg("-m").arg(slug);
+    }
+    command.arg(PROMPT);
+    command
+}
+
+fn normal_codex_home(home: &Path) -> PathBuf {
+    std::env::var_os("CODEX_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".codex"))
+}
+
 async fn run_bounded(command: Command) -> Result<(), FailureReason> {
     let mut command = tokio::process::Command::from(command);
     command.kill_on_drop(true);
@@ -88,6 +167,17 @@ pub(super) fn command_for_test(
     model: &ModelChoice,
 ) -> Command {
     command(executable, home, config, model)
+}
+
+#[cfg(test)]
+pub(super) fn manual_command_for_test(
+    executable: &Path,
+    home: &Path,
+    codex_home: &Path,
+    attempt: &str,
+    model: &ModelChoice,
+) -> Command {
+    manual_command(executable, home, codex_home, attempt, model)
 }
 
 #[cfg(test)]

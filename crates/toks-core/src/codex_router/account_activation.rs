@@ -19,13 +19,19 @@ mod owner;
 mod owner_tests;
 mod planner;
 mod requests;
+mod route_authorization;
 mod status;
 mod store;
 
+pub(in crate::codex_router) use route_authorization::RouteClaim;
+pub(in crate::codex_router) use store::Store;
+
 pub use catalogue::{selectable_models, SelectableModel};
 use model::FailureReason;
-pub use status::{AccountActivationStatus, AutomaticTestStatus, ManualTestStatus};
-use store::Store;
+pub use status::{
+    AccountActivationStatus, AutomaticTestStatus, ManualTestOutcome, ManualTestReceipt,
+    ManualTestStatus,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ManualRequest {

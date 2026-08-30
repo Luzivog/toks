@@ -17,6 +17,7 @@ use crate::codex_router::thread_source::ThreadSourceStore;
 use crate::rotation::{
     RotationEventKind, RotationRuntimeStore, RotationSettings, RotationSettingsStore,
     UsageLimitClassification, UsageLimitPhase, UsageLimitTier, UsageLimitTierOrigin,
+    WorkerConnectionOwner,
 };
 
 use super::engine::{Engine, EngineConfig};
@@ -24,6 +25,7 @@ use super::protocol::{usage_block, websocket_usage_block, RETRY_FRAME};
 use super::types::{CredentialFailure, CredentialSource, RouteCredential, SharedCredentials};
 use super::{app, InboundTokens, ProxyState, RouterRuntimeHandle, Upstream};
 
+mod account_activation;
 mod auth_quarantine;
 mod auth_refresh;
 mod binary_frames;
@@ -33,6 +35,7 @@ mod fast_failover;
 mod fixtures;
 mod follow_up_reconnect;
 mod handoff_connection;
+mod hard_quota_handoff;
 mod http_compression;
 mod http_failover;
 mod inbound;
@@ -118,6 +121,22 @@ impl Harness {
     }
 
     fn new_with_reconciled_settings(accounts: &[(&str, &str)], reconciled: bool) -> Self {
+        Self::new_with_owner(accounts, reconciled, None)
+    }
+
+    fn new_worker(accounts: &[(&str, &str)]) -> Self {
+        Self::new_with_owner(
+            accounts,
+            true,
+            Some(WorkerConnectionOwner::new(1, 1).expect("nonzero worker identity")),
+        )
+    }
+
+    fn new_with_owner(
+        accounts: &[(&str, &str)],
+        reconciled: bool,
+        connection_owner: Option<WorkerConnectionOwner>,
+    ) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let ids = accounts
             .iter()
@@ -174,7 +193,7 @@ impl Harness {
             settings: settings_store,
             runtime_store: RotationRuntimeStore::for_data_dir(directory.path()),
             catalogue: super::catalogue::Catalogue::at(Some(catalogue_path)),
-            connection_owner: None,
+            connection_owner,
             thread_sources: ThreadSourceStore::discover(),
         })
         .unwrap();
